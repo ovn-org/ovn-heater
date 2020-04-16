@@ -1,0 +1,7 @@
+- name: Install ovn-fake-multinode
+  hosts: ovn_hosts
+  tasks:
+    - name: Pull latest containers
+      shell: |
+              docker pull {{ registry_node }}:5000/ovn/ovn-multi-node
+              docker tag {{ registry_node }}:5000/ovn/ovn-multi-node ovn/ovn-multi-node

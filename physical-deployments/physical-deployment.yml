@@ -1,0 +1,9 @@
+registry-node: host01.mydomain.com
+internal-iface: eno1
+
+central-node:
+  name: host02.mydomain.com
+
+worker-nodes:
+  - host03.mydomain.com
+  - host04.mydomain.com

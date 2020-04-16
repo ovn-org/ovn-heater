@@ -1,0 +1,14 @@
+- name: Install dependencies
+  hosts: ovn_hosts
+  tasks:
+    - name: Install required packages
+      package:
+        name:
+          - git
+          - docker
+          - docker-distribution
+          - gcc
+          - openvswitch
+          - python3-pyyaml
+          - python3-virtualenv
+          - python3-devel

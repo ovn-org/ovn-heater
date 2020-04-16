@@ -1,0 +1,71 @@
+browbeat:
+  cloud_name: openstack
+  rerun: 1
+  # Two types of rerun:
+  # iteration reruns on the iteration
+  # complete reruns after all workloads complete
+  # rerun_type: complete
+  rerun_type: iteration
+ansible:
+  hosts: ansible/hosts
+  metadata_playbook: ansible/gather/stockpile.yml
+  ssh_config: ansible/ssh-config
+elasticsearch:
+  enabled: false
+  host: 1.1.1.1
+  port: 9200
+  regather: false
+  metadata_files:
+    - name: hardware-metadata
+      file: metadata/hardware-metadata.json
+    - name: environment-metadata
+      file: metadata/environment-metadata.json
+    - name: software-metadata
+      file: metadata/software-metadata.json
+    - name: version
+      file: metadata/version.json
+grafana:
+  enabled: false
+  host: example.grafana.com
+  port: 3000
+  dashboards:
+    - openstack-general-system-performance
+rally:
+  sleep_before: 5
+  sleep_after: 5
+  plugins:
+    - glance: rally/rally-plugins/glance
+    - neutron: rally/rally-plugins/neutron
+    - netcreate-boot: rally/rally-plugins/netcreate-boot
+    - workloads: rally/rally-plugins/workloads
+    - rally-ovs: rally/ovs/scenarios
+shaker:
+  server: 1.1.1.1
+  port: 5555
+  flavor: m1.small
+  join_timeout: 600
+  sleep_before: 0
+  sleep_after: 0
+  shaker_region: regionOne
+  external_host: 2.2.2.2
+
+workloads:
+  # Rally ovs
+  - name: plugin-workloads
+    enabled: true
+    type: rally-ovs
+    concurrency:
+      - 1
+    times: 1
+    scenarios:
+      - name: switch-per-node-workload
+        enabled: true
+        file: ../../browbeat-scenarios/osh_workload_incremental.json
+        farm_node: ovn-farm-node-0
+        controller: ovn-controller-node
+        start_cidr: 192.168.33.10/24
+        max_farm_nodes: 2
+        farm_nodes: 2
+        ports_per_network: 2
+        cluster_cmd_path: /root/ovn-heater/runtime/ovn-fake-multinode
+        ovn_central_ip: "192.16.0.1-192.16.0.2-192.16.0.3"

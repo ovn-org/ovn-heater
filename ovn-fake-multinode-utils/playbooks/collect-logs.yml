@@ -1,0 +1,12 @@
+- name: Collect remote logs
+  hosts: ovn_hosts
+  become: true
+  tasks:
+  - name: Collect logs from containers
+    shell: |
+      /tmp/log-collector.sh {{ inventory_hostname }} {{ node_name }}
+  - name: Retrieve logs
+    fetch:
+      src: "/tmp/{{ inventory_hostname }}.tgz"
+      dest: "{{ results_dir }}/"
+      flat: yes

@@ -1,0 +1,44 @@
+- name: Prepare the setup
+  hosts: ovn_hosts
+  become: true
+  tasks:
+  - name: Start openvswitch
+    systemd:
+      name: openvswitch
+      state: started
+
+  - name: Delete old docker volumes
+    file:
+      path: /var/lib/docker/volumes/
+      state: absent
+
+  - name: Delete old docker containers if any
+    shell: |
+      cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
+      export CHASSIS_PREFIX={{ node_name }}
+      export CHASSIS_COUNT=100
+      ./ovn_cluster.sh stop
+      docker system prune -f
+
+  - name: Create ovs bridges for ovn fake multinode
+    shell: |
+      ovs-vsctl --if-exists del-br br-ovn
+      ovs-vsctl --if-exists del-br br-ovn-ext
+      ovs-vsctl add-br br-ovn
+      ovs-vsctl add-br br-ovn-ext
+
+  - name: Add nics to br-ovn if configured
+    when: internal_iface is defined
+    shell: |
+      ovs-vsctl add-port br-ovn {{ internal_iface }}
+
+  - name: Add nics to br-ovn-ext if configured
+    when: external_iface is defined
+    shell: |
+      ovs-vsctl add-port br-ovn-ext {{ external_iface }}
+
+  - name: Deploy stats collection script
+    copy:
+      src: "{{ rundir }}/log-collector.sh"
+      dest: /tmp/log-collector.sh
+      mode: '0744'

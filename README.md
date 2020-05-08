@@ -274,6 +274,6 @@ cd ~/ovn-heater
 CLUSTERED_DB=False ./do.sh generate
 ./do.sh rally-deploy
 
-echo "        ovn_cluster_db: False" >> browbeat-scenarios/switch-per-node-low-scale.yml
+echo '        ovn_cluster_db: "False"' >> browbeat-scenarios/switch-per-node-low-scale.yml
 ./do.sh browbeat-run <browbeat-scenario> <results-dir>
 ```

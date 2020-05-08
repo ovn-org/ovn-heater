@@ -58,14 +58,14 @@ Ethernet interface to exist.
 OVN-CENTRAL and OVN-WORKER-NODEs all have Ethernet interface `eno1`
 connected to a physical switch in a separate VLAN, as untagged interfaces.
 
-## Minimal requirements on the TESTER node (tested on Fedora 31)
+## Minimal requirements on the TESTER node (tested on Fedora 32)
 
 ### Install required packages:
 ```
 dnf install -y git ansible
 ```
 
-### Make docker work with Fedora 31 (disable cgroup hierarchy):
+### Make docker work with Fedora 32 (disable cgroup hierarchy):
 
 ```
 dnf install -y grubby
@@ -75,7 +75,7 @@ reboot
 
 ## Minimal requirements on the OVN-CENTRAL and OVN-WORKER-NODEs
 
-### Make docker work with Fedora 31 (disable cgroup hierarchy):
+### Make docker work with Fedora 32 (disable cgroup hierarchy):
 
 ```
 dnf install -y grubby

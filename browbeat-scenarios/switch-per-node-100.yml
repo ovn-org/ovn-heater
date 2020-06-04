@@ -67,4 +67,4 @@ workloads:
         max_farm_nodes: 100
         farm_nodes: 100
         ports_per_network: 100
-        cluster_cmd_path: /root/ovn-scale-testing/runtime/ovn-fake-multinode
+        cluster_cmd_path: /root/ovn-heater/runtime/ovn-fake-multinode

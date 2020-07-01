@@ -5,7 +5,7 @@
 {% set gw_batch_ops = gw_batch_ops or False %}
 {% set ovn_monitor_all = ovn_monitor_all or True %}
 {% set ovn_cluster_db = ovn_cluster_db or True %}
-{% set ovn_central_ip = ovn_central_ip or "192.16.0.1" %}
+{% set ovn_central_ip = ovn_central_ip or "192.16.0.1-192.16.0.2-192.16.0.3" %}
 {% set cluster_cmd_path = cluster_cmd_path or "/root/ovn-fake-testing/ovn-fake-multinode" %}
 {% set node_batch_size = node_batch_size or 1 %}
 {% set sla = sla or 30 %}

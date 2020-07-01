@@ -68,4 +68,3 @@ workloads:
         farm_nodes: 2
         ports_per_network: 2
         cluster_cmd_path: /root/ovn-heater/runtime/ovn-fake-multinode
-        ovn_central_ip: "192.16.0.1-192.16.0.2-192.16.0.3"

@@ -23,9 +23,11 @@ ovn_fmn_utils=${topdir}/ovn-fake-multinode-utils
 ovn_fmn_playbooks=${ovn_fmn_utils}/playbooks
 ovn_fmn_generate=${ovn_fmn_utils}/generate-hosts.py
 ovn_fmn_docker=${ovn_fmn_utils}/generate-docker-cfg.py
+ovn_fmn_podman=${ovn_fmn_utils}/generate-podman-cfg.py
 hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
 docker_daemon_file=${rundir}/docker-daemon.json
+podman_registry_file=${rundir}/registries.conf
 log_collector_file=${rundir}/log-collector.sh
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
@@ -36,6 +38,7 @@ function generate() {
 
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
     PYTHONPATH=${topdir}/utils ${ovn_fmn_docker} ${phys_deployment} > ${docker_daemon_file}
+    PYTHONPATH=${topdir}/utils ${ovn_fmn_podman} ${phys_deployment} > ${podman_registry_file}
     PYTHONPATH=${topdir}/utils ${rally_deployment_generate} ${phys_deployment} ${clustered_db}> ${deployment_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
 }
@@ -45,14 +48,45 @@ function install_deps() {
     ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml -i ${hosts_file}
 
     echo "-- Installing local dependencies"
-    dnf install -y docker docker-distribution
-    systemctl start docker
-    systemctl start docker-distribution
+    if yum install -y docker docker-distribution
+    then
+        systemctl start docker
+        systemctl start docker-distribution
+    else
+        yum install -y podman podman-docker
+        for container_name in `podman ps | grep -v "CONTAINER ID" | awk '{print $1}'`
+        do
+            podman stop $container_name
+            podman rm $container_name
+        done
+        [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
+        podman run --privileged -d --name registry -p 5000:5000 \
+          -v /var/lib/registry:/var/lib/registry --restart=always docker.io/library/registry:2
+        cp /etc/containers/registries.conf /etc/containers/registries.conf.bak
+        cat > /etc/containers/registries.conf << EOF
+[registries.search]
+registries = ['registry.access.redhat.com', 'registry.redhat.io']
+[registries.insecure]
+registries = ['localhost:5000']
+[registries.block]
+registries = []
+EOF
+    fi
+    yum install redhat-lsb-core python3-pip python3-virtualenv python3 python3-devel python-virtualenv --skip-broken -y
+    [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 }
 
 function configure_docker() {
-    echo "-- Configuring docker local registry on all nodes"
-    ansible-playbook ${ovn_fmn_playbooks}/configure-docker-registry.yml -i ${hosts_file}
+    echo "-- Configuring podman local registry on tester nodes"
+    if which podman
+    then
+        echo "-- Configuring podman local registry on all nodes"
+        ansible-playbook ${ovn_fmn_playbooks}/configure-podman-registry.yml -i ${hosts_file}
+    else
+        echo "-- Configuring docker local registry on all nodes"
+        ansible-playbook ${ovn_fmn_playbooks}/configure-docker-registry.yml -i ${hosts_file}
+    fi
+
 }
 
 function clone_component() {
@@ -163,13 +197,52 @@ function install_ovn_fake_multinode() {
 
     # Clone repo locally
     clone_component ovn-fake-multinode ${ovn_fmn_repo} ${ovn_fmn_branch} || rebuild_needed=1
-    clone_component ovs ${ovs_repo} ${ovs_branch} || rebuild_needed=1
-    clone_component ovn ${ovn_repo} ${ovn_branch} || rebuild_needed=1
+
+    if [ -n "$RPM_OVS" ]
+    then
+        [ -d ovs ] || { rm -rf ovs; mkdir ovs; }
+        rebuild_needed=1
+    else
+        clone_component ovs ${ovs_repo} ${ovs_branch} || rebuild_needed=1
+    fi
+
+    if [ -n "$RPM_OVN_COMMON" ]
+    then
+        [ -d ovn ] || { rm -rf ovn; mkdir ovn; }
+        rebuild_needed=1
+    else
+        clone_component ovn ${ovn_repo} ${ovn_branch} || rebuild_needed=1
+    fi
+
 
     pushd ${rundir}/ovn-fake-multinode
+
+    [ -n "$RPM_OVS" ] && wget $RPM_OVS
+    [ -n "$RPM_SELINUX" ] && wget $RPM_SELINUX
+    if [ -n "$RPM_OVN_COMMON" ]
+    then
+        wget $RPM_OVN_COMMON
+        rpm_v=`basename $RPM_OVN_COMMON | awk -F '-' '{print $1}'`
+        rpm_b=`basename $RPM_OVN_COMMON | sed 's/^'"$rpm_v"'\(.*\)/\1/'`
+        RPM_OVN_CENTRAL=${RPM_OVN_CENTRAL:-"$(dirname $RPM_OVN_COMMON)/$rpm_v-central$rpm_b"}
+        RPM_OVN_HOST=${RPM_OVN_HOST:-"$(dirname $RPM_OVN_COMMON)/$rpm_v-host$rpm_b"}
+        [ -n "$RPM_OVN_CENTRAL" ] && wget $RPM_OVN_CENTRAL
+        [ -n "$RPM_OVN_HOST" ] && wget $RPM_OVN_HOST
+    fi
+
     if [ ${rebuild_needed} -eq 1 ]; then
+        os_release=$(lsb_release -r | awk '{print $2}')
+        os_release=${os_release:-"32"}
+        if grep Fedora /etc/redhat-release
+        then
+            os_image="fedora:$os_release"
+        elif grep "Red Hat Enterprise Linux" /etc/redhat-release
+        then
+            [[ "$os_release" =~ 7\..* ]] && os_image="registry.access.redhat.com/ubi7/ubi:$os_release"
+            [[ "$os_release" =~ 8\..* ]] && os_image="registry.access.redhat.com/ubi8/ubi:$os_release"
+        fi
         # Build images locally.
-        OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} ./ovn_cluster.sh build
+        OS_IMAGE=$os_image OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} ./ovn_cluster.sh build
     fi
     # Tag and push image
     docker tag ovn/ovn-multi-node localhost:5000/ovn/ovn-multi-node

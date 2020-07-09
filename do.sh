@@ -86,7 +86,7 @@ function clone_component() {
     else
         rm -rf ${comp_name}
         echo "-- Cloning ${comp_name} from ${comp_repo} at revision ${comp_branch}"
-        git clone ${comp_repo}
+        git clone ${comp_repo} ${comp_name}
         pushd ${comp_name}
         git checkout ${comp_branch}
         popd

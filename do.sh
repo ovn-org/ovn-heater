@@ -27,6 +27,7 @@ hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
 docker_daemon_file=${rundir}/docker-daemon.json
 log_collector_file=${rundir}/log-collector.sh
+log_perf_file=${rundir}/perf.sh
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 
@@ -38,6 +39,7 @@ function generate() {
     PYTHONPATH=${topdir}/utils ${ovn_fmn_docker} ${phys_deployment} > ${docker_daemon_file}
     PYTHONPATH=${topdir}/utils ${rally_deployment_generate} ${phys_deployment} ${clustered_db}> ${deployment_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
+    cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
 }
 
 function install_deps() {

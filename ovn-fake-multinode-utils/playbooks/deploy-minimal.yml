@@ -42,3 +42,9 @@
       src: "{{ rundir }}/log-collector.sh"
       dest: /tmp/log-collector.sh
       mode: '0744'
+
+  - name: Deploy perf script
+    copy:
+      src: "{{ rundir }}/perf.sh"
+      dest: /tmp/perf.sh
+      mode: '0744'

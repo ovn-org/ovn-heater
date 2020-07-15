@@ -170,6 +170,19 @@ OVN branch from another fork we can:
 cd ~/ovn-heater
 OVS_REPO=https://github.com/dceara/ovs OVS_BRANCH=tmp-branch OVN_REPO=https://github.com/dceara/ovn OVN_BRANCH=tmp-branch-2 ./do.sh install && ./do.sh rally-deploy
 ```
+## Perform a reinstallation (e.g., install OVS/OVN from rpm packages):
+
+```
+cd ~/ovn-heater
+rm -rf runtime
+```
+
+Run the installation with rpm packages parameters specified:
+
+```
+cd ~/ovn-heater
+RPM_SELINUX=$rpm_url_openvswitch-selinux-extra-policy RPM_OVS=$rpm_url_openvswitch RPM_OVN_COMMON=$rpm_url_ovn RPM_OVN_HOST=$rpm_url_ovn-host RPM_OVN_CENTRAL=$rpm_url_ovn-central ./do.sh install && ./do.sh rally-deploy
+```
 
 ## Regenerate the ansible inventory and re-register the deployment:
 

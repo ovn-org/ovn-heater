@@ -1,0 +1,15 @@
+- name: Configure docker
+  hosts: ovn_hosts
+  become: true
+  tasks:
+
+  - name: backup registries.conf
+    copy:
+      src: /etc/containers/registries.conf
+      dest: /etc/containers/registries.conf.bak
+      remote_src: yes
+
+  - name: Configure insecure podman registry
+    copy:
+      src: "{{ rundir }}/registries.conf"
+      dest: /etc/containers/registries.conf

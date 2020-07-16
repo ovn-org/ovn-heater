@@ -242,6 +242,7 @@ consist of:
 - OVN docker container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
   ovsdb-server logs).
 - physical nodes journal files.
+- perf sampling results if enabled
 
 ## Example (run "scenario #2 - new node provisioning" for 2 nodes):
 
@@ -273,6 +274,24 @@ Results will be stored in `~ovn-heater/test_results/test-low-scale/`:
   of the test run.
 - `20200212-083337/rally/plugin-workloads/switch-per-node-workload/20200212-083337-browbeat-switch-per-node-workload-1-1-iteration-0.log`:
   rally-ovs logs of the test run.
+
+## Example (run "scenario #2 - performing perf analysis for 100 nodes"):
+
+Instruct ovn-heater about the first and last iteration of perf record analysis
+providing `ext_cmd_start` and `ext_cmd_stop` in `switch-per-node-100.yml`
+
+```
+        max_farm_nodes: 100
+        farm_nodes: 100
+        ports_per_network: 100
+        ext_cmd_start: 50
+        ext_cmd_stop: 90
+        cluster_cmd_path: /root/ovn-heater/runtime/ovn-fake-multinode
+
+```
+
+Results will be stored in `~ovn-heater/test_results/test-100-<date>/logs/<node>-perf/` for each
+container.
 
 ## Scenario execution with DBs in standalone mode
 

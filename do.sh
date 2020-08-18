@@ -195,6 +195,8 @@ ovn_branch="${OVN_BRANCH:-v20.03.0}"
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"
 ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-master}"
 
+OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
+
 function install_ovn_fake_multinode() {
     echo "-- Cloning ${ovn_fmn_repo} on all nodes, revision ${ovn_fmn_branch}"
     # Clone repo on all hosts.
@@ -238,16 +240,21 @@ function install_ovn_fake_multinode() {
     fi
 
     if [ ${rebuild_needed} -eq 1 ]; then
-        os_release=$(lsb_release -r | awk '{print $2}')
-        os_release=${os_release:-"32"}
-        if grep Fedora /etc/redhat-release
-        then
-            os_image="fedora:$os_release"
-        elif grep "Red Hat Enterprise Linux" /etc/redhat-release
-        then
-            [[ "$os_release" =~ 7\..* ]] && os_image="registry.access.redhat.com/ubi7/ubi:$os_release"
-            [[ "$os_release" =~ 8\..* ]] && os_image="registry.access.redhat.com/ubi8/ubi:$os_release"
+        if [ -z "${OS_IMAGE_OVERRIDE}" ]; then
+            os_release=$(lsb_release -r | awk '{print $2}')
+            os_release=${os_release:-"32"}
+            if grep Fedora /etc/redhat-release
+            then
+                os_image="fedora:$os_release"
+            elif grep "Red Hat Enterprise Linux" /etc/redhat-release
+            then
+                [[ "$os_release" =~ 7\..* ]] && os_image="registry.access.redhat.com/ubi7/ubi:$os_release"
+                [[ "$os_release" =~ 8\..* ]] && os_image="registry.access.redhat.com/ubi8/ubi:$os_release"
+            fi
+        else
+            os_image=${OS_IMAGE_OVERRIDE}
         fi
+
         # Build images locally.
         OS_IMAGE=$os_image OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} ./ovn_cluster.sh build
     fi

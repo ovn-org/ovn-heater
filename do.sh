@@ -33,6 +33,11 @@ log_perf_file=${rundir}/perf.sh
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 
+function die() {
+    echo $1
+    exit 1
+}
+
 function generate() {
     # Make sure rundir exists.
     mkdir -p ${rundir}
@@ -336,9 +341,32 @@ function run_test() {
 }
 
 function usage() {
-    echo "Usage: $0 install|generate|rally-deploy|rally-undeploy|init|browbeat-run <scenario> <out-dir>"
-    exit 1
+    die "Usage: $0 install|generate|rally-deploy|rally-undeploy|init|browbeat-run <scenario> <out-dir>"
 }
+
+do_lockfile=/tmp/do.sh.lock
+
+function take_lock() {
+    exec 42>${do_lockfile} || die "Failed setting FD for ${do_lockfile}"
+    flock -n 42 || die "Error: ovn-heater ($1) already running"
+}
+
+case "${1:-"usage"}" in
+    "install")
+        ;&
+    "generate")
+        ;&
+    "rally-deploy")
+        ;&
+    "rally-undeploy")
+        ;&
+    "init")
+        ;&
+    "browbeat-run")
+        take_lock $0
+        trap "rm -f ${do_lockfile}" EXIT
+        ;;
+    esac
 
 case "${1:-"usage"}" in
     "install")

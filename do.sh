@@ -438,6 +438,13 @@ case "${1:-"usage"}" in
         fi
         shift; shift
 
+        # Cleanup previous deployments.
+        source ${rally_ovs_venv}/bin/activate
+        rally-ovs deployment destroy ${deployment}
+        rally-ovs deployment create --file ${deployment_file} --name ${deployment}
+        deactivate
+
+        # Run the new test.
         run_test ${test_file} ${out_dir}
         ;;
     *)

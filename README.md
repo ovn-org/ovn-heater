@@ -281,7 +281,6 @@ Instruct ovn-heater about the first and last iteration of perf record analysis
 providing `ext_cmd_start` and `ext_cmd_stop` in `switch-per-node-100.yml`
 
 ```
-        max_farm_nodes: 100
         farm_nodes: 100
         ports_per_network: 100
         ext_cmd_start: 50

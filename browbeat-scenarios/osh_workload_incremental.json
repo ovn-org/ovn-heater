@@ -1,4 +1,3 @@
-{% set max_farm_nodes = max_farm_nodes or 1 %}
 {% set farm_nodes = farm_nodes or 1 %}
 {% set ports_per_network = ports_per_network or 1 %}
 {% set gw_router = gw_router or True %}

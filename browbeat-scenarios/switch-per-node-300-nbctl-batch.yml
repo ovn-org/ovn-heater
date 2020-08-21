@@ -64,7 +64,6 @@ workloads:
         farm_node: ovn-farm-node-0
         controller: ovn-controller-node
         start_cidr: 192.168.33.10/24
-        max_farm_nodes: 300
         farm_nodes: 300
         ports_per_network: 300
         gw_batch_ops: true

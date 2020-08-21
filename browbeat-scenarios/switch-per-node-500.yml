@@ -64,7 +64,6 @@ workloads:
         farm_node: ovn-farm-node-0
         controller: ovn-controller-node
         start_cidr: 192.168.33.10/24
-        max_farm_nodes: 500
         farm_nodes: 500
         ports_per_network: 500
         cluster_cmd_path: /root/ovn-heater/runtime/ovn-fake-multinode

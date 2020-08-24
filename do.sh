@@ -170,9 +170,8 @@ function install_rally() {
 }
 
 # rally-ovs env vars
-#TODO: right now we clone a fork. Do we try to get the changes in master?
-rally_ovs_repo="${RALLY_OVS_REPO:-https://github.com/dceara/ovn-scale-test.git}"
-rally_ovs_branch="${RALLY_OVS_BRANCH:-ovn-switch-per-node}"
+rally_ovs_repo="${RALLY_OVS_REPO:-https://github.com/ovn-org/ovn-scale-test.git}"
+rally_ovs_branch="${RALLY_OVS_BRANCH:-master}"
 
 function install_rally_ovs() {
     if clone_component ovn-scale-test ${rally_ovs_repo} ${rally_ovs_branch}; then
@@ -187,9 +186,9 @@ function install_rally_ovs() {
 
 # OVS/OVN env vars
 ovs_repo="${OVS_REPO:-https://github.com/openvswitch/ovs.git}"
-ovs_branch="${OVS_BRANCH:-v2.13.0}"
+ovs_branch="${OVS_BRANCH:-v2.14.0}"
 ovn_repo="${OVN_REPO:-https://github.com/ovn-org/ovn.git}"
-ovn_branch="${OVN_BRANCH:-v20.03.0}"
+ovn_branch="${OVN_BRANCH:-v20.06.2}"
 
 # ovn-fake-multinode env vars
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"

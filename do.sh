@@ -55,19 +55,22 @@ function install_deps() {
     ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml -i ${hosts_file}
 
     echo "-- Installing local dependencies"
-    if yum install -y docker docker-distribution
+    if yum install docker-ce --nobest -y || yum install -y docker
     then
         systemctl start docker
-        systemctl start docker-distribution
     else
         yum install -y podman podman-docker
-        for container_name in `podman ps | grep -v "CONTAINER ID" | awk '{print $1}'`
-        do
-            podman stop $container_name
-            podman rm $container_name
-        done
-        [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
-        podman run --privileged -d --name registry -p 5000:5000 \
+    fi
+    yum install redhat-lsb-core python3-pip python3-virtualenv python3 python3-devel python-virtualenv --skip-broken -y
+    [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
+
+    for container_name in `docker ps | grep -v "CONTAINER ID" | awk '{print $1}'`
+    do
+        docker stop $container_name
+        docker rm $container_name
+    done
+    [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
+    docker run --privileged -d --name registry -p 5000:5000 \
           -v /var/lib/registry:/var/lib/registry --restart=always docker.io/library/registry:2
         cp /etc/containers/registries.conf /etc/containers/registries.conf.bak
         cat > /etc/containers/registries.conf << EOF
@@ -78,13 +81,10 @@ registries = ['localhost:5000']
 [registries.block]
 registries = []
 EOF
-    fi
-    yum install redhat-lsb-core python3-pip python3-virtualenv python3 python3-devel python-virtualenv --skip-broken -y
-    [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 }
 
 function configure_docker() {
-    echo "-- Configuring podman local registry on tester nodes"
+    echo "-- Configuring local registry on tester nodes"
     if which podman
     then
         echo "-- Configuring podman local registry on all nodes"

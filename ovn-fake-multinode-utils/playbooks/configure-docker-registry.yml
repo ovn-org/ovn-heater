@@ -15,4 +15,3 @@
   - name: Restart docker
     shell: |
       systemctl restart docker
-      systemctl restart docker-distribution

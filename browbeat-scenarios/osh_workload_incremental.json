@@ -10,6 +10,9 @@
 {% set sla = sla or 30 %}
 {% set ext_cmd_start = ext_cmd_start or -1 %}
 {% set ext_cmd_stop = ext_cmd_stop or -1 %}
+{% set port_wait_type = port_wait_type or "ping" %}
+{% set port_wait_up = port_wait_up or True %}
+{% set port_internal_vm = port_internal_vm or True %}
 {
     "version": 2,
     "title": "Switch per node workload",
@@ -94,8 +97,9 @@
                         },
                         "port_bind_args": {
                             "internal" : true,
-                            "wait_up" : true,
-                            "wait_sync" : "ping",
+                            "internal_vm" : {{port_internal_vm}},
+                            "wait_up" : {{port_wait_up}},
+                            "wait_sync" : {{port_wait_type}},
                             "batch" : false
                         }
                     },
@@ -143,8 +147,9 @@
                         },
                         "port_bind_args": {
                             "internal" : true,
-                            "wait_up" : true,
-                            "wait_sync" : "ping",
+                            "internal_vm" : {{port_internal_vm}},
+                            "wait_up" : {{port_wait_up}},
+                            "wait_sync" : "{{port_wait_type}}",
                             "batch" : false
                         },
                         "name_space_size": 2,

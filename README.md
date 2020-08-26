@@ -292,6 +292,33 @@ providing `ext_cmd_start` and `ext_cmd_stop` in `switch-per-node-100.yml`
 Results will be stored in `~ovn-heater/test_results/test-100-<date>/logs/<node>-perf/` for each
 container.
 
+## Example (run "scenario #3 - scale up number of pods - stress ovn-northd"):
+
+This simulates bringing up 30 `OVN` nodes and binding 1000 pods (logical
+ports), distributed across nodes. The test also configures port_groups,
+address_sets and ACLs for all pods simulating a network policy that would
+allow traffic.
+
+The test is meant to check `ovn-northd` performance so each iteration is
+considered successful if `ovn-northd` populated the
+Southbound DB, and the logical port is up (`up` is set to `true`).
+
+```
+cd ~/ovn-heater
+./do.sh browbeat-run browbeat-scenarios/switch-per-node-30-node-1000-pods.yml test-scale-pods
+```
+
+If needed, the number of simulated nodes and total number of simulated pods
+can be tweaked, by changing the following fields in
+`browbeat-scenarios/switch-per-node-30-node-1000-pods.yml`:
+
+```
+farm_nodes: <node-count>
+ports_per_network: <total-number-of-pods>
+port_wait_type: "none"
+port_internal_vm: "False"
+```
+
 ## Scenario execution with DBs in standalone mode
 
 By default tests configure NB/SB ovsdb-servers to run in clustered mode

@@ -188,7 +188,7 @@ function install_rally_ovs() {
 ovs_repo="${OVS_REPO:-https://github.com/openvswitch/ovs.git}"
 ovs_branch="${OVS_BRANCH:-v2.14.0}"
 ovn_repo="${OVN_REPO:-https://github.com/ovn-org/ovn.git}"
-ovn_branch="${OVN_BRANCH:-v20.06.2}"
+ovn_branch="${OVN_BRANCH:-v20.09.0}"
 
 # ovn-fake-multinode env vars
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"

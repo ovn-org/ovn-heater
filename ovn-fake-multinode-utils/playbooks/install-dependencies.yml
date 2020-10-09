@@ -2,6 +2,6 @@
   hosts: ovn_hosts
   tasks:
     - name: Install required packages
-      shell: yum install git gcc openvswitch python3-pyyaml python3-virtualenv python3-devel  --skip-broken -y
+      shell: yum install git gcc openvswitch python3-pyyaml python3-virtualenv python3-devel containers-common --skip-broken -y
     - name: Install container command
       shell: yum install docker-ce --nobest -y || yum install docker -y || yum install podman podman-docker -y

@@ -79,7 +79,7 @@
                             "ovn_monitor_all": {{ovn_monitor_all}},
                             "ovn_cluster_db": {{ovn_cluster_db}},
                             "max_timeout_s": 10,
-                            "batch_size": {{farm_nodes}}
+                            "batch_size": 1
                         },
                         "lnetwork_create_args": {
                             "start_ext_cidr": "3.0.0.0/16",
@@ -88,7 +88,7 @@
                     },
                     "runner": {
                         "type": "serial",
-                        "times": 1
+                        "times": {{farm_nodes}}
                     },
                     "context": {
                         "ovn_multihost": {

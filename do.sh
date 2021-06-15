@@ -31,6 +31,8 @@ podman_registry_file=${rundir}/registries.conf
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
 
+ovn_config=${topdir}/ovn-tester/ovn-config.yaml
+
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 
 function die() {
@@ -328,22 +330,23 @@ function run_test() {
     # Perform a fast cleanup by doing a minimal redeploy.
     init_ovn_fake_multinode
 
-    pushd ${rundir}/browbeat
-    source ${browbeat_venv}/bin/activate
-    python browbeat.py -s ${test_file} --debug
+    #pushd ${rundir}/browbeat
+    #source ${browbeat_venv}/bin/activate
+    #python browbeat.py -s ${test_file} --debug
+    python3 ${topdir}/ovn-tester/ovn_tester.py $phys_deployment $ovn_config
 
-    echo "-- Moving results and logs to: ${out_dir}"
-    mv results/* ${out_dir}
-    ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"
+    #echo "-- Moving results and logs to: ${out_dir}"
+    #mv results/* ${out_dir}
+    #ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"
 
-    pushd ${out_dir}/logs
-    for f in *.tgz; do
-        tar xvfz $f
-    done
-    popd
+    #pushd ${out_dir}/logs
+    #for f in *.tgz; do
+    #    tar xvfz $f
+    #done
+    #popd
 
-    deactivate
-    popd
+    #deactivate
+    #popd
 }
 
 function usage() {
@@ -437,11 +440,11 @@ case "${1:-"usage"}" in
         fi
         shift; shift
 
-        # Cleanup previous deployments.
-        source ${rally_ovs_venv}/bin/activate
-        rally-ovs deployment destroy ${deployment}
-        rally-ovs deployment create --file ${deployment_file} --name ${deployment}
-        deactivate
+       ## Cleanup previous deployments.
+       # source ${rally_ovs_venv}/bin/activate
+       # rally-ovs deployment destroy ${deployment}
+       # rally-ovs deployment create --file ${deployment_file} --name ${deployment}
+       # deactivate
 
         # Run the new test.
         run_test ${test_file} ${out_dir}

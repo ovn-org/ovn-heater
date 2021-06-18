@@ -1,8 +1,6 @@
 # ovn-heater
 
 Mega script to install/configure/run
-[ovn-scale-test](https://github.com/ovn-org/ovn-scale-test) using
-[browbeat](https://github.com/cloud-bulldozer/browbeat) on
 a simulated cluster deployed with
 [ovn-fake-multinode](https://github.com/ovn-org/ovn-fake-multinode).
 
@@ -26,8 +24,7 @@ insecure docker registries, cleanup existing docker containers).
   - runs a docker registry where the `ovn-fake-multinode` (i.e.,
     `ovn/ovn-multi-node`) image is pushed and from which all other `OVN`
     nodes will pull the image.
-  - runs `browbeat` which in turns runs `ovn-scale-test` (`rally-ovs`)
-    scenarios.
+  - runs the scale test scenarios.
 
 * OVN-CENTRAL: One machine to run the `ovn-central` container(s) which
   run `ovn-northd` and the `Northbound` and `Southbound` databases.
@@ -36,7 +33,7 @@ insecure docker registries, cleanup existing docker containers).
 
 The initial provisioning for all the nodes is performed by the `do.sh install`
 command. The simulated `OVN` chassis containers and central container are
-spawned by the `rally-ovs` scenarios themselves.
+spawned by the test scripts in `ovn-tester/`.
 
 **NOTE**: `ovn-fake-multinode` assumes that all nodes (OVN-CENTRAL and
 OVN-WORKER-NODEs) have an additional Ethernet interface connected to a
@@ -137,12 +134,11 @@ worker nodes, all others are valid both for the `central-node` and also for
 ## Perform the script installation step:
 
 This generates a `runtime` directory and a `runtime/hosts` ansible inventory
-and installs all test components on all required nodes. Then it registers
-the deployment with `rally-ovs`.
+and installs all test components on all required nodes.
 
 ```
 cd ~/ovn-heater
-./do.sh install && ./do.sh rally-deploy
+./do.sh install
 ```
 
 By default OVS/OVN binaries are built with
@@ -153,7 +149,7 @@ when installing the runtime. E.g.:
 
 ```
 cd ~/ovn-heater
-EXTRA_OPTIMIZE=yes ./do.sh install && ./do.sh rally-deploy
+EXTRA_OPTIMIZE=yes ./do.sh install
 ```
 
 ## Perform a reinstallation (e.g., new OVS/OVN versions are needed):
@@ -168,7 +164,7 @@ OVN branch from another fork we can:
 
 ```
 cd ~/ovn-heater
-OVS_REPO=https://github.com/dceara/ovs OVS_BRANCH=tmp-branch OVN_REPO=https://github.com/dceara/ovn OVN_BRANCH=tmp-branch-2 ./do.sh install && ./do.sh rally-deploy
+OVS_REPO=https://github.com/dceara/ovs OVS_BRANCH=tmp-branch OVN_REPO=https://github.com/dceara/ovn OVN_BRANCH=tmp-branch-2 ./do.sh install
 ```
 ## Perform a reinstallation (e.g., install OVS/OVN from rpm packages):
 
@@ -181,45 +177,38 @@ Run the installation with rpm packages parameters specified:
 
 ```
 cd ~/ovn-heater
-RPM_SELINUX=$rpm_url_openvswitch-selinux-extra-policy RPM_OVS=$rpm_url_openvswitch RPM_OVN_COMMON=$rpm_url_ovn RPM_OVN_HOST=$rpm_url_ovn-host RPM_OVN_CENTRAL=$rpm_url_ovn-central ./do.sh install && ./do.sh rally-deploy
+RPM_SELINUX=$rpm_url_openvswitch-selinux-extra-policy RPM_OVS=$rpm_url_openvswitch RPM_OVN_COMMON=$rpm_url_ovn RPM_OVN_HOST=$rpm_url_ovn-host RPM_OVN_CENTRAL=$rpm_url_ovn-central ./do.sh install
 ```
 
-## Regenerate the ansible inventory and re-register the deployment:
+## Regenerate the ansible inventory:
 
 If the physical topology has changed then update
 `physical-deployment/physical-deployment.yml` to reflect the new physical
 deployment.
 
-Then deregister the old rally-ovs deployment:
+Then generate the new ansible inventory:
 
 ```
 cd ~/ovn-heater
-./do.sh rally-undeploy
-```
-
-And generate the new ansible inventory and register the deployment:
-
-```
-cd ~/ovn-heater
-./do.sh generate && ./do.sh rally-deploy
+./do.sh generate
 ```
 
 # Running tests:
 
 ## Scenario definitions
 
-Browbeat and rally-ovs scenarios are defined in `browbeat-scenarios/`. YAML
-files are browbeat scenarios which in turn will run the JSON rally-ovs
-tests.
+Scenarios are defined in `ovn-tester/ovn_tester.py` and are configurable
+through YAML files.  Sample scenario configurations are available in
+`test-scenarios/*.yml`.
 
 ## Scenario execution
 
 ```
 cd ~/ovn-heater
-./do.sh browbeat-run <browbeat-scenario> <results-dir>
+./do.sh run <scenario> <results-dir>
 ```
 
-This executes `<browbeat-scenario>` on the registered deployment. Current
+This executes `<scenario>` on the physical deployment. Current
 scenarios also cleanup the environment, i.e., remove all docker containers
 from all physical nodes. **NOTE**: If the environment needs to be explictly
 cleaned up, we can also execute before running the scenario:
@@ -232,11 +221,9 @@ cd ~/ovn-heater
 The results will be stored in `test_results/<results-dir>`. The results
 consist of:
 - a `config` file where remote urls and SHA/branch-name of all test components
-  (browbeat, rally, ovn-scale-test, ovs, ovn) are stored.
+  (ovn-fake-multinode, ovs, ovn) are stored.
 - an `installer-log` where the ouptut of the `./do.sh install` command is
   stored.
-- browbeat logs
-- rally-ovs logs
 - html reports
 - a copy of the `hosts` ansible inventory used for the test.
 - OVN docker container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
@@ -248,11 +235,10 @@ consist of:
 
 ```
 cd ~/ovn-heater
-./do.sh browbeat-run browbeat-scenarios/switch-per-node-low-scale.yml test-low-scale
+./do.sh run test-scenarios/ovn-low-scale.yml test-low-scale
 ```
 
-This will run `browbeat-scenarios/osh_workload_incremental.json` which will
-perform two iterations, each of which:
+This test will perform two iterations, each of which:
 - brings up a fake `OVN` node.
 - configures a logical switch for the node and connects it to the
   `cluster-router`.
@@ -269,11 +255,7 @@ Results will be stored in `~ovn-heater/test_results/test-low-scale/`:
 - `config`: remote urls and SHA/branch-names of components used by the test.
 - `hosts`: the autogenerated ansible host inventory.
 - `logs`: the OVN container logs and journal files from each physical node.
-- `20200212-083337.report` (timestamp will change): browbeat report overview.
-- `20200212-083337/rally/plugin-workloads/all-rally-run-0.html`: HTML report
-  of the test run.
-- `20200212-083337/rally/plugin-workloads/switch-per-node-workload/20200212-083337-browbeat-switch-per-node-workload-1-1-iteration-0.log`:
-  rally-ovs logs of the test run.
+- `*html`: the html reports for each of the scenarios run.
 
 ## Example (run "scenario #2 - performing perf analysis for 100 nodes"):
 
@@ -305,12 +287,12 @@ Southbound DB, and the logical port is up (`up` is set to `true`).
 
 ```
 cd ~/ovn-heater
-./do.sh browbeat-run browbeat-scenarios/switch-per-node-30-node-1000-pods.yml test-scale-pods
+./do.sh run test-scenarios/ovn-30-node-1000-pods.yml test-scale-pods
 ```
 
 If needed, the number of simulated nodes and total number of simulated pods
 can be tweaked, by changing the following fields in
-`browbeat-scenarios/switch-per-node-30-node-1000-pods.yml`:
+`test-scenarios/ovn-30-node-1000-pods.yml`:
 
 ```
 farm_nodes: <node-count>
@@ -322,16 +304,14 @@ port_internal_vm: "False"
 ## Scenario execution with DBs in standalone mode
 
 By default tests configure NB/SB ovsdb-servers to run in clustered mode
-(RAFT). If instead tests should be run in standalone mode then the browbeat
+(RAFT). If instead tests should be run in standalone mode then the test
 scenarios must be adapted by adding the `ovn_cluster_db = False` configuration
 and the deployment should be regenerated as follows:
 
 ```
 cd ~/ovn-heater
-./do.sh rally-undeploy
 CLUSTERED_DB=False ./do.sh generate
-./do.sh rally-deploy
 
-echo '        ovn_cluster_db: "False"' >> browbeat-scenarios/switch-per-node-low-scale.yml
-./do.sh browbeat-run <browbeat-scenario> <results-dir>
+echo '        ovn_cluster_db: "False"' >> test-scenarios/ovn-low-scale.yml
+./do.sh run <scenario> <results-dir>
 ```

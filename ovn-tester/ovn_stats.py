@@ -8,6 +8,7 @@ import time
 
 timed_functions = collections.defaultdict(list)
 
+
 def timeit(func):
     @functools.wraps(func)
     def _timeit(*args, **kwargs):
@@ -32,12 +33,16 @@ def add(fname, duration):
 def report(test_name):
     all_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
-    headings = ["Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)", "Count"]
+    headings = [
+        "Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)", "Count"
+    ]
     for (f, i), measurements in timed_functions.items():
         all_stats[f].extend(measurements)
-        chart_stats[f].extend([['Iteration {}'.format(i), f, m] for m in measurements])
+        chart_stats[f].extend(
+            [['Iteration {}'.format(i), f, m] for m in measurements]
+        )
 
-    if len (all_stats.items()) == 0:
+    if len(all_stats.items()) == 0:
         return
 
     all_avgs = []
@@ -58,8 +63,10 @@ def report(test_name):
         report_file.write(stats_html)
 
         for f, values in sorted(chart_stats.items()):
-            df = pd.DataFrame(values, columns=['Iteration', 'Counter', 'Value (s)'])
-            chart = px.bar(df, x='Iteration', y='Value (s)', color='Counter', title=f)
+            df = pd.DataFrame(values,
+                              columns=['Iteration', 'Counter', 'Value (s)'])
+            chart = px.bar(df, x='Iteration', y='Value (s)', color='Counter',
+                           title=f)
             report_file.write(chart.to_html(full_html=False,
                                             include_plotlyjs='cdn',
                                             default_width='50%',

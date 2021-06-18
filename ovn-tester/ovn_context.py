@@ -2,6 +2,7 @@ import ovn_stats
 
 active_context = None
 
+
 class OvnContext(object):
 
     def __init__(self, test_name, max_iterations):

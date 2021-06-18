@@ -225,8 +225,7 @@ class OvnWorkload:
             self.wait_up_port(lport, sandbox, lport_bind_args)
 
     @ovn_stats.timeit
-    def create_lswitch_port(self, lswitch, iteration, lport_create_args={},
-                            ext_cidr=None):
+    def create_lswitch_port(self, lswitch, iteration, ext_cidr=None):
         cidr = lswitch.get("cidr", None)
         if cidr:
             ip = str(next(netaddr.iter_iprange(cidr.ip + iteration + 1,

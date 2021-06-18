@@ -27,6 +27,11 @@ class OvnWorkload:
         self.lports = []
         self.log = log
 
+    def set_global_option(self, option, value):
+        self.nbctl.run("set NB_Global . options:{}={}".format(
+            option, value
+        ))
+
     def add_central(self, fake_multinode_args, nbctld_config):
         print("***** creating central node *****")
 

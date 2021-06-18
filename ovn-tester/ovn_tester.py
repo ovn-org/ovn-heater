@@ -98,6 +98,8 @@ def prepare_test():
         ovn = ovn_workload.OvnWorkload(controller_args, sandboxes,
                                        clustered_db, run_args['log'])
         ovn.add_central(fake_multinode_args, nbctld_config)
+        use_dp_groups = run_args.get('use_dp_groups', True)
+        ovn.set_global_option('use_logical_dp_groups', use_dp_groups)
 
     # create swith-per-node topology
     with OvnContext("prepare_chassis", run_args['n_sandboxes']) as ctx:

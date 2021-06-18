@@ -98,7 +98,9 @@ class OvnNbctl:
         self.socket = ""
 
     def __del__(self):
-        self.stop_daemon()
+        # FIXME: the SSH connection might have already been closed here..
+        # self.stop_daemon()
+        pass
 
     def run(self, cmd = "", stdout = None):
         prefix = "ovn-nbctl "

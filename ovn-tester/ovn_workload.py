@@ -1,3 +1,5 @@
+import ovn_context
+import ovn_stats
 import ovn_utils
 import time
 import netaddr
@@ -20,6 +22,7 @@ class OvnWorkload:
         self.sbctl = ovn_utils.OvnSbctl(controller,
                                         container = self.controller["name"],
                                         log = log)
+        self.router = None
         self.lswitches = []
         self.lports = []
         self.log = log
@@ -53,7 +56,8 @@ class OvnWorkload:
     
         time.sleep(5)
 
-    def add_chassis_node_localnet(self, fake_multinode_args = {}, iteration = 0):
+    def add_chassis_node_localnet(self, fake_multinode_args = {}):
+        iteration = ovn_context.active_context.iteration
         sandbox = self.sandboxes[iteration % len(self.sandboxes)]
     
         print("***** creating localnet on %s controller *****" % sandbox["name"])
@@ -65,7 +69,8 @@ class OvnWorkload:
                                       log = self.log)
         client.run(cmd = cmd)
     
-    def add_chassis_external_host(self, lnetwork_create_args = {}, iteration = 0):
+    def add_chassis_external_host(self, lnetwork_create_args = {}):
+        iteration = ovn_context.active_context.iteration
         sandbox = self.sandboxes[iteration % len(self.sandboxes)]
         cidr = netaddr.IPNetwork(lnetwork_create_args.get('start_ext_cidr'))
         ext_cidr = cidr.next(iteration)
@@ -87,7 +92,8 @@ class OvnWorkload:
         client.run(cmd = "ip link set dev veth1 up")
         client.run(cmd = "ovs-vsctl add-port br-ex veth1")
     
-    def add_chassis_node(self, fake_multinode_args = {}, iteration = 0):
+    def add_chassis_node(self, fake_multinode_args = {}):
+        iteration = ovn_context.active_context.iteration
         node_net = fake_multinode_args.get("node_net")
         node_net_len = fake_multinode_args.get("node_net_len")
         node_cidr = netaddr.IPNetwork("{}/{}".format(node_net, node_net_len))
@@ -116,9 +122,9 @@ class OvnWorkload:
         client = ovn_utils.RemoteConn(ssh = sandbox["ssh"], log = self.log)
         client.run(cmd)
 
+    @ovn_stats.timeit
     def connect_chassis_node(self, fake_multinode_args = {}, iteration = 0):
         sandbox = self.sandboxes[iteration % len(self.sandboxes)]
-        node_prefix = fake_multinode_args.get("node_prefix", "")
     
         print("***** connecting %s controller *****" % sandbox["name"])
     
@@ -135,6 +141,7 @@ class OvnWorkload:
         client = ovn_utils.RemoteConn(ssh = sandbox["ssh"], log = self.log)
         client.run(cmd = cmd)
 
+    @ovn_stats.timeit
     def wait_chassis_node(self, fake_multinode_args = {}, iteration = 0,
                           controller = {}):
         sandbox = self.sandboxes[iteration % len(self.sandboxes)]
@@ -144,6 +151,7 @@ class OvnWorkload:
                 break
             time.sleep(0.1)
 
+    @ovn_stats.timeit
     def ping_port(self, lport = None, sandbox = None, wait_timeout_s = 20):
         start_time = datetime.now()
         client = ovn_utils.RemoteConn(ssh = sandbox["ssh"], container = sandbox["name"],
@@ -169,6 +177,7 @@ class OvnWorkload:
                 # raise ovn_utils.OvnPingTimeoutException()
                 break
 
+    @ovn_stats.timeit
     def wait_up_port(self, lport = None, sandbox = None, lport_bind_args = {}):
         wait_timeout_s = lport_bind_args.get("wait_timeout_s", 20)
         wait_sync = lport_bind_args.get("wait_sync", "hv")
@@ -188,6 +197,7 @@ class OvnWorkload:
             if wait_sync != 'none':
                 self.nbctl.sync(wait_sync)
 
+    @ovn_stats.timeit
     def bind_and_wait_port(self, lport = None, lport_bind_args = {},
                            sandbox = None):
         internal = lport_bind_args.get("internal", False)
@@ -203,6 +213,7 @@ class OvnWorkload:
             self.wait_up_port(lport, sandbox = sandbox,
                               lport_bind_args = lport_bind_args)
 
+    @ovn_stats.timeit
     def create_lswitch_port(self, lswitch = None, lport_create_args = {},
                             iteration = 0, ext_cidr = None):
         cidr = lswitch.get("cidr", None)
@@ -229,6 +240,7 @@ class OvnWorkload:
                                               ext_gw = ext_gw)
         return lswitch_port
 
+    @ovn_stats.timeit
     def create_lswitch(self, prefix = "lswitch_", lswitch_create_args = {},
                        iteration = 0):
         start_cidr = lswitch_create_args.get("start_cidr", "")
@@ -246,16 +258,17 @@ class OvnWorkload:
 
         return lswitch
 
+    @ovn_stats.timeit
     def connect_lswitch_to_router(self, lrouter = None, lswitch = None):
         gw = netaddr.IPAddress(lswitch["cidr"].last - 1)
         lrouter_port_ip = '{}/{}'.format(gw, lswitch["cidr"].prefixlen)
         mac = RandMac()
-        lrouter_port = self.nbctl.lr_port_add(lrouter["name"], lswitch["name"],
-                                              mac, lrouter_port_ip)
-        lswitch_port = self.nbctl.ls_port_add(lswitch["name"],
-                                              "rp-" + lswitch["name"],
-                                              lswitch["name"])
+        self.nbctl.lr_port_add(lrouter["name"], lswitch["name"], mac,
+                               lrouter_port_ip)
+        self.nbctl.ls_port_add(lswitch["name"], "rp-" + lswitch["name"],
+                               lswitch["name"])
 
+    @ovn_stats.timeit
     def create_phynet(self, lswitch = None, physnet = ""):
         port = "provnet-{}".format(lswitch["name"])
         print("***** creating phynet {} *****".format(port))
@@ -264,6 +277,7 @@ class OvnWorkload:
         self.nbctl.ls_port_set_set_type(port, "localnet")
         self.nbctl.ls_port_set_set_options(port, "network_name=%s" % physnet)
 
+    @ovn_stats.timeit
     def connect_gateway_router(self, lrouter = None, lswitch = None,
                                lswitch_create_args = {},
                                lnetwork_create_args = {}, gw_cidr = None,
@@ -326,47 +340,43 @@ class OvnWorkload:
         self.nbctl.nat_add(gw_router["name"], external_ip = str(gr_gw),
                            logical_ip = cluster_cidr)
 
+    def create_cluster_router(self, rtr_name):
+        self.router = self.nbctl.lr_add(rtr_name)
+
+    @ovn_stats.timeit
     def create_routed_network(self, fake_multinode_args = {},
                               lswitch_create_args = {},
                               lnetwork_create_args = {},
                               lport_bind_args = {}):
-        # create logical router
-        name = ''.join(random.choice(string.ascii_letters) for i in range(10))
-        router = self.nbctl.lr_add("lrouter_" + name)
+        iteration = ovn_context.active_context.iteration
+        self.connect_chassis_node(fake_multinode_args, iteration)
+        self.wait_chassis_node(fake_multinode_args, iteration)
 
-        # create ovn topology
-        for i in range(lswitch_create_args.get("nlswitch", 10)):
-            # nlswitch == n_sandboxes
-            self.connect_chassis_node(fake_multinode_args, iteration = i)
-            self.wait_chassis_node(fake_multinode_args, iteration = i)
+        lswitch = self.create_lswitch(lswitch_create_args = lswitch_create_args, iteration = iteration)
+        self.lswitches.append(lswitch)
+        self.connect_lswitch_to_router(self.router, lswitch)
 
-            lswitch = self.create_lswitch(
-                    lswitch_create_args = lswitch_create_args,
-                    iteration = i)
-            self.lswitches.append(lswitch)
-            self.connect_lswitch_to_router(router, lswitch)
+        if lnetwork_create_args.get('gw_router_per_network', False):
+            start_ext_cidr = lnetwork_create_args.get('start_ext_cidr', '')
+            ext_cidr = None
+            start_gw_cidr = lnetwork_create_args.get('start_gw_cidr', '')
+            gw_cidr = None
 
-            if lnetwork_create_args.get('gw_router_per_network', False):
-                start_ext_cidr = lnetwork_create_args.get('start_ext_cidr', '')
-                ext_cidr = None
-                start_gw_cidr = lnetwork_create_args.get('start_gw_cidr', '')
-                gw_cidr = None
+            if start_gw_cidr:
+                gw_cidr = netaddr.IPNetwork(start_gw_cidr).next(iteration)
+            if start_ext_cidr:
+                ext_cidr = netaddr.IPNetwork(start_ext_cidr).next(iteration)
+            self.connect_gateway_router(lrouter = self.router, lswitch = lswitch,
+                                        lswitch_create_args = lswitch_create_args,
+                                        lnetwork_create_args = lnetwork_create_args,
+                                        gw_cidr = gw_cidr, ext_cidr = ext_cidr,
+                                        sandbox = self.sandboxes[iteration])
 
-                if start_gw_cidr:
-                    gw_cidr = netaddr.IPNetwork(start_gw_cidr).next(i)
-                if start_ext_cidr:
-                    ext_cidr = netaddr.IPNetwork(start_ext_cidr).next(i)
-                self.connect_gateway_router(lrouter = router, lswitch = lswitch,
-                                            lswitch_create_args = lswitch_create_args,
-                                            lnetwork_create_args = lnetwork_create_args,
-                                            gw_cidr = gw_cidr, ext_cidr = ext_cidr,
-                                            sandbox = self.sandboxes[i])
-
-            lport = self.create_lswitch_port(lswitch, iteration = 0, ext_cidr = ext_cidr)
-            self.lports.append(lport)
-            sandbox = self.sandboxes[i % len(self.sandboxes)]
-            self.bind_and_wait_port(lport, lport_bind_args = lport_bind_args,
-                                    sandbox = sandbox)
+        lport = self.create_lswitch_port(lswitch, iteration = 0, ext_cidr = ext_cidr)
+        self.lports.append(lport)
+        sandbox = self.sandboxes[iteration % len(self.sandboxes)]
+        self.bind_and_wait_port(lport, lport_bind_args = lport_bind_args,
+                                sandbox = sandbox)
 
     def create_acl(self, lswitch = None, lport = None, acl_create_args = {}):
         print("***** creating acl on {} *****".format(lport["name"]))
@@ -398,6 +408,7 @@ class OvnWorkload:
         self.nbctl.acl_add(lswitch["name"], direction, priority, acl_type,
                            match, verdict)
 
+    @ovn_stats.timeit
     def create_port_group_acls(self, name):
         port_group_acl = { "name" : "@%s" % name }
         port_group = { "name" : name }
@@ -436,6 +447,7 @@ class OvnWorkload:
         }
         self.create_acl(port_group, port_group_acl, acl_create_args)
 
+    @ovn_stats.timeit
     def create_update_deny_port_group(self, lport = None, create = True):
         self.nbctl.port_group_add("portGroupDefDeny", lport, create)
         if create:
@@ -473,6 +485,7 @@ class OvnWorkload:
             }
             self.create_acl(port_group, port_group_acl, acl_create_args)
 
+    @ovn_stats.timeit
     def create_update_deny_multicast_port_group(self, lport = None,
                                                 create = True):
         self.nbctl.port_group_add("portGroupMultiDefDeny", lport, create)
@@ -499,6 +512,7 @@ class OvnWorkload:
             }
             self.create_acl(port_group, port_group_acl, acl_create_args)
 
+    @ovn_stats.timeit
     def create_update_network_policy(self, lport = None, ip = "",
                                      lport_create_args = {},
                                      iteration = 0):
@@ -517,6 +531,7 @@ class OvnWorkload:
         self.create_update_deny_port_group(lport, iteration == 0)
         self.create_update_deny_multicast_port_group(lport, iteration == 0)
 
+    @ovn_stats.timeit
     def create_update_name_space(self, lport = None, ip = "",
                                  lport_create_args = {},
                                  iteration = 0):
@@ -573,8 +588,10 @@ class OvnWorkload:
                     lport_create_args = lport_create_args,
                     iteration = iteration)
 
+    @ovn_stats.timeit
     def create_routed_lport(self, lport_create_args = {},
-                            lport_bind_args = {}, iteration = 0):
+                            lport_bind_args = {}):
+        iteration = ovn_context.active_context.iteration
         lswitch = self.lswitches[iteration % len(self.lswitches)]
         sandbox = self.sandboxes[iteration % len(self.sandboxes)]
         self.configure_routed_lport(sandbox, lswitch,

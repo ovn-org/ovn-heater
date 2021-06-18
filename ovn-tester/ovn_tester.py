@@ -2,11 +2,13 @@
 
 import os
 import sys
+import ovn_context
 import ovn_utils
+import ovn_stats
+import ovn_workload
 import netaddr
 import time
 import yaml
-import ovn_workload
 
 sandboxes = [] # ovn sanbox list
 farm_list = []
@@ -116,42 +118,54 @@ def create_sandbox(sandbox_create_args = {}, iteration = 0):
         }
         sandboxes.append(sandbox)
 
-def run_test():
+def prepare_test():
     # create ssh connections
     for i in range(len(farm_list)):
         farm = farm_list[i]
         farm['ssh'] = ovn_utils.SSH(farm)
 
     # create sandox list
-    print("***** creating following sanboxes *****")
-    for i in range(run_args['n_sandboxes']):
-        create_sandbox(iteration = i)
-        sandbox = sandboxes[i]
-        print("name: " + sandbox['name'] + " farm: " + sandbox['farm'])
+    with ovn_context.OvnContext("create_sandboxes", run_args['n_sandboxes']) as ctx:
+        for i in ctx:
+            create_sandbox(iteration = i)
+            sandbox = sandboxes[i]
+            print("name: " + sandbox['name'] + " farm: " + sandbox['farm'])
 
     # start ovn-northd on ovn central
-    ovn = ovn_workload.OvnWorkload(controller_args, sandboxes,
-            fake_multinode_args.get("ovn_cluster_db", False),
-            log = run_args['log'])
-    ovn.add_central(fake_multinode_args, nbctld_config = nbctld_config)
+    with ovn_context.OvnContext("add_central", 1) as ctx:       
+        ovn = ovn_workload.OvnWorkload(controller_args, sandboxes,
+                                       fake_multinode_args.get("ovn_cluster_db", False),
+                                       log = run_args['log'])
+        ovn.add_central(fake_multinode_args, nbctld_config = nbctld_config)
 
-    # creat swith-per-node topology
-    for i in range(run_args['n_sandboxes']):
-        ovn.add_chassis_node(fake_multinode_args, iteration = i)
-        if lnetwork_create_args.get('gw_router_per_network', False):
-            ovn.add_chassis_node_localnet(fake_multinode_args, iteration = i)
-            ovn.add_chassis_external_host(lnetwork_create_args, iteration = i)
+    # create swith-per-node topology
+    with ovn_context.OvnContext("prepare_chassis", run_args['n_sandboxes']) as ctx:
+        for i in ctx:
+            ovn.add_chassis_node(fake_multinode_args)
+            if lnetwork_create_args.get('gw_router_per_network', False):
+                ovn.add_chassis_node_localnet(fake_multinode_args)
+                ovn.add_chassis_external_host(lnetwork_create_args)
+
+    return ovn
+
+def run_test_base_cluster(ovn):
+    # create cluster router
+    with ovn_context.OvnContext("create_cluster_router", 1) as ctx:
+        for _ in ctx:
+            ovn.create_cluster_router("lr-cluster")
 
     # create ovn topology
-    ovn.create_routed_network(fake_multinode_args = fake_multinode_args,
-                              lswitch_create_args = lswitch_create_args,
-                              lnetwork_create_args = lnetwork_create_args,
-                              lport_bind_args = lport_bind_args)
-    # create ovn logical ports
-    for i in range(run_args['n_lports']):
-        ovn.create_routed_lport(lport_create_args = lport_create_args,
-                                lport_bind_args = lport_bind_args,
-                                iteration = i)
+    with ovn_context.OvnContext("create_routed_network",
+                                lswitch_create_args.get("nlswitch", 10)) as ctx:
+        for _ in ctx:
+            ovn.create_routed_network(fake_multinode_args, lswitch_create_args,
+                                      lnetwork_create_args, lport_bind_args)
+
+def run_test_network_policy(ovn):
+    with ovn_context.OvnContext("create_routed_lport", run_args['n_lports']) as ctx:
+        for _ in ctx:
+            ovn.create_routed_lport(lport_create_args = lport_create_args,
+                                    lport_bind_args = lport_bind_args)
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
@@ -161,5 +175,8 @@ if __name__ == '__main__':
     # parse configuration
     read_physical_deployment(sys.argv[1])
     read_test_conf(sys.argv[2])
-    # execute the test
-    sys.exit(run_test())
+
+    ovn = prepare_test()
+    run_test_base_cluster(ovn)
+    run_test_network_policy(ovn)
+    sys.exit(0)

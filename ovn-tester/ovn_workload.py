@@ -191,8 +191,7 @@ class OvnWorkload:
             if (datetime.now() - start_time).seconds > wait_timeout_s:
                 print("***** Error: Timeout waiting for port {} to be able "
                       "to ping gateway {} *****".format(lport["name"], dest))
-                # FIXME: we need better error reporting.
-                # raise ovn_utils.OvnPingTimeoutException()
+                raise ovn_utils.OvnPingTimeoutException()
                 break
 
     @ovn_stats.timeit

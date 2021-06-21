@@ -5,6 +5,7 @@ import ovn_context
 import pandas as pd
 import plotly.express as px
 import time
+import ovn_utils
 
 timed_functions = collections.defaultdict(list)
 
@@ -13,10 +14,16 @@ def timeit(func):
     @functools.wraps(func)
     def _timeit(*args, **kwargs):
         start = time.perf_counter()
-        value = func(*args, **kwargs)
-        duration = time.perf_counter() - start
-        add(func.__name__, duration)
-        return value
+        failed = False
+        value = None
+        try:
+            value = func(*args, **kwargs)
+        except ovn_utils.OvnTestException:
+            failed = True
+        finally:
+            duration = time.perf_counter() - start
+            add(func.__name__, duration, failed)
+            return value
     return _timeit
 
 
@@ -25,22 +32,25 @@ def clear():
     timed_functions.clear()
 
 
-def add(fname, duration):
+def add(fname, duration, failed):
     iteration = ovn_context.active_context.iteration
-    timed_functions[(fname, iteration)].append(duration)
+    elem = (duration, failed)
+    timed_functions[(fname, iteration)].append(elem)
 
 
 def report(test_name):
     all_stats = collections.defaultdict(list)
+    fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
     headings = [
-        "Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)", "Count"
+        "Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)", "Count", "Failed"
     ]
     for (f, i), measurements in timed_functions.items():
-        all_stats[f].extend(measurements)
-        chart_stats[f].extend(
-            [['Iteration {}'.format(i), f, m] for m in measurements]
-        )
+        for (d,r) in measurements:
+            all_stats[f].append(d)
+            chart_stats[f].append(['Iteration {}'.format(i), f, d])
+            if r:
+                fail_stats[f].append(i)
 
     if len(all_stats.items()) == 0:
         return
@@ -52,7 +62,8 @@ def report(test_name):
                          numpy.percentile(measurements, 90),
                          numpy.max(measurements),
                          numpy.mean(measurements),
-                         len(measurements)])
+                         len(measurements),
+                         len(fail_stats[f])])
         all_f.append(f)
 
     df = pd.DataFrame(all_avgs, index=all_f, columns=headings)

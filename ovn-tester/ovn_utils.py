@@ -220,6 +220,37 @@ class OvnNbctl:
                                               external_ip, logical_ip)
         self.run(cmd=cmd)
 
+    def create_lb(self, name, protocol):
+        lb_name = f"{name}-{protocol}"
+        cmd = f"create Load_Balancer name={lb_name} protocol={protocol}"
+
+        stdout = StringIO()
+        self.run(cmd=cmd, stdout=stdout)
+        return {'name': lb_name, 'uuid': stdout.getvalue().strip()}
+
+    def lb_set_vips(self, lb_uuid, vips):
+        vip_str = ''
+        for vip, backends in vips.items():
+            vip_str += f'vips:\\"{vip}\\"=\\"{",".join(backends)}\\" '
+        cmd = f"set Load_Balancer {lb_uuid} {vip_str}"
+        self.run(cmd=cmd)
+
+    def lb_add_to_router(self, lb_uuid, router):
+        cmd = f"lr-lb-add {router} {lb_uuid}"
+        self.run(cmd=cmd)
+
+    def lb_add_to_switch(self, lb_uuid, switch):
+        cmd = f"ls-lb-add {switch} {lb_uuid}"
+        self.run(cmd=cmd)
+
+    def lb_remove_from_router(self, lb_uuid, router):
+        cmd = f"lr-lb-del {router} {lb_uuid}"
+        self.run(cmd=cmd)
+
+    def lb_remove_from_switch(self, lb_uuid, switch):
+        cmd = f"ls-lb-del {switch} {lb_uuid}"
+        self.run(cmd=cmd)
+
     def wait_until(self, cmd=""):
         self.run("wait-until " + cmd)
 

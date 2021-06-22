@@ -1,18 +1,17 @@
 import paramiko
 from io import StringIO
 
-
-class OvnInvalidConfigException(Exception):
+class OvnTestException(Exception):
     pass
 
-
-class OvnPingTimeoutException(Exception):
+class OvnInvalidConfigException(OvnTestException):
     pass
 
-
-class SSHError(Exception):
+class OvnPingTimeoutException(OvnTestException):
     pass
 
+class SSHError(OvnTestException):
+    pass
 
 class SSH:
     def __init__(self, node={}):

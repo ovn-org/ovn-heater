@@ -22,7 +22,7 @@ def timeit(func):
             failed = True
         finally:
             duration = time.perf_counter() - start
-            add(func.__name__, duration, failed)
+            add(func.__qualname__, duration, failed)
         return value
     return _timeit
 
@@ -43,10 +43,11 @@ def report(test_name):
     fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
     headings = [
-        "Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)", "Count", "Failed"
+        "Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)",
+        "Count", "Failed"
     ]
     for (f, i), measurements in timed_functions.items():
-        for (d,r) in measurements:
+        for (d, r) in measurements:
             all_stats[f].append(d)
             chart_stats[f].append(['Iteration {}'.format(i), f, d])
             if r:

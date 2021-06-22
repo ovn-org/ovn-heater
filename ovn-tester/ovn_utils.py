@@ -1,31 +1,60 @@
 import paramiko
 from io import StringIO
 
+
+class PhysicalNode(object):
+    def __init__(self, hostname, log_cmds):
+        self.hostname = hostname
+        self.ssh = SSH(hostname, log_cmds)
+
+    def run(self, cmd="", stdout=None, raise_on_error=False):
+        self.ssh.run(cmd=cmd, stdout=stdout, raise_on_error=raise_on_error)
+
+
+class Sandbox(object):
+    def __init__(self, phys_node, container):
+        self.phys_node = phys_node
+        self.container = container
+
+    def run(self, cmd="", stdout=None, raise_on_error=False):
+        if self.container:
+            cmd = 'docker exec ' + self.container + ' ' + cmd
+        self.phys_node.run(cmd=cmd, stdout=stdout,
+                           raise_on_error=raise_on_error)
+
+
 class OvnTestException(Exception):
     pass
+
 
 class OvnInvalidConfigException(OvnTestException):
     pass
 
+
 class OvnPingTimeoutException(OvnTestException):
     pass
+
+
+class OvnChassisTimeoutException(OvnTestException):
+    pass
+
 
 class SSHError(OvnTestException):
     pass
 
+
 class SSH:
-    def __init__(self, node={}):
-        ip = node.get("ip", "127.0.0.1")
-        username = node.get("user", "root")
-        password = node.get("password", "")
-        port = node.get("port", 22)
+    def __init__(self, hostname, log):
 
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(ip, username=username, password=password,
-                         port=port)
+        self.ssh.connect(hostname)
+        self.log = log
 
     def run(self, cmd="", stdout=None, raise_on_error=False):
+        if self.log:
+            print('Logging command: {}'.format(cmd))
+
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd)
         exit_status = ssh_stdout.channel.recv_exit_status()
 
@@ -42,33 +71,15 @@ class SSH:
             raise SSHError(details)
 
 
-class RemoteConn:
-    def __init__(self, node={}, ssh=None, container=None, log=False):
-        self.ssh = SSH(node) if not ssh else ssh
-        self.container = container
-        self.log = log
-
-    def run(self, cmd="", stdout=None, raise_on_error=False):
-        if self.container:
-            command = 'docker exec ' + self.container + ' ' + cmd
-        else:
-            command = cmd
-
-        if self.log:
-            print(command)
-
-        self.ssh.run(cmd=command, stdout=stdout, raise_on_error=raise_on_error)
-
-
 class OvsVsctl:
-    def __init__(self, node={}, ssh=None, container=None, log=False):
-        self.ssh = RemoteConn(node=node, ssh=ssh, container=container, log=log)
+    def __init__(self, sb):
+        self.sb = sb
 
     def run(self, cmd="", prefix="ovs-vsctl ", stdout=None):
-        self.ssh.run(cmd=prefix + cmd, stdout=stdout)
+        self.sb.run(cmd=prefix + cmd, stdout=stdout)
 
-    def add_port(self, name="", brige="", internal=True,
-                 ifaceid=None):
+    def add_port(self, port, brige, internal=True, ifaceid=None):
+        name = port["name"]
         cmd = "add-port {} {}".format(brige, name)
         if internal:
             cmd += " -- set interface {} type=internal".format(name)
@@ -100,9 +111,11 @@ class OvsVsctl:
             p=lport["name"], gw=lport["gw"]), prefix="")
 
 
+# FIXME: Instead of returning raw dicts we should probably return custom
+# objects with named fields: Lswitch, Lrouter, Lport, Rport, Port_Group, etc.
 class OvnNbctl:
-    def __init__(self, node={}, container=None, log=False):
-        self.ssh = RemoteConn(node=node, container=container, log=log)
+    def __init__(self, sb):
+        self.sb = sb
         self.socket = ""
 
     def __del__(self):
@@ -114,28 +127,36 @@ class OvnNbctl:
         prefix = "ovn-nbctl "
         if len(self.socket):
             prefix = prefix + "-u " + self.socket + " "
-        self.ssh.run(cmd=prefix + cmd, stdout=stdout)
+        self.sb.run(cmd=prefix + cmd, stdout=stdout)
+
+    def set_global(self, option, value):
+        self.run("set NB_Global . options:{}={}".format(
+            option, value
+        ))
 
     def lr_add(self, name=""):
         self.run(cmd="lr-add {}".format(name))
         return {"name": name}
 
-    def lr_port_add(self, router="", name="", mac=None, ip=None):
-        self.run(cmd="lrp-add {} {} {} {}".format(router, name, mac, ip))
+    def lr_port_add(self, router, name, mac, ip, prefixlen):
+        self.run(cmd="lrp-add {} {} {} {}/{}".format(
+            router["name"], name, mac, ip, prefixlen)
+        )
         return {"name": name}
 
-    def ls_add(self, name=""):
+    def ls_add(self, name, cidr):
+        print("***** creating lswitch {} *****".format(name))
         self.run(cmd="ls-add {}".format(name))
-        return {"name": name}
+        return {"name": name, "cidr": cidr}
 
-    def ls_port_add(self, lswitch="", name="", router_port=None,
+    def ls_port_add(self, lswitch, name="", router_port=None,
                     mac="", ip="", gw="", ext_gw=""):
-        self.run(cmd="lsp-add {} {}".format(lswitch, name))
+        self.run(cmd="lsp-add {} {}".format(lswitch["name"], name))
         if router_port:
             cmd = "lsp-set-type {} router".format(name)
             cmd = cmd + " -- lsp-set-addresses {} router".format(name)
             cmd = cmd + " -- lsp-set-options {} router-port={}".format(
-                name, router_port
+                name, router_port["name"]
             )
             self.run(cmd=cmd)
         elif len(mac) or len(ip):
@@ -155,15 +176,15 @@ class OvnNbctl:
             "uuid": uuid
         }
 
-    def ls_port_set_set_options(self, name="", options=""):
-        self.run("lsp-set-options {} {}".format(name, options))
+    def ls_port_set_set_options(self, port, options):
+        self.run("lsp-set-options {} {}".format(port["name"], options))
 
-    def ls_port_set_set_type(self, name="", lsp_type=""):
-        self.run("lsp-set-type {} {}".format(name, lsp_type))
+    def ls_port_set_set_type(self, port, lsp_type):
+        self.run("lsp-set-type {} {}".format(port["name"], lsp_type))
 
     def port_group_add(self, name="", lport=None, create=True):
         if (create):
-            self.run(cmd="pg-add {} {}".format(name, lport["name"]))
+            self.run(cmd='create port_group name={}'.format(name))
         else:
             cmd = "add port_group {} ports {}".format(name, lport["uuid"])
             self.run(cmd=cmd)
@@ -184,18 +205,19 @@ class OvnNbctl:
         )
         self.run(cmd=cmd)
 
-    def route_add(self, name="", network="0.0.0.0/0", gw="", policy=None):
+    def route_add(self, router, network="0.0.0.0/0", gw="", policy=None):
         if policy:
-            cmd = "--policy={} lr-route-add {} {} {}".format(policy, name,
+            cmd = "--policy={} lr-route-add {} {} {}".format(policy,
+                                                             router["name"],
                                                              network, gw)
         else:
-            cmd = "lr-route-add {} {} {}".format(name, network, gw)
+            cmd = "lr-route-add {} {} {}".format(router["name"], network, gw)
         self.run(cmd=cmd)
 
-    def nat_add(self, name, nat_type="snat", external_ip="", logical_ip=""):
+    def nat_add(self, router, nat_type="snat", external_ip="", logical_ip=""):
 
-        cmd = "lr-nat-add {} {} {} {}".format(name, nat_type, external_ip,
-                                              logical_ip)
+        cmd = "lr-nat-add {} {} {} {}".format(router["name"], nat_type,
+                                              external_ip, logical_ip)
         self.run(cmd=cmd)
 
     def wait_until(self, cmd=""):
@@ -204,21 +226,22 @@ class OvnNbctl:
     def sync(self, wait="hv"):
         self.run("--wait={} sync".format(wait))
 
-    def start_daemon(self, nbctld_config):
-        cmd = "--detach --pidfile --log-file"
-        if "remote" in nbctld_config:
-            ovn_remote = nbctld_config["remote"]
-            prot = nbctld_config["prot"]
-            central_ips = [ip.strip() for ip in ovn_remote.split('-')]
-            # If there is only one ip, then we can use unixctl socket.
-            if len(central_ips) > 1:
-                remote = ",".join(["{}:{}:6641".format(prot, r)
-                                  for r in central_ips])
-                cmd += "--db=" + remote
-                if prot == "ssl":
-                    cmd += "-p {} -c {} -C {}".format(
-                        nbctld_config["privkey"], nbctld_config["cert"],
-                        nbctld_config["cacert"])
+    def start_daemon(self):
+        cmd = "--detach --pidfile --log-file --no-leader-only"
+        # FIXME: this needs rework!
+        # if "remote" in nbctld_config:
+        #     ovn_remote = nbctld_config["remote"]
+        #     prot = nbctld_config["prot"]
+        #     central_ips = [ip.strip() for ip in ovn_remote.split('-')]
+        #     # If there is only one ip, then we can use unixctl socket.
+        #     if len(central_ips) > 1:
+        #         remote = ",".join(["{}:{}:6641".format(prot, r)
+        #                           for r in central_ips])
+        #         cmd += "--db=" + remote
+        #         if prot == "ssl":
+        #             cmd += "-p {} -c {} -C {}".format(
+        #                 nbctld_config["privkey"], nbctld_config["cert"],
+        #                 nbctld_config["cacert"])
 
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
@@ -227,15 +250,15 @@ class OvnNbctl:
     def stop_daemon(self):
         if len(self.socket):
             cmd = "ovs-appctl -t {} exit".format(self.socket)
-            self.ssh.run(cmd=cmd)
+            self.sb.run(cmd=cmd)
 
 
 class OvnSbctl:
-    def __init__(self, node={}, container=None, log=False):
-        self.ssh = RemoteConn(node=node, container=container, log=log)
+    def __init__(self, sb):
+        self.sb = sb
 
     def run(self, cmd="", stdout=None):
-        self.ssh.run(cmd="ovn-sbctl --no-leader-only " + cmd, stdout=stdout)
+        self.sb.run(cmd="ovn-sbctl --no-leader-only " + cmd, stdout=stdout)
 
     def chassis_bound(self, chassis=""):
         cmd = "--bare --columns _uuid find chassis name={}".format(chassis)

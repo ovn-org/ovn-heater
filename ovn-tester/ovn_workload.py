@@ -40,22 +40,17 @@ class Node(ovn_utils.Sandbox):
         self.mgmt_ip = mgmt_ip
 
     def build_cmd(self, cluster_cfg, cmd, *args):
-        monitor_cmd = 'OVN_MONITOR_ALL={}'.format(
-            'yes' if cluster_cfg.monitor_all else 'no'
-        )
-        cluster_db_cmd = 'OVN_DB_CLUSTER={}'.format(
-            'yes' if cluster_cfg.clustered_db else 'no'
-        )
-        cmd = "cd {} && " \
-              "CHASSIS_COUNT=0 GW_COUNT=0 IP_HOST={} IP_CIDR={} IP_START={} " \
-              "{} {} CREATE_FAKE_VMS=no ./ovn_cluster.sh {}".format(
-                  cluster_cfg.cluster_cmd_path, self.mgmt_net.ip,
-                  self.mgmt_net.prefixlen, self.mgmt_ip, monitor_cmd,
-                  cluster_db_cmd, cmd
-              )
-        for i in args:
-            cmd += ' {}'.format(i)
-        return cmd
+        monitor_all = 'yes' if cluster_cfg.monitor_all else 'no'
+        clustered_db = 'yes' if cluster_cfg.clustered_db else 'no'
+        cmd = \
+            f'cd {cluster_cfg.cluster_cmd_path} && ' \
+            f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} ' \
+            f'CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 '\
+            f'IP_HOST={self.mgmt_net.ip} ' \
+            f'IP_CIDR={self.mgmt_net.prefixlen} ' \
+            f'IP_START={self.mgmt_ip} ' \
+            f'./ovn_cluster.sh {cmd}'
+        return cmd + ' ' + ' '.join(args)
 
 
 class CentralNode(Node):
@@ -85,29 +80,25 @@ class WorkerNode(Node):
         self.lports = []
 
     def start(self, cluster_cfg):
-        print('***** starting worker {} *****'.format(self.container))
+        print(f'***** starting worker {self.container} *****')
         self.phys_node.run(self.build_cmd(cluster_cfg, 'add-chassis',
                                           self.container, 'tcp:0.0.0.1:6642'))
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
-        print('***** connecting worker {} *****'.format(self.container))
+        print(f'***** connecting worker {self.container} *****')
         self.phys_node.run(self.build_cmd(cluster_cfg,
                                           'set-chassis-ovn-remote',
                                           self.container,
                                           cluster_cfg.node_remote))
 
     def configure_localnet(self, physical_net):
-        print('***** creating localnet on {} *****'.format(self.container))
-        cmd = \
-            'ovs-vsctl -- set open_vswitch . external-ids:{}={}:br-ex'.format(
-                'ovn-bridge-mappings',
-                physical_net
-            )
-        self.run(cmd=cmd)
+        print(f'***** creating localnet on {self.container} *****')
+        self.run(cmd=f'ovs-vsctl -- set open_vswitch . '
+                 f'external-ids:ovn-bridge-mappings={physical_net}:br-ex')
 
     def configure_external_host(self):
-        print('***** add external host on {} *****'.format(self.container))
+        print(f'***** add external host on {self.container} *****')
         gw_ip = netaddr.IPAddress(self.ext_net.last - 1)
         host_ip = netaddr.IPAddress(self.ext_net.last - 2)
 
@@ -116,12 +107,10 @@ class WorkerNode(Node):
         self.run(cmd='ip netns add ext-ns')
         self.run(cmd='ip link set netns ext-ns dev veth0')
         self.run(cmd='ip netns exec ext-ns ip link set dev veth0 up')
-        self.run(
-            cmd='ip netns exec ext-ns ip addr add {}/{} dev veth0'.format(
-                host_ip, self.ext_net.prefixlen))
-        self.run(
-            cmd='ip netns exec ext-ns ip route add default via {}'.format(
-                gw_ip))
+        self.run(cmd=f'ip netns exec ext-ns '
+                 f'ip addr add {host_ip}/{self.ext_net.prefixlen} '
+                 f'dev veth0')
+        self.run(cmd=f'ip netns exec ext-ns ip route add default via {gw_ip}')
         self.run(cmd='ip link set dev veth1 up')
         self.run(cmd='ovs-vsctl add-port br-ex veth1')
 
@@ -143,10 +132,10 @@ class WorkerNode(Node):
         self.wait(cluster.sbctl, cluster.cluster_cfg.node_timeout_s)
 
         # Create a node switch and connect it to the cluster router.
-        self.switch = cluster.nbctl.ls_add('lswitch-{}'.format(self.container),
+        self.switch = cluster.nbctl.ls_add(f'lswitch-{self.container}',
                                            cidr=self.int_net)
-        lrp_name = 'rtr-to-node-{}'.format(self.container)
-        ls_rp_name = 'node-to-rtr-{}'.format(self.container)
+        lrp_name = f'rtr-to-node-{self.container}'
+        ls_rp_name = f'node-to-rtr-{self.container}'
         lrp_ip = netaddr.IPAddress(self.int_net.last - 1)
         self.rp = cluster.nbctl.lr_port_add(
             cluster.router, lrp_name, RandMac(), lrp_ip,
@@ -157,11 +146,10 @@ class WorkerNode(Node):
         )
 
         # Create a join switch and connect it to the cluster router.
-        self.join_switch = cluster.nbctl.ls_add(
-            'join-{}'.format(self.container), cidr=self.gw_net
-        )
-        join_lrp_name = 'rtr-to-join-{}'.format(self.container)
-        join_ls_rp_name = 'join-to-rtr-{}'.format(self.container)
+        self.join_switch = cluster.nbctl.ls_add(f'join-{self.container}',
+                                                cidr=self.gw_net)
+        join_lrp_name = f'rtr-to-join-{self.container}'
+        join_ls_rp_name = f'join-to-rtr-{self.container}'
         lrp_ip = netaddr.IPAddress(self.gw_net.last - 1)
         self.join_rp = cluster.nbctl.lr_port_add(
             cluster.router, join_lrp_name, RandMac(), lrp_ip,
@@ -172,13 +160,11 @@ class WorkerNode(Node):
         )
 
         # Create a gw router and connect it to the join switch.
-        self.gw_router = cluster.nbctl.lr_add(
-            'gwrouter-{}'.format(self.container)
-        )
-        cluster.nbctl.run('set Logical_Router {} options:chassis={}'.format(
-            self.gw_router, self.container))
-        join_grp_name = 'gw-to-join-{}'.format(self.container)
-        join_ls_grp_name = 'join-to-gw-{}'.format(self.container)
+        self.gw_router = cluster.nbctl.lr_add(f'gwrouter-{self.container}')
+        cluster.nbctl.run(f'set Logical_Router {self.gw_router["name"]} '
+                          f'options:chassis={self.container}')
+        join_grp_name = f'gw-to-join-{self.container}'
+        join_ls_grp_name = f'join-to-gw-{self.container}'
         gr_gw = netaddr.IPAddress(self.gw_net.last - 2)
         self.gw_rp = cluster.nbctl.lr_port_add(
             self.gw_router, join_grp_name, RandMac(), gr_gw,
@@ -190,11 +176,10 @@ class WorkerNode(Node):
 
         # Create an external switch connecting the gateway router to the
         # physnet.
-        self.ext_switch = cluster.nbctl.ls_add(
-            'ext-{}'.format(self.container), cidr=self.ext_net
-        )
-        ext_lrp_name = 'gw-to-ext-{}'.format(self.container)
-        ext_ls_rp_name = 'ext-to-gw-{}'.format(self.container)
+        self.ext_switch = cluster.nbctl.ls_add(f'ext-{self.container}',
+                                               cidr=self.ext_net)
+        ext_lrp_name = f'gw-to-ext-{self.container}'
+        ext_ls_rp_name = f'ext-to-gw-{self.container}'
         lrp_ip = netaddr.IPAddress(self.ext_net.last - 1)
         self.ext_rp = cluster.nbctl.lr_port_add(
             self.gw_router, ext_lrp_name, RandMac(), lrp_ip,
@@ -206,13 +191,12 @@ class WorkerNode(Node):
 
         # Configure physnet.
         self.physnet_port = cluster.nbctl.ls_port_add(
-            self.ext_switch, 'provnet-{}'.format(self.container),
-            ip="unknown"
+            self.ext_switch, f'provnet-{self.container}', ip="unknown"
         )
         cluster.nbctl.ls_port_set_set_type(self.physnet_port, 'localnet')
         cluster.nbctl.ls_port_set_set_options(
             self.physnet_port,
-            'network_name={}'.format(cluster.brex_cfg.physical_net)
+            f'network_name={cluster.brex_cfg.physical_net}'
         )
 
         # Route for traffic entering the cluster.
@@ -224,11 +208,8 @@ class WorkerNode(Node):
         cluster.nbctl.route_add(self.gw_router, gw=str(gr_def_gw))
 
         # Force return traffic to return on the same node.
-        cluster.nbctl.run(
-            'set Logical_Router {} options:lb_force_snat_ip={}'.format(
-                self.gw_router, str(gr_gw)
-            )
-        )
+        cluster.nbctl.run(f'set Logical_Router {self.gw_router} '
+                          f'options:lb_force_snat_ip={gr_gw}')
 
         # Route for traffic that needs to exit the cluster
         # (via gw router).
@@ -241,13 +222,13 @@ class WorkerNode(Node):
 
     @ovn_stats.timeit
     def provision_port(self, cluster):
-        name = 'lp-{}-{}'.format(self.id, len(self.lports))
+        name = f'lp-{self.id}-{len(self.lports)}'
         ip = netaddr.IPAddress(self.int_net.first + len(self.lports) + 1)
         plen = self.int_net.prefixlen
         gw = netaddr.IPAddress(self.int_net.last - 1)
         ext_gw = netaddr.IPAddress(self.ext_net.last - 2)
 
-        print("***** creating lport {} *****".format(name))
+        print(f'***** creating lport {name} *****')
         lport = cluster.nbctl.ls_port_add(self.switch, name,
                                           mac=str(RandMac()), ip=ip, plen=plen,
                                           gw=gw, ext_gw=ext_gw, metadata=self)

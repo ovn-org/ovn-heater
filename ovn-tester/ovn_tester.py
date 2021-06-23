@@ -58,11 +58,11 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
 
 
 def usage(name):
-    print("""
-{} PHYSICAL_DEPLOYMENT TEST_CONF
+    print(f'''
+{name} PHYSICAL_DEPLOYMENT TEST_CONF
 where PHYSICAL_DEPLOYMENT is the YAML file defining the deployment.
 where TEST_CONF is the YAML file defining the test parameters.
-""".format(name), file=sys.stderr)
+''', file=sys.stderr)
 
 
 def read_physical_deployment(deployment, log_cmds):
@@ -156,7 +156,7 @@ def create_nodes(cluster_config, central, workers):
         'ovn-central-1' if cluster_config.clustered_db else 'ovn-central'
     central_node = CentralNode(central, central_name, mgmt_net, mgmt_ip)
     worker_nodes = [
-        WorkerNode(workers[i % len(workers)], 'ovn-scale-{}'.format(i),
+        WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
                    mgmt_net, mgmt_ip + i + 1, internal_net.next(i),
                    external_net.next(i), gw_net.next(i), i)
         for i in range(cluster_config.n_workers)

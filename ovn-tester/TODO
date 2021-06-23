@@ -1,0 +1,7 @@
+- Refactor ovn_utils.py to not return raw dictionaries everywhere and
+  instead use proper objects with named fields: Lswitch, Lrouter, Lport,
+  etc.
+- Refactor the code that adds "network policies" (ACLs, Port_Groups,
+  Address_Sets).  It's currently commented out.
+- Improve configuration parsing in ovn_tester.py.
+- Check and import licenses from ovn-scale-test repo.

@@ -1,39 +1,10 @@
-run_args:
-    n_sandboxes: 4
-    n_lports: 4
-    log: False
+global:
+  log_cmds: False
 
-fake_multinode_args:
-    node_net: 192.16.0.0
-    node_net_len: 16
-    node_ip: 192.16.0.1
-    ovn_monitor_all: True
-    ovn_cluster_db: True
-    central_ip: "192.16.0.1-192.16.0.2-192.16.0.3"
-    sb_proto: ssl
-    max_timeout_s: 10
-    cluster_cmd_path: /root/ovn-heater/runtime/ovn-fake-multinode
+cluster:
+  clustered_db: true
+  monitor_all: true
+  n_workers: 500
 
-lnetwork_create_args:
-    start_ext_cidr: 3.0.0.0/16
-    gw_router_per_network: True
-    start_gw_cidr: 2.0.0.0/16
-    start_ext_cidr: 3.0.0.0/16
-    cluster_cidr: 16.0.0.0/4
-
-lswitch_create_args:
-    start_cidr: 16.0.0.0/16
-
-lport_bind_args:
-    internal: True
-    wait_up: True
-    wait_sync: ping
-
-lport_create_args:
-    network_policy_size: 2
-    name_space_size: 2
-    create_acls: True
-
-nbctld_config:
-    daemon: True
-
+base_cluster_bringup:
+  n_pods_per_node: 2

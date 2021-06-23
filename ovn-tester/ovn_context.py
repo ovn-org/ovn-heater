@@ -3,9 +3,9 @@ import ovn_stats
 active_context = None
 
 
-class OvnContext(object):
+class Context(object):
 
-    def __init__(self, test_name, max_iterations):
+    def __init__(self, test_name, max_iterations=1):
         self.iteration = -1
         self.test_name = test_name
         self.max_iterations = max_iterations

@@ -12,7 +12,7 @@ from collections import namedtuple
 from ovn_context import Context
 from ovn_utils import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
-from ovn_workload import CentralNode, WorkerNode, Cluster
+from ovn_workload import CentralNode, WorkerNode, Cluster, Namespace
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
 DEFAULT_N_VIPS = 2
@@ -46,6 +46,15 @@ def calculate_default_static_vips():
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg',
                                ['n_pods_per_node'])
+
+
+NsRange = namedtuple('NsRange',
+                     ['start', 'n_pods'])
+NsMultitenantCfg = namedtuple('NsMultitenantCfg',
+                              ['n_namespaces',
+                               'ranges',
+                               'n_external_ips1',
+                               'n_external_ips2'])
 
 
 def usage(name):
@@ -118,7 +127,23 @@ def read_config(configuration):
         bringup_cfg = ClusterBringupCfg(
             n_pods_per_node=bringup_args.get('n_pods_per_node', 10)
         )
-        return log_cmds, cluster_cfg, brex_cfg, bringup_cfg
+
+        netpol_multitenant_args = config.get('netpol_multitenant', dict())
+        ranges = [
+            NsRange(
+                start=range_args.get('start', 0),
+                n_pods=range_args.get('n_pods', 5),
+            ) for range_args in netpol_multitenant_args.get('ranges', list())
+        ]
+        ranges.sort(key=lambda x: x.start, reverse=True)
+        netpol_multitenant_cfg = NsMultitenantCfg(
+            n_namespaces=netpol_multitenant_args.get('n_namespaces', 0),
+            n_external_ips1=netpol_multitenant_args.get('n_external_ips1', 3),
+            n_external_ips2=netpol_multitenant_args.get('n_external_ips2', 20),
+            ranges=ranges
+        )
+        return log_cmds, cluster_cfg, brex_cfg, bringup_cfg, \
+            netpol_multitenant_cfg
 
 
 def create_nodes(cluster_config, central, workers):
@@ -158,22 +183,65 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
                                            bringup_cfg.n_pods_per_node)
             worker.ping_ports(ovn, ports)
 
-# FIXME: This needs to be reworked.
-# def run_test_network_policy(ovn):
-#     with Context("create_routed_lport", run_args['n_lports']) as ctx:
-#         for _ in ctx:
-#             ovn.create_routed_lport(lport_create_args, lport_bind_args)
+
+def run_test_netpol_multitenant(ovn, cfg):
+    """
+    Run a multitenant network policy test, for example:
+
+    for i in range(n_namespaces):
+        create address set AS_ns_i
+        create port group PG_ns_i
+        if i < 200:
+            n_pods = 1 # 200 pods
+        elif i < 480:
+            n_pods = 5 # 1400 pods
+        elif i < 495:
+            n_pods = 20 # 300 pods
+        else:
+            n_pods = 100 # 500 pods
+        create n_pods
+        add n_pods to AS_ns_i
+        add n_pods to PG_ns_i
+        create acls:
+
+    to-lport, ip.src == $AS_ns_i && outport == @PG_ns_i, allow-related
+    to-lport, ip.src == {ip1, ip2, ip3} && outport == @PG_ns_i, allow-related
+    to-lport, ip.src == {ip1, ..., ip20} && outport == @PG_ns_i, allow-related
+    """
+    external_ips1 = [
+        netaddr.IPAddress('42.42.42.1') + i for i in range(cfg.n_external_ips1)
+    ]
+    external_ips2 = [
+        netaddr.IPAddress('43.43.43.1') + i for i in range(cfg.n_external_ips2)
+    ]
+
+    with Context("netpol_multitenant", cfg.n_namespaces) as ctx:
+        for i in ctx:
+            # Get the number of pods from the "highest" range that includes i.
+            n_ports = next((r.n_pods for r in cfg.ranges if i >= r.start), 1)
+            ns = Namespace(ovn, f'ns_{i}')
+            for _ in range(n_ports):
+                for p in ovn.select_worker_for_port().provision_ports(ovn, 1):
+                    ns.add_port(p)
+            ns.allow_within_namespace()
+            ns.check_enforcing_internal()
+            ns.allow_from_external(external_ips1)
+            ns.allow_from_external(external_ips2, include_ext_gw=True)
+            ns.check_enforcing_external()
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         usage(sys.argv[0])
         sys.exit(1)
 
-    log_cmds, cluster_cfg, brex_cfg, bringup_cfg = read_config(sys.argv[2])
+    log_cmds, cluster_cfg, brex_cfg, bringup_cfg, ns_multitenant_cfg = \
+        read_config(sys.argv[2])
 
     central, workers = read_physical_deployment(sys.argv[1], log_cmds)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
 
     ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
     run_base_cluster_bringup(ovn, bringup_cfg)
+    run_test_netpol_multitenant(ovn, ns_multitenant_cfg)
     sys.exit(0)

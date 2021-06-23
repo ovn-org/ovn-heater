@@ -8,3 +8,16 @@ cluster:
 
 base_cluster_bringup:
   n_pods_per_node: 2
+
+netpol_multitenant:
+  n_namespaces: 5
+  ranges:
+    - r1:
+      start:   2
+      n_pods:  2
+    - r2:
+      start:   3
+      n_pods:  5
+    - r3:
+      start:   4
+      n_pods: 10

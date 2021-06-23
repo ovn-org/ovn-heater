@@ -243,15 +243,14 @@ class WorkerNode(Node):
     def provision_port(self, cluster):
         name = 'lp-{}-{}'.format(self.id, len(self.lports))
         ip = netaddr.IPAddress(self.int_net.first + len(self.lports) + 1)
-        mask = self.int_net.prefixlen
-        ip_mask = '{}/{}'.format(ip, mask)
+        plen = self.int_net.prefixlen
         gw = netaddr.IPAddress(self.int_net.last - 1)
         ext_gw = netaddr.IPAddress(self.ext_net.last - 2)
 
         print("***** creating lport {} *****".format(name))
         lport = cluster.nbctl.ls_port_add(self.switch, name,
-                                          mac=str(RandMac()), ip=ip_mask,
-                                          gw=gw, ext_gw=ext_gw)
+                                          mac=str(RandMac()), ip=ip, plen=plen,
+                                          gw=gw, ext_gw=ext_gw, metadata=self)
         self.lports.append(lport)
         return lport
 
@@ -267,13 +266,10 @@ class WorkerNode(Node):
             self.bind_port(port)
         return ports
 
-    @ovn_stats.timeit
-    def ping_port(self, cluster, port):
+    def run_ping(self, cluster, src, dest):
+        print(f'***** pinging from {src} to {dest} *****')
+        cmd = f'ip netns exec {src} ping -q -c 1 -W 0.1 {dest}'
         start_time = datetime.now()
-        dest = port['ext-gw']
-        cmd = 'ip netns exec {} ping -q -c 1 -W 0.1 {}'.format(
-            port['name'], dest
-        )
         while True:
             try:
                 self.run(cmd=cmd, raise_on_error=True)
@@ -283,13 +279,119 @@ class WorkerNode(Node):
 
             duration = (datetime.now() - start_time).seconds
             if (duration > cluster.cluster_cfg.node_timeout_s):
-                print('***** Error: Timeout waiting for port {} to be able '
-                      'to ping gateway {} *****'.format(port['name'], dest))
+                print(f'***** Error: Timeout waiting for {src} '
+                      f'to be able to ping {dest} *****')
                 raise ovn_utils.OvnPingTimeoutException()
+
+    @ovn_stats.timeit
+    def ping_port(self, cluster, port, dest=None):
+        if not dest:
+            dest = port['ext-gw']
+        self.run_ping(cluster, port['name'], dest)
+
+    @ovn_stats.timeit
+    def ping_external(self, cluster, port):
+        self.run_ping(cluster, 'ext-ns', port['ip'])
 
     def ping_ports(self, cluster, ports):
         for port in ports:
             self.ping_port(cluster, port)
+
+
+ACL_DEFAULT_DENY_PRIO = 1
+ACL_DEFAULT_ALLOW_ARP_PRIO = 2
+ACL_NETPOL_ALLOW_PRIO = 3
+
+
+class Namespace(object):
+    def __init__(self, cluster, name):
+        self.cluster = cluster
+        self.nbctl = cluster.nbctl
+        self.lports = []
+        self.pg_def_deny_igr = \
+            self.nbctl.port_group_create(f'pg_deny_igr_{name}')
+        self.pg_def_deny_egr = \
+            self.nbctl.port_group_create(f'pg_deny_egr_{name}')
+        self.pg = self.nbctl.port_group_create(f'pg_{name}')
+        self.addr_set = self.nbctl.address_set_create(f'as_{name}')
+
+        # Default policies.
+        self.nbctl.acl_add(
+            self.pg_def_deny_igr['name'],
+            'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
+            f'ip4.src == \\${self.addr_set["name"]} && '
+            f'outport == @{self.pg_def_deny_igr["name"]}',
+            'drop')
+        self.nbctl.acl_add(
+            self.pg_def_deny_egr['name'],
+            'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
+            f'ip4.dst == \\${self.addr_set["name"]} && '
+            f'inport == @{self.pg_def_deny_egr["name"]}',
+            'drop')
+        self.nbctl.acl_add(
+            self.pg_def_deny_igr['name'],
+            'to-lport', ACL_DEFAULT_ALLOW_ARP_PRIO, 'port-group',
+            f'outport == @{self.pg_def_deny_igr["name"]} && arp',
+            'allow')
+        self.nbctl.acl_add(
+            self.pg_def_deny_egr['name'],
+            'to-lport', ACL_DEFAULT_ALLOW_ARP_PRIO, 'port-group',
+            f'inport == @{self.pg_def_deny_egr["name"]} && arp',
+            'allow')
+
+    @ovn_stats.timeit
+    def add_port(self, port):
+        self.lports.append(port)
+        self.nbctl.port_group_add(self.pg_def_deny_igr, port)
+        self.nbctl.port_group_add(self.pg_def_deny_egr, port)
+        self.nbctl.port_group_add(self.pg, port)
+        if port.get('ip'):
+            self.nbctl.address_set_add(self.addr_set, str(port['ip']))
+
+    @ovn_stats.timeit
+    def allow_within_namespace(self):
+        self.nbctl.acl_add(
+            self.pg['name'], 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            f'ip4.src == \\${self.addr_set["name"]} && '
+            f'outport == @{self.pg["name"]}',
+            'allow-related'
+        )
+        self.nbctl.acl_add(
+            self.pg['name'], 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            f'ip4.dst == \\${self.addr_set["name"]} && '
+            f'inport == @{self.pg["name"]}',
+            'allow-related'
+        )
+
+    @ovn_stats.timeit
+    def allow_from_external(self, external_ips, include_ext_gw=False):
+        # If requested, include the ext-gw of the first port in the namespace
+        # so we can check that this rule is enforced.
+        if include_ext_gw:
+            assert(len(self.lports) > 0)
+            external_ips.append(self.lports[0]['ext-gw'])
+        ips = [str(ip) for ip in external_ips]
+        self.nbctl.acl_add(
+            self.pg['name'], 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            f'ip4.src == {{{",".join(ips)}}} && outport == @{self.pg["name"]}',
+            'allow-related'
+        )
+
+    @ovn_stats.timeit
+    def check_enforcing_internal(self):
+        # "Random" check that first pod can reach last pod in the namespace.
+        if len(self.lports) > 1:
+            src = self.lports[0]
+            dst = self.lports[-1]
+            worker = src['metadata']
+            worker.ping_port(self.cluster, src, dst['ip'])
+
+    @ovn_stats.timeit
+    def check_enforcing_external(self):
+        if len(self.lports) > 0:
+            dst = self.lports[0]
+            worker = dst['metadata']
+            worker.ping_external(self.cluster, dst)
 
 
 class Cluster(object):
@@ -304,6 +406,7 @@ class Cluster(object):
         self.net = cluster_cfg.cluster_net
         self.router = None
         self.load_balancer = None
+        self.last_selected_worker = 0
 
     def start(self):
         self.central_node.start(self.cluster_cfg)
@@ -324,215 +427,7 @@ class Cluster(object):
                                                 self.cluster_cfg.vips)
         self.load_balancer.add_vips(self.cluster_cfg.static_vips)
 
-    # FIXME: This needs to be reworked.
-    # def create_acl(self, target, lport, acl_create_args):
-    #     print("***** creating acl on {} *****".format(lport["name"]))
-
-    #     direction = acl_create_args.get("direction", "to-lport")
-    #     priority = acl_create_args.get("priority", 1000)
-    #     verdict = acl_create_args.get("action", "allow")
-    #     address_set = acl_create_args.get("address_set", "")
-    #     acl_type = acl_create_args.get("type", "switch")
-
-    #     '''
-    #     match template: {
-    #         "direction": "<inport/outport>",
-    #         "lport": "<switch port or port-group>",
-    #         "address_set": "<address_set id>"
-    #         "l4_port": "<l4 port number>",
-    #     }
-    #     '''
-    #     match_template = acl_create_args.get("match",
-    #                                          "%(direction)s == %(lport)s && \
-    #                                          ip4 && udp && \
-    #                                          udp.src == %(l4_port)s")
-    #     p = "inport" if direction == "from-lport" else "outport"
-    #     match = match_template % {
-    #         "direction": p,
-    #         "lport": lport["name"],
-    #         "address_set": address_set,
-    #         "l4_port": 100
-    #     }
-    #     self.nbctl.acl_add(target["name"], direction, priority, acl_type,
-    #                        match, verdict)
-
-    # @ovn_stats.timeit
-    # def create_port_group_acls(self, name):
-    #     port_group_acl = {"name": "@%s" % name}
-    #     port_group = {"name": name}
-    #     """
-    #     create two acl for each ingress/egress of the Network Policy (NP)
-    #     to allow ingress and egress traffic selected by the NP
-    #     """
-    #     # ingress
-    #     match = "%(direction)s == %(lport)s && ip4.src == $%(address_set)s"
-    #     acl_create_args = {
-    #         "match": match,
-    #         "address_set": "%s_ingress_as" % name,
-    #         "priority": 1010, "direction": "from-lport",
-    #         "type": "port-group"
-    #     }
-    #     self.create_acl(port_group, port_group_acl, acl_create_args)
-    #     acl_create_args = {
-    #         "priority": 1009,
-    #         "match": "%(direction)s == %(lport)s && ip4",
-    #         "type": "port-group", "direction": "from-lport",
-    #         "action": "allow-related"
-    #     }
-    #     self.create_acl(port_group, port_group_acl, acl_create_args)
-    #     # egress
-    #     match = "%(direction)s == %(lport)s && ip4.dst == $%(address_set)s"
-    #     acl_create_args = {
-    #         "match": match,
-    #         "address_set": "%s_egress_as" % name,
-    #         "priority": 1010, "type": "port-group"
-    #     }
-    #     self.create_acl(port_group, port_group_acl, acl_create_args)
-    #     acl_create_args = {
-    #         "priority": 1009,
-    #         "match": "%(direction)s == %(lport)s && ip4",
-    #         "type": "port-group", " action": "allow-related"
-    #     }
-    #     self.create_acl(port_group, port_group_acl, acl_create_args)
-
-    # @ovn_stats.timeit
-    # def create_update_deny_port_group(self, lport, create):
-    #     self.nbctl.port_group_add("portGroupDefDeny", lport, create)
-    #     if create:
-    #         # Create default acl for ingress and egress traffic:
-    #         # only allow ARP traffic.
-    #         port_group_acl = {
-    #             "name": "@portGroupDefDeny"
-    #         }
-    #         port_group = {
-    #             "name": "portGroupDefDeny"
-    #         }
-    #         # ingress
-    #         acl_create_args = {
-    #             "match": "%(direction)s == %(lport)s && arp",
-    #             "priority": 1001, "direction": "from-lport",
-    #             "type": "port-group"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-    #         acl_create_args = {
-    #             "match": "%(direction)s == %(lport)s",
-    #             "direction": "from-lport", "action": "drop",
-    #             "type": "port-group"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-    #         # egress
-    #         acl_create_args = {
-    #             "match": "%(direction)s == %(lport)s && arp",
-    #             "priority": 1001,
-    #             "type": "port-group"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-    #         acl_create_args = {
-    #             "match": "%(direction)s == %(lport)s",
-    #             "action": "drop",
-    #             "type": "port-group"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-
-    # @ovn_stats.timeit
-    # def create_update_deny_multicast_port_group(self, lport, create):
-    #     self.nbctl.port_group_add("portGroupMultiDefDeny", lport, create)
-    #     if create:
-    #         # Create default acl for ingress and egress multicast traffic:
-    #         # drop all multicast.
-    #         port_group_acl = {
-    #             "name": "@portGroupMultiDefDeny"
-    #         }
-    #         port_group = {
-    #             "name": "portGroupMultiDefDeny"
-    #         }
-    #         # ingress
-    #         acl_create_args = {
-    #             "match": "%(direction)s == %(lport)s && ip4.mcast",
-    #             "priority": 1011, "direction": "from-lport",
-    #             "type": "port-group", "action": "drop"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-    #         # egress
-    #         acl_create_args = {
-    #             "match": "%(direction)s == %(lport)s && ip4.mcast",
-    #             "priority": 1011, "type": "port-group",
-    #             "action": "drop"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-
-    # @ovn_stats.timeit
-    # def create_update_network_policy(self, lport, ip, lport_create_args):
-    #     iteration = ovn_context.active_context.iteration
-    #     network_policy_size = lport_create_args.get("network_policy_size", 1)
-    #     network_policy_index = iteration / network_policy_size
-    #     create = (iteration % network_policy_size) == 0
-    #     name = "networkPolicy%d" % network_policy_index
-
-    #     self.nbctl.port_group_add(name, lport, create)
-    #     self.nbctl.address_set_add("%s_ingress_as" % name, ip, create)
-    #     self.nbctl.address_set_add("%s_egress_as" % name, ip, create)
-    #     if (create):
-    #         self.create_port_group_acls(name)
-
-    #     self.create_update_deny_port_group(lport, iteration == 0)
-    #     self.create_update_deny_multicast_port_group(lport, iteration == 0)
-
-    # @ovn_stats.timeit
-    # def create_update_name_space(self, lport, ip, lport_create_args):
-    #     iteration = ovn_context.active_context.iteration
-    #     name_space_size = lport_create_args.get("name_space_size", 1)
-    #     name_space_index = iteration / name_space_size
-    #     create = (iteration % name_space_size) == 0
-    #     name = "nameSpace%d" % name_space_index
-    #     port_group_name = "mcastPortGroup_%s" % name
-    #     port_group_acl = {
-    #         "name": "@" + port_group_name
-    #     }
-    #     port_group = {
-    #         "name": port_group_name
-    #     }
-
-    #     self.nbctl.port_group_add(port_group_name, lport, create)
-    #     self.nbctl.address_set_add(name, ip, create)
-
-    #     if (create):
-    #         # create multicast ACL
-    #         match = "%(direction)s == %(lport)s && ip4.mcast"
-    #         acl_create_args = {
-    #             "match": match, "priority": 1012,
-    #             "direction": "from-lport",
-    #             "type": "port-group"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-    #         acl_create_args = {
-    #             "match": match, "priority": 1012,
-    #             "type": "port-group"
-    #         }
-    #         self.create_acl(port_group, port_group_acl, acl_create_args)
-
-    # def configure_routed_lport(self, sandbox, lswitch, lport_create_args,
-    #                            lport_bind_args):
-    #     iteration = ovn_context.active_context.iteration
-    #     lport = self.create_lswitch_port(lswitch, iteration + 2)
-    #     self.bind_and_wait_port(lport, lport_bind_args, sandbox)
-    #     if lport_create_args.get("create_acls", False):
-    #         cidr = lswitch.get("cidr", None)
-    #         if cidr:
-    #             ip = str(next(netaddr.IPNetwork(cidr.ip + 2).iter_hosts()))
-    #         else:
-    #             ip = ""
-
-    #         # create or update network policy
-    #         self.create_update_network_policy(lport, ip, lport_create_args)
-
-    #         # create/update namespace
-    #         self.create_update_name_space(lport, ip, lport_create_args)
-
-    # @ovn_stats.timeit
-    # def create_routed_lport(self, lport_create_args, lport_bind_args):
-    #     iteration = ovn_context.active_context.iteration
-    #     lswitch = self.lswitches[iteration % len(self.lswitches)]
-    #     sandbox = self.worker_sbs[iteration % len(self.worker_sbs)]
-    #     self.configure_routed_lport(sandbox, lswitch, lport_create_args,
-    #                                 lport_bind_args)
+    def select_worker_for_port(self):
+        self.last_selected_worker += 1
+        self.last_selected_worker %= len(self.worker_nodes)
+        return self.worker_nodes[self.last_selected_worker]

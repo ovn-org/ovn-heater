@@ -4,7 +4,6 @@ from io import StringIO
 
 class PhysicalNode(object):
     def __init__(self, hostname, log_cmds):
-        self.hostname = hostname
         self.ssh = SSH(hostname, log_cmds)
 
     def run(self, cmd="", stdout=None, raise_on_error=False):
@@ -45,7 +44,7 @@ class SSHError(OvnTestException):
 
 class SSH:
     def __init__(self, hostname, log):
-
+        self.hostname = hostname
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.ssh.connect(hostname)
@@ -53,7 +52,7 @@ class SSH:
 
     def run(self, cmd="", stdout=None, raise_on_error=False):
         if self.log:
-            print(f'Logging command: {cmd}')
+            print(f'Logging command: ssh {self.hostname} "{cmd}"')
 
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd)
         exit_status = ssh_stdout.channel.recv_exit_status()

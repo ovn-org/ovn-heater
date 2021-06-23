@@ -1,4 +1,5 @@
 import paramiko
+from collections import namedtuple
 from io import StringIO
 
 
@@ -69,6 +70,16 @@ class SSH:
                 f'Command "{cmd}" failed with exit_status {exit_status}.'
             )
 
+LRouter = namedtuple('LRouter', ['name'])
+LRPort = namedtuple('LRPort', ['name'])
+LSwitch = namedtuple('LSwitch', ['name', 'cidr'])
+LSPort = namedtuple('LSPort',
+                    ['name', 'mac', 'ip', 'plen', 'gw', 'ext_gw',
+                     'metadata', 'uuid'])
+PortGroup = namedtuple('PortGroup', ['name'])
+AddressSet = namedtuple('AddressSet', ['name'])
+LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
+
 
 class OvsVsctl:
     def __init__(self, sb):
@@ -78,7 +89,7 @@ class OvsVsctl:
         self.sb.run(cmd=prefix + cmd, stdout=stdout)
 
     def add_port(self, port, bridge, internal=True, ifaceid=None):
-        name = port["name"]
+        name = port.name
         cmd = f'add-port {bridge} {name}'
         if internal:
             cmd += f' -- set interface {name} type=internal'
@@ -90,27 +101,22 @@ class OvsVsctl:
         self.run(cmd=cmd)
 
     def bind_vm_port(self, lport):
-        self.run(f'ethtool -K {lport["name"]} tx off &> /dev/null', prefix="")
-        self.run(f'ip netns add {lport["name"]}', prefix="")
-        self.run(f'ip link set {lport["name"]} netns {lport["name"]}',
+        self.run(f'ethtool -K {lport.name} tx off &> /dev/null', prefix="")
+        self.run(f'ip netns add {lport.name}', prefix="")
+        self.run(f'ip link set {lport.name} netns {lport.name}', prefix="")
+        self.run(f'ip netns exec {lport.name} '
+                 f'ip link set {lport.name} address {lport.mac}',
                  prefix="")
-        self.run(f'ip netns exec {lport["name"]} '
-                 f'ip link set {lport["name"]} address {lport["mac"]}',
+        self.run(f'ip netns exec {lport.name} '
+                 f'ip addr add {lport.ip}/{lport.plen} dev {lport.name}',
                  prefix="")
-        self.run(f'ip netns exec {lport["name"]} '
-                 f'ip addr add {lport["ip"]}/{lport["plen"]} '
-                 f'dev {lport["name"]}',
+        self.run(f'ip netns exec {lport.name} ip link set {lport.name} up',
                  prefix="")
-        self.run(f'ip netns exec {lport["name"]} '
-                 f'ip link set {lport["name"]} up',
-                 prefix="")
-        self.run(f'ip netns exec {lport["name"]} '
-                 f'ip route add default via {lport["gw"]}',
+        self.run(f'ip netns exec {lport.name} '
+                 f'ip route add default via {lport.gw}',
                  prefix="")
 
 
-# FIXME: Instead of returning raw dicts we should probably return custom
-# objects with named fields: Lswitch, Lrouter, Lport, Rport, Port_Group, etc.
 class OvnNbctl:
     def __init__(self, sb):
         self.sb = sb
@@ -133,26 +139,26 @@ class OvnNbctl:
     def lr_add(self, name):
         print(f'***** creating lrouter {name} *****')
         self.run(cmd=f'lr-add {name}')
-        return {"name": name}
+        return LRouter(name=name)
 
     def lr_port_add(self, router, name, mac, ip, plen):
-        self.run(cmd=f'lrp-add {router["name"]} {name} {mac} {ip}/{plen}')
-        return {"name": name}
+        self.run(cmd=f'lrp-add {router.name} {name} {mac} {ip}/{plen}')
+        return LRPort(name=name)
 
     def ls_add(self, name, cidr):
         print(f'***** creating lswitch {name} *****')
         self.run(cmd=f'ls-add {name}')
-        return {"name": name, "cidr": cidr}
+        return LSwitch(name=name, cidr=cidr)
 
     def ls_port_add(self, lswitch, name, router_port=None,
                     mac=None, ip=None, plen=None, gw=None, ext_gw=None,
                     metadata=None):
-        self.run(cmd=f'lsp-add {lswitch["name"]} {name}')
+        self.run(cmd=f'lsp-add {lswitch.name} {name}')
         if router_port:
             cmd = \
                 f'lsp-set-type {name} router' \
                 f' -- lsp-set-addresses {name} router' \
-                f' -- lsp-set-options {name} router-port={router_port["name"]}'
+                f' -- lsp-set-options {name} router-port={router_port.name}'
             self.run(cmd=cmd)
         elif mac or ip:
             cmd = f'lsp-set-addresses {name} \"'
@@ -165,30 +171,28 @@ class OvnNbctl:
         stdout = StringIO()
         self.run(cmd=f'get logical_switch_port {name} _uuid', stdout=stdout)
         uuid = stdout.getvalue()
-        return {
-            "name": name, "mac": mac, "ip": ip, "plen": plen,
-            "gw": gw, "ext-gw": ext_gw, "metadata": metadata, "uuid": uuid
-        }
+        return LSPort(name=name, mac=mac, ip=ip, plen=plen,
+                      gw=gw, ext_gw=ext_gw, metadata=metadata, uuid=uuid)
 
     def ls_port_set_set_options(self, port, options):
-        self.run(cmd=f'lsp-set-options {port["name"]} {options}')
+        self.run(cmd=f'lsp-set-options {port.name} {options}')
 
     def ls_port_set_set_type(self, port, lsp_type):
-        self.run(cmd=f'lsp-set-type {port["name"]} {lsp_type}')
+        self.run(cmd=f'lsp-set-type {port.name} {lsp_type}')
 
     def port_group_create(self, name):
         self.run(cmd=f'create port_group name={name}')
-        return {'name': name}
+        return PortGroup(name=name)
 
     def address_set_create(self, name):
         self.run(cmd=f'create address_set name={name}')
-        return {'name': name}
+        return AddressSet(name=name)
 
     def port_group_add(self, pg, lport):
-        self.run(cmd=f'add port_group {pg["name"]} ports {lport["uuid"]}')
+        self.run(cmd=f'add port_group {pg.name} ports {lport.uuid}')
 
     def address_set_add(self, addr_set, addrs):
-        cmd = f'add Address_Set {addr_set["name"]} addresses \"{addrs}\"'
+        cmd = f'add Address_Set {addr_set.name} addresses \"{addrs}\"'
         self.run(cmd=cmd)
 
     def acl_add(self, name="", direction="from-lport", priority=100,
@@ -199,13 +203,13 @@ class OvnNbctl:
     def route_add(self, router, network="0.0.0.0/0", gw="", policy=None):
         if policy:
             cmd = f'--policy={policy} lr-route-add ' \
-                f'{router["name"]} {network} {gw}'
+                f'{router.name} {network} {gw}'
         else:
-            cmd = f'lr-route-add {router["name"]} {network} {gw}'
+            cmd = f'lr-route-add {router.name} {network} {gw}'
         self.run(cmd=cmd)
 
     def nat_add(self, router, nat_type="snat", external_ip="", logical_ip=""):
-        self.run(cmd=f'lr-nat-add {router["name"]} '
+        self.run(cmd=f'lr-nat-add {router.name} '
                  f'{nat_type} {external_ip} {logical_ip}')
 
     def create_lb(self, name, protocol):
@@ -214,7 +218,7 @@ class OvnNbctl:
 
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
-        return {'name': lb_name, 'uuid': stdout.getvalue().strip()}
+        return LoadBalancer(name=lb_name, uuid=stdout.getvalue().strip())
 
     def lb_set_vips(self, lb_uuid, vips):
         vip_str = ''

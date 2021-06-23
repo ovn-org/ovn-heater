@@ -14,6 +14,35 @@ from ovn_utils import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
 
+DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
+DEFAULT_N_VIPS = 2
+
+
+def calculate_default_vips():
+    vip_gen = DEFAULT_VIP_SUBNET.iter_hosts()
+    vip_range = range(0, DEFAULT_N_VIPS)
+    return {str(next(vip_gen)):None for _ in vip_range}
+
+
+DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
+DEFAULT_N_STATIC_VIPS = 65
+DEFAULT_STATIC_BACKEND_SUBNET = netaddr.IPNetwork('6.0.0.0/8')
+DEFAULT_N_STATIC_BACKENDS = 2
+
+
+def calculate_default_static_vips():
+    vip_gen = DEFAULT_STATIC_VIP_SUBNET.iter_hosts()
+    vip_range = range(0, DEFAULT_N_STATIC_VIPS)
+
+    backend_gen = DEFAULT_STATIC_BACKEND_SUBNET.iter_hosts()
+    backend_range = range(0, DEFAULT_N_STATIC_BACKENDS)
+    # This assumes it's OK to use the same backend list for each
+    # VIP. If we need to use different backends for each VIP,
+    # then this will need to be updated
+    backend_list = [str(next(backend_gen)) for _ in backend_range]
+
+    return {str(next(vip_gen)):backend_list for _ in vip_range}
+
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg',
                                ['n_pods_per_node'])
@@ -76,7 +105,10 @@ def read_config(configuration):
             cluster_net=netaddr.IPNetwork(
                 cluster_args.get('cluster_net', '16.0.0.0/4')
             ),
-            n_workers=cluster_args.get('n_workers', 2)
+            n_workers=cluster_args.get('n_workers', 2),
+            vips=cluster_args.get('vips', calculate_default_vips()),
+            static_vips=cluster_args.get('static_vips',
+                                         calculate_default_static_vips())
         )
         brex_cfg = BrExConfig(
             physical_net=cluster_args.get('physical_net', 'providernet'),
@@ -118,6 +150,7 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
     # create ovn topology
     with Context("base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
         ovn.create_cluster_router("lr-cluster")
+        ovn.create_cluster_load_balancer("lb-cluster")
         for i in ctx:
             worker = ovn.worker_nodes[i]
             worker.provision(ovn)

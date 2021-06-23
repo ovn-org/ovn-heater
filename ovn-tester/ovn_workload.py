@@ -1,6 +1,7 @@
 import ovn_context
 import ovn_stats
 import ovn_utils
+import ovn_load_balancer as lb
 import time
 import netaddr
 import random
@@ -23,7 +24,9 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'external_net',
                             'gw_net',
                             'cluster_net',
-                            'n_workers'])
+                            'n_workers',
+                            'vips',
+                            'static_vips',])
 
 
 BrExConfig = namedtuple('BrExConfig', ['physical_net'])
@@ -300,6 +303,7 @@ class Cluster(object):
         self.sbctl = ovn_utils.OvnSbctl(self.central_node)
         self.net = cluster_cfg.cluster_net
         self.router = None
+        self.load_balancer = None
 
     def start(self):
         self.central_node.start(self.cluster_cfg)
@@ -314,6 +318,11 @@ class Cluster(object):
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)
+
+    def create_cluster_load_balancer(self, lb_name):
+        self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl,
+                                                self.cluster_cfg.vips)
+        self.load_balancer.add_vips(self.cluster_cfg.static_vips)
 
     # FIXME: This needs to be reworked.
     # def create_acl(self, target, lport, acl_create_args):

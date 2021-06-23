@@ -102,8 +102,8 @@ class OvsVsctl:
                  prefix="")
         self.run('ip netns exec {p} ip link set {p} address {m}'.format(
             p=lport["name"], m=lport["mac"]), prefix="")
-        self.run('ip netns exec {p} ip addr add {ip} dev {p}'.format(
-            p=lport["name"], ip=lport["ip"]), prefix="")
+        self.run('ip netns exec {p} ip addr add {ip}/{m} dev {p}'.format(
+            p=lport["name"], ip=lport["ip"], m=lport["plen"]), prefix="")
         self.run('ip netns exec {p} ip link set {p} up'.format(
             p=lport["name"]), prefix="")
 
@@ -149,31 +149,32 @@ class OvnNbctl:
         self.run(cmd="ls-add {}".format(name))
         return {"name": name, "cidr": cidr}
 
-    def ls_port_add(self, lswitch, name="", router_port=None,
-                    mac="", ip="", gw="", ext_gw=""):
+    def ls_port_add(self, lswitch, name, router_port=None,
+                    mac=None, ip=None, plen=None, gw=None, ext_gw=None,
+                    metadata=None):
         self.run(cmd="lsp-add {} {}".format(lswitch["name"], name))
         if router_port:
             cmd = "lsp-set-type {} router".format(name)
-            cmd = cmd + " -- lsp-set-addresses {} router".format(name)
-            cmd = cmd + " -- lsp-set-options {} router-port={}".format(
+            cmd += " -- lsp-set-addresses {} router".format(name)
+            cmd += " -- lsp-set-options {} router-port={}".format(
                 name, router_port["name"]
             )
             self.run(cmd=cmd)
-        elif len(mac) or len(ip):
+        elif mac or ip:
             cmd = "lsp-set-addresses {} \"".format(name)
-            if len(mac):
-                cmd = cmd + mac + " "
-            if len(ip):
-                cmd = cmd + ip
-            cmd = cmd + "\""
+            if mac:
+                cmd += str(mac) + " "
+            if ip:
+                cmd += str(ip)
+            cmd += "\""
             self.run(cmd=cmd)
         stdout = StringIO()
         cmd = "get logical_switch_port {} _uuid".format(name)
         self.run(cmd=cmd, stdout=stdout)
         uuid = stdout.getvalue()
         return {
-            "name": name, "mac": mac, "ip": ip, "gw": gw, "ext-gw": ext_gw,
-            "uuid": uuid
+            "name": name, "mac": mac, "ip": ip, "plen": plen,
+            "gw": gw, "ext-gw": ext_gw, "metadata": metadata, "uuid": uuid
         }
 
     def ls_port_set_set_options(self, port, options):
@@ -182,20 +183,19 @@ class OvnNbctl:
     def ls_port_set_set_type(self, port, lsp_type):
         self.run("lsp-set-type {} {}".format(port["name"], lsp_type))
 
-    def port_group_add(self, name="", lport=None, create=True):
-        if (create):
-            self.run(cmd='create port_group name={}'.format(name))
-        else:
-            cmd = "add port_group {} ports {}".format(name, lport["uuid"])
-            self.run(cmd=cmd)
+    def port_group_create(self, name):
+        self.run(cmd=f'create port_group name={name}')
+        return {'name': name}
 
-    def address_set_add(self, name="", addrs="", create=True):
-        if create:
-            cmd = "create Address_Set name=\"" + name + "\" addresses=\"" + \
-                addrs + "\""
-        else:
-            cmd = "add Address_Set \"" + name + "\" addresses \"" + \
-                addrs + "\""
+    def address_set_create(self, name):
+        self.run(cmd=f'create address_set name={name}')
+        return {'name': name}
+
+    def port_group_add(self, pg, lport):
+        self.run(cmd=f'add port_group {pg["name"]} ports {lport["uuid"]}')
+
+    def address_set_add(self, addr_set, addrs):
+        cmd = f'add Address_Set {addr_set["name"]} addresses \"{addrs}\"'
         self.run(cmd=cmd)
 
     def acl_add(self, name="", direction="from-lport", priority=100,

@@ -49,7 +49,7 @@ class OvnLoadBalancer(object):
         '''
         Add backends to existing load balancer VIPs.
         backends: A list of IP addresses to add as backends to VIPs.
-        vips: A list of VIPs to which backends should be added. If this is
+        vips: An iterable of VIPs to which backends should be added. If this is
         'None' then the backends are added to all VIPs.
         '''
         for cur_vip, cur_backends in self.vips.items():

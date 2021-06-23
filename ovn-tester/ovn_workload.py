@@ -1,4 +1,6 @@
 import ovn_context
+import ovn_exceptions
+import ovn_sandbox
 import ovn_stats
 import ovn_utils
 import ovn_load_balancer as lb
@@ -32,7 +34,7 @@ ClusterConfig = namedtuple('ClusterConfig',
 BrExConfig = namedtuple('BrExConfig', ['physical_net'])
 
 
-class Node(ovn_utils.Sandbox):
+class Node(ovn_sandbox.Sandbox):
     def __init__(self, phys_node, container, mgmt_net, mgmt_ip):
         super(Node, self).__init__(phys_node, container)
         self.container = container
@@ -124,7 +126,7 @@ class WorkerNode(Node):
             if sbctl.chassis_bound(self.container):
                 return
             time.sleep(0.1)
-        raise ovn_utils.OvnChassisTimeoutException()
+        raise ovn_exceptions.OvnChassisTimeoutException()
 
     @ovn_stats.timeit
     def provision(self, cluster):
@@ -255,14 +257,14 @@ class WorkerNode(Node):
             try:
                 self.run(cmd=cmd, raise_on_error=True)
                 break
-            except ovn_utils.SSHError:
+            except ovn_exceptions.SSHError:
                 pass
 
             duration = (datetime.now() - start_time).seconds
             if (duration > cluster.cluster_cfg.node_timeout_s):
                 print(f'***** Error: Timeout waiting for {src} '
                       f'to be able to ping {dest} *****')
-                raise ovn_utils.OvnPingTimeoutException()
+                raise ovn_exceptions.OvnPingTimeoutException()
 
     @ovn_stats.timeit
     def ping_port(self, cluster, port, dest=None):

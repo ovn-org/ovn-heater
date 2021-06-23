@@ -10,7 +10,7 @@ import yaml
 
 from collections import namedtuple
 from ovn_context import Context
-from ovn_utils import PhysicalNode
+from ovn_sandbox import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster, Namespace
 

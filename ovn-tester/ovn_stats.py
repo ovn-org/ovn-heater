@@ -2,10 +2,10 @@ import collections
 import functools
 import numpy
 import ovn_context
+import ovn_exceptions
 import pandas as pd
 import plotly.express as px
 import time
-import ovn_utils
 
 timed_functions = collections.defaultdict(list)
 
@@ -18,7 +18,7 @@ def timeit(func):
         value = None
         try:
             value = func(*args, **kwargs)
-        except ovn_utils.OvnTestException:
+        except ovn_exceptions.OvnTestException:
             failed = True
         finally:
             duration = time.perf_counter() - start

@@ -249,6 +249,7 @@ class WorkerNode(Node):
         self.lports.append(lport)
         return lport
 
+    @ovn_stats.timeit
     def provision_load_balancers(self, cluster, ports):
         # Add one port IP as a backend to the cluster load balancer.
         port_ips = (str(port.ip) for port in ports if port.ip is not None)

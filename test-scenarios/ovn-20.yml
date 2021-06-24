@@ -7,7 +7,7 @@ cluster:
   n_workers: 20
 
 base_cluster_bringup:
-  n_pods_per_node: 2
+  n_pods_per_node: 10
 
 netpol_multitenant:
   n_namespaces: 500

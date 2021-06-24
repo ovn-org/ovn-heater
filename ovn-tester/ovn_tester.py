@@ -191,6 +191,7 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
             worker.provision(ovn)
             ports = worker.provision_ports(ovn,
                                            bringup_cfg.n_pods_per_node)
+            worker.provision_load_balancers(ovn, ports)
             worker.ping_ports(ovn, ports)
 
 def run_test_density(ovn, cfg):

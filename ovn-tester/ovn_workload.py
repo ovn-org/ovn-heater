@@ -249,6 +249,23 @@ class WorkerNode(Node):
         self.lports.append(lport)
         return lport
 
+    def provision_load_balancers(self, cluster, ports):
+        # Add one port IP as a backend to the cluster load balancer.
+        port_ips = (str(port.ip) for port in ports if port.ip is not None)
+        cluster_backends = next(port_ips)
+        cluster_vips = cluster.cluster_cfg.vips.keys()
+        cluster.load_balancer.add_backends_to_vip(cluster_backends,
+                                                  cluster_vips)
+        cluster.load_balancer.add_to_switch(self.switch.name)
+        cluster.load_balancer.add_to_router(self.gw_router.name)
+
+        # GW Load balancer has no VIPs/backends configured on it, since
+        # this load balancer is used for hostnetwork services. We're not
+        # using those right now so the load blaancer is empty.
+        self.gw_load_balancer = lb.OvnLoadBalancer(
+            f'lb-{self.gw_router.name}', cluster.nbctl)
+        self.gw_load_balancer.add_to_router(self.gw_router.name)
+
     @ovn_stats.timeit
     def bind_port(self, port):
         vsctl = ovn_utils.OvsVsctl(self)

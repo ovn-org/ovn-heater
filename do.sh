@@ -25,6 +25,7 @@ log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
 
 ovn_tester=${topdir}/ovn-tester
+ovn_tester_log_file=test-log
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 
@@ -284,7 +285,7 @@ function run_test() {
     source ${rundir}/${ovn_heater_venv}/bin/activate
     pushd ${out_dir}
 
-    python ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file}
+    python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}
 
     echo "-- Collecting logs to: ${out_dir}"
     ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"

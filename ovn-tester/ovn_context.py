@@ -1,14 +1,18 @@
 import ovn_stats
+import time
 
 active_context = None
 
 
-class Context(object):
+ITERATION_STAT_NAME = 'Iteration Total'
 
+
+class Context(object):
     def __init__(self, test_name, max_iterations=1):
         self.iteration = -1
         self.test_name = test_name
         self.max_iterations = max_iterations
+        self.iteration_start = None
 
     def __enter__(self):
         global active_context
@@ -25,6 +29,11 @@ class Context(object):
         return self
 
     def __next__(self):
+        now = time.perf_counter()
+        if self.iteration_start:
+            duration = now - self.iteration_start
+            ovn_stats.add(ITERATION_STAT_NAME, duration, failed=False)
+        self.iteration_start = now
         if self.iteration < self.max_iterations - 1:
             self.iteration += 1
             return self.iteration

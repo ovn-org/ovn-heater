@@ -49,7 +49,7 @@ def report(test_name):
     for (f, i), measurements in timed_functions.items():
         for (d, r) in measurements:
             all_stats[f].append(d)
-            chart_stats[f].append([f'Iteration {i}', f, d])
+            chart_stats[f].append([f'{i}', f, d])
             if r:
                 fail_stats[f].append(i)
 

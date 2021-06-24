@@ -36,5 +36,7 @@ class Context(object):
         self.iteration_start = now
         if self.iteration < self.max_iterations - 1:
             self.iteration += 1
+            print(f'***** Context {self.test_name}, '
+                  f'Iteration {self.iteration} *****')
             return self.iteration
         raise StopIteration

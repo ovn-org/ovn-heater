@@ -10,6 +10,7 @@ import random
 import string
 import copy
 from collections import namedtuple
+from collections import defaultdict
 from randmac import RandMac
 from datetime import datetime
 
@@ -29,6 +30,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'cluster_net',
                             'n_workers',
                             'vips',
+                            'vip_subnet',
                             'static_vips',])
 
 
@@ -345,6 +347,10 @@ class Namespace(object):
         if port.ip:
             self.nbctl.address_set_add(self.addr_set, port.ip)
 
+    def add_ports(self, ports):
+        for p in ports:
+            self.add_port(p)
+
     @ovn_stats.timeit
     def allow_within_namespace(self):
         self.nbctl.acl_add(
@@ -437,6 +443,26 @@ class Cluster(object):
         self.join_ls_rp = self.nbctl.ls_port_add(
             self.join_switch, 'join-to-rtr', self.join_rp
         )
+
+    def provision_ports(self, n_ports):
+        return [
+            self.select_worker_for_port().provision_ports(self, 1)[0]
+            for _ in range(n_ports)
+        ]
+
+    def ping_ports(self, ports):
+        ports_per_worker = defaultdict(list)
+        for p in ports:
+            ports_per_worker[p.metadata].append(p)
+        for w, ports in ports_per_worker.items():
+            w.ping_ports(self, ports)
+
+    @ovn_stats.timeit
+    def provision_vips_to_load_balancers(self, ports):
+        n_vips = len(self.load_balancer.vips.keys())
+        vip_ips = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
+        vips = { str(vip_ips) : [ str(p.ip) for p in ports ] }
+        self.load_balancer.add_vips(vips)
 
     def select_worker_for_port(self):
         self.last_selected_worker += 1

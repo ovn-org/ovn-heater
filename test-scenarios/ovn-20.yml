@@ -12,6 +12,10 @@ base_cluster_bringup:
 density_light:
   n_pods: 10
 
+density_heavy:
+  n_pods: 10
+  pods_vip_ratio: 2
+
 netpol_multitenant:
   n_namespaces: 500
   ranges:

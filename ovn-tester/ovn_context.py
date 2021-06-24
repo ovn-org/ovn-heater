@@ -12,15 +12,14 @@ class Context(object):
 
     def __enter__(self):
         global active_context
-        print("***** Entering context {} *****".format(self.test_name))
+        print(f'***** Entering context {self.test_name} *****')
         ovn_stats.clear()
         active_context = self
         return self
 
     def __exit__(self, type, value, traceback):
         ovn_stats.report(self.test_name)
-        print("***** Exiting context {} *****".format(self.test_name))
-        pass
+        print(f'***** Exiting context {self.test_name} *****')
 
     def __iter__(self):
         return self

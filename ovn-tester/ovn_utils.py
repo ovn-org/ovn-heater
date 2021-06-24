@@ -1,74 +1,15 @@
-import paramiko
+from collections import namedtuple
 from io import StringIO
 
-
-class PhysicalNode(object):
-    def __init__(self, hostname, log_cmds):
-        self.hostname = hostname
-        self.ssh = SSH(hostname, log_cmds)
-
-    def run(self, cmd="", stdout=None, raise_on_error=False):
-        self.ssh.run(cmd=cmd, stdout=stdout, raise_on_error=raise_on_error)
-
-
-class Sandbox(object):
-    def __init__(self, phys_node, container):
-        self.phys_node = phys_node
-        self.container = container
-
-    def run(self, cmd="", stdout=None, raise_on_error=False):
-        if self.container:
-            cmd = 'docker exec ' + self.container + ' ' + cmd
-        self.phys_node.run(cmd=cmd, stdout=stdout,
-                           raise_on_error=raise_on_error)
-
-
-class OvnTestException(Exception):
-    pass
-
-
-class OvnInvalidConfigException(OvnTestException):
-    pass
-
-
-class OvnPingTimeoutException(OvnTestException):
-    pass
-
-
-class OvnChassisTimeoutException(OvnTestException):
-    pass
-
-
-class SSHError(OvnTestException):
-    pass
-
-
-class SSH:
-    def __init__(self, hostname, log):
-
-        self.ssh = paramiko.SSHClient()
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(hostname)
-        self.log = log
-
-    def run(self, cmd="", stdout=None, raise_on_error=False):
-        if self.log:
-            print('Logging command: {}'.format(cmd))
-
-        ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd)
-        exit_status = ssh_stdout.channel.recv_exit_status()
-
-        if stdout:
-            stdout.write(ssh_stdout.read().decode('ascii'))
-        else:
-            out = ssh_stdout.read().decode().strip()
-            if len(out):
-                print(out)
-        if exit_status != 0 and raise_on_error:
-            print(ssh_stderr.read().decode())
-            details = "Command '{}' failed with exit_status {}.".format(
-                cmd, exit_status)
-            raise SSHError(details)
+LRouter = namedtuple('LRouter', ['name'])
+LRPort = namedtuple('LRPort', ['name'])
+LSwitch = namedtuple('LSwitch', ['name', 'cidr'])
+LSPort = namedtuple('LSPort',
+                    ['name', 'mac', 'ip', 'plen', 'gw', 'ext_gw',
+                     'metadata', 'uuid'])
+PortGroup = namedtuple('PortGroup', ['name'])
+AddressSet = namedtuple('AddressSet', ['name'])
+LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
 
 
 class OvsVsctl:
@@ -78,41 +19,35 @@ class OvsVsctl:
     def run(self, cmd="", prefix="ovs-vsctl ", stdout=None):
         self.sb.run(cmd=prefix + cmd, stdout=stdout)
 
-    def add_port(self, port, brige, internal=True, ifaceid=None):
-        name = port["name"]
-        cmd = "add-port {} {}".format(brige, name)
+    def add_port(self, port, bridge, internal=True, ifaceid=None):
+        name = port.name
+        cmd = f'add-port {bridge} {name}'
         if internal:
-            cmd += " -- set interface {} type=internal".format(name)
+            cmd += f' -- set interface {name} type=internal'
         if ifaceid:
-            cmd += " -- set Interface {} external_ids:iface-id={}".format(
-                name, ifaceid
-            )
             cmd += \
-                " -- set Interface {} external_ids:iface-status=active".format(
-                    name
-                )
-            cmd += " -- set Interface {} admin_state=up".format(name)
+                f' -- set Interface {name} external_ids:iface-id={ifaceid}' \
+                f' -- set Interface {name} external_ids:iface-status=active' \
+                f' -- set Interface {name} admin_state=up'
         self.run(cmd=cmd)
 
-    def bind_vm_port(self, lport=None):
-        self.run('ethtool -K {p} tx off &> /dev/null'.format(p=lport["name"]),
+    def bind_vm_port(self, lport):
+        self.run(f'ethtool -K {lport.name} tx off &> /dev/null', prefix="")
+        self.run(f'ip netns add {lport.name}', prefix="")
+        self.run(f'ip link set {lport.name} netns {lport.name}', prefix="")
+        self.run(f'ip netns exec {lport.name} '
+                 f'ip link set {lport.name} address {lport.mac}',
                  prefix="")
-        self.run('ip netns add {p}'.format(p=lport["name"]), prefix="")
-        self.run('ip link set {p} netns {p}'.format(p=lport["name"]),
+        self.run(f'ip netns exec {lport.name} '
+                 f'ip addr add {lport.ip}/{lport.plen} dev {lport.name}',
                  prefix="")
-        self.run('ip netns exec {p} ip link set {p} address {m}'.format(
-            p=lport["name"], m=lport["mac"]), prefix="")
-        self.run('ip netns exec {p} ip addr add {ip}/{m} dev {p}'.format(
-            p=lport["name"], ip=lport["ip"], m=lport["plen"]), prefix="")
-        self.run('ip netns exec {p} ip link set {p} up'.format(
-            p=lport["name"]), prefix="")
-
-        self.run('ip netns exec {p} ip route add default via {gw}'.format(
-            p=lport["name"], gw=lport["gw"]), prefix="")
+        self.run(f'ip netns exec {lport.name} ip link set {lport.name} up',
+                 prefix="")
+        self.run(f'ip netns exec {lport.name} '
+                 f'ip route add default via {lport.gw}',
+                 prefix="")
 
 
-# FIXME: Instead of returning raw dicts we should probably return custom
-# objects with named fields: Lswitch, Lrouter, Lport, Rport, Port_Group, etc.
 class OvnNbctl:
     def __init__(self, sb):
         self.sb = sb
@@ -130,95 +65,83 @@ class OvnNbctl:
         self.sb.run(cmd=prefix + cmd, stdout=stdout)
 
     def set_global(self, option, value):
-        self.run("set NB_Global . options:{}={}".format(
-            option, value
-        ))
+        self.run(f'set NB_Global . options:{option}={value}')
 
-    def lr_add(self, name=""):
-        self.run(cmd="lr-add {}".format(name))
-        return {"name": name}
+    def lr_add(self, name):
+        print(f'***** creating lrouter {name} *****')
+        self.run(cmd=f'lr-add {name}')
+        return LRouter(name=name)
 
-    def lr_port_add(self, router, name, mac, ip, prefixlen):
-        self.run(cmd="lrp-add {} {} {} {}/{}".format(
-            router["name"], name, mac, ip, prefixlen)
-        )
-        return {"name": name}
+    def lr_port_add(self, router, name, mac, ip, plen):
+        self.run(cmd=f'lrp-add {router.name} {name} {mac} {ip}/{plen}')
+        return LRPort(name=name)
 
     def ls_add(self, name, cidr):
-        print("***** creating lswitch {} *****".format(name))
-        self.run(cmd="ls-add {}".format(name))
-        return {"name": name, "cidr": cidr}
+        print(f'***** creating lswitch {name} *****')
+        self.run(cmd=f'ls-add {name}')
+        return LSwitch(name=name, cidr=cidr)
 
     def ls_port_add(self, lswitch, name, router_port=None,
                     mac=None, ip=None, plen=None, gw=None, ext_gw=None,
                     metadata=None):
-        self.run(cmd="lsp-add {} {}".format(lswitch["name"], name))
+        self.run(cmd=f'lsp-add {lswitch.name} {name}')
         if router_port:
-            cmd = "lsp-set-type {} router".format(name)
-            cmd += " -- lsp-set-addresses {} router".format(name)
-            cmd += " -- lsp-set-options {} router-port={}".format(
-                name, router_port["name"]
-            )
+            cmd = \
+                f'lsp-set-type {name} router' \
+                f' -- lsp-set-addresses {name} router' \
+                f' -- lsp-set-options {name} router-port={router_port.name}'
             self.run(cmd=cmd)
         elif mac or ip:
-            cmd = "lsp-set-addresses {} \"".format(name)
+            cmd = f'lsp-set-addresses {name} \"'
             if mac:
-                cmd += str(mac) + " "
+                cmd += f'{str(mac)} '
             if ip:
                 cmd += str(ip)
             cmd += "\""
             self.run(cmd=cmd)
         stdout = StringIO()
-        cmd = "get logical_switch_port {} _uuid".format(name)
-        self.run(cmd=cmd, stdout=stdout)
+        self.run(cmd=f'get logical_switch_port {name} _uuid', stdout=stdout)
         uuid = stdout.getvalue()
-        return {
-            "name": name, "mac": mac, "ip": ip, "plen": plen,
-            "gw": gw, "ext-gw": ext_gw, "metadata": metadata, "uuid": uuid
-        }
+        return LSPort(name=name, mac=mac, ip=ip, plen=plen,
+                      gw=gw, ext_gw=ext_gw, metadata=metadata, uuid=uuid)
 
     def ls_port_set_set_options(self, port, options):
-        self.run("lsp-set-options {} {}".format(port["name"], options))
+        self.run(cmd=f'lsp-set-options {port.name} {options}')
 
     def ls_port_set_set_type(self, port, lsp_type):
-        self.run("lsp-set-type {} {}".format(port["name"], lsp_type))
+        self.run(cmd=f'lsp-set-type {port.name} {lsp_type}')
 
     def port_group_create(self, name):
         self.run(cmd=f'create port_group name={name}')
-        return {'name': name}
+        return PortGroup(name=name)
 
     def address_set_create(self, name):
         self.run(cmd=f'create address_set name={name}')
-        return {'name': name}
+        return AddressSet(name=name)
 
     def port_group_add(self, pg, lport):
-        self.run(cmd=f'add port_group {pg["name"]} ports {lport["uuid"]}')
+        self.run(cmd=f'add port_group {pg.name} ports {lport.uuid}')
 
     def address_set_add(self, addr_set, addrs):
-        cmd = f'add Address_Set {addr_set["name"]} addresses \"{addrs}\"'
+        cmd = f'add Address_Set {addr_set.name} addresses \"{addrs}\"'
         self.run(cmd=cmd)
 
     def acl_add(self, name="", direction="from-lport", priority=100,
                 entity="switch", match="", verdict="allow"):
-        cmd = "--type={} acl-add {} {} {} \"{}\" {}".format(
-            entity, name, direction, str(priority), match, verdict
-        )
-        self.run(cmd=cmd)
+        self.run(cmd=f'--type={entity} acl-add {name} '
+                 f'{direction} {priority} "{match}" {verdict}')
 
     def route_add(self, router, network="0.0.0.0/0", gw="", policy=None):
         if policy:
-            cmd = "--policy={} lr-route-add {} {} {}".format(policy,
-                                                             router["name"],
-                                                             network, gw)
+            cmd = f'--policy={policy} lr-route-add ' \
+                f'{router.name} {network} {gw}'
         else:
-            cmd = "lr-route-add {} {} {}".format(router["name"], network, gw)
+            cmd = f'lr-route-add {router.name} {network} {gw}'
         self.run(cmd=cmd)
 
     def nat_add(self, router, nat_type="snat", external_ip="", logical_ip=""):
-
-        cmd = "lr-nat-add {} {} {} {}".format(router["name"], nat_type,
-                                              external_ip, logical_ip)
-        self.run(cmd=cmd)
+        self.run(cmd=f'lr-nat-add {router.name} '
+                 f'{nat_type} {external_ip} {logical_ip}')
 
     def create_lb(self, name, protocol):
         lb_name = f"{name}-{protocol}"
@@ -226,7 +149,7 @@ class OvnNbctl:
 
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
-        return {'name': lb_name, 'uuid': stdout.getvalue().strip()}
+        return LoadBalancer(name=lb_name, uuid=stdout.getvalue().strip())
 
     def lb_set_vips(self, lb_uuid, vips):
         vip_str = ''
@@ -255,7 +178,7 @@ class OvnNbctl:
         self.run("wait-until " + cmd)
 
     def sync(self, wait="hv"):
-        self.run("--wait={} sync".format(wait))
+        self.run(f'--wait={wait} sync')
 
     def start_daemon(self):
         cmd = "--detach --pidfile --log-file --no-leader-only"
@@ -280,8 +203,7 @@ class OvnNbctl:
 
     def stop_daemon(self):
         if len(self.socket):
-            cmd = "ovs-appctl -t {} exit".format(self.socket)
-            self.sb.run(cmd=cmd)
+            self.sb.run(cmd=f'ovs-appctl -t {self.socket} exit')
 
 
 class OvnSbctl:
@@ -292,7 +214,7 @@ class OvnSbctl:
         self.sb.run(cmd="ovn-sbctl --no-leader-only " + cmd, stdout=stdout)
 
     def chassis_bound(self, chassis=""):
-        cmd = "--bare --columns _uuid find chassis name={}".format(chassis)
+        cmd = f'--bare --columns _uuid find chassis name={chassis}'
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
         return len(stdout.getvalue().splitlines()) == 1

@@ -10,7 +10,7 @@ import yaml
 
 from collections import namedtuple
 from ovn_context import Context
-from ovn_utils import PhysicalNode
+from ovn_sandbox import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster, Namespace
 
@@ -58,11 +58,11 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
 
 
 def usage(name):
-    print("""
-{} PHYSICAL_DEPLOYMENT TEST_CONF
+    print(f'''
+{name} PHYSICAL_DEPLOYMENT TEST_CONF
 where PHYSICAL_DEPLOYMENT is the YAML file defining the deployment.
 where TEST_CONF is the YAML file defining the test parameters.
-""".format(name), file=sys.stderr)
+''', file=sys.stderr)
 
 
 def read_physical_deployment(deployment, log_cmds):
@@ -94,6 +94,7 @@ def read_config(configuration):
             monitor_all=cluster_args.get('monitor_all', True),
             logical_dp_groups=cluster_args.get('logical_dp_groups', True),
             clustered_db=cluster_args.get('clustered_db', True),
+            raft_election_to=cluster_args.get('raft_election_to', 16),
             node_net=netaddr.IPNetwork(
                 cluster_args.get('node_net', '192.16.0.0/16')
             ),
@@ -156,7 +157,7 @@ def create_nodes(cluster_config, central, workers):
         'ovn-central-1' if cluster_config.clustered_db else 'ovn-central'
     central_node = CentralNode(central, central_name, mgmt_net, mgmt_ip)
     worker_nodes = [
-        WorkerNode(workers[i % len(workers)], 'ovn-scale-{}'.format(i),
+        WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
                    mgmt_net, mgmt_ip + i + 1, internal_net.next(i),
                    external_net.next(i), gw_net.next(i), i)
         for i in range(cluster_config.n_workers)

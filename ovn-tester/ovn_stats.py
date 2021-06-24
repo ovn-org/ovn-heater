@@ -43,13 +43,13 @@ def report(test_name):
     fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
     headings = [
-        "Min (s)", "Median (s)", "90%%ile (s)", "Max (s)", "Mean (s)",
-        "Count", "Failed"
+        'Min (s)', 'Median (s)', '90%%ile (s)', 'Max (s)', 'Mean (s)',
+        'Count', 'Failed'
     ]
     for (f, i), measurements in timed_functions.items():
         for (d, r) in measurements:
             all_stats[f].append(d)
-            chart_stats[f].append(['Iteration {}'.format(i), f, d])
+            chart_stats[f].append([f'Iteration {i}', f, d])
             if r:
                 fail_stats[f].append(i)
 
@@ -70,8 +70,8 @@ def report(test_name):
     df = pd.DataFrame(all_avgs, index=all_f, columns=headings)
     stats_html = df.to_html()
 
-    with open("{}-report.html".format(test_name), "w") as report_file:
-        report_file.write("<html>")
+    with open(f'{test_name}-report.html', 'w') as report_file:
+        report_file.write('<html>')
         report_file.write(stats_html)
 
         for f, values in sorted(chart_stats.items()):
@@ -84,4 +84,4 @@ def report(test_name):
                                             default_width='50%',
                                             default_height='50%'))
 
-        report_file.write("</html>")
+        report_file.write('</html>')

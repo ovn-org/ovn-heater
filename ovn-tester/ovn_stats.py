@@ -82,7 +82,7 @@ def report(test_name):
                            title=f)
             report_file.write(chart.to_html(full_html=False,
                                             include_plotlyjs='cdn',
-                                            default_width='50%',
-                                            default_height='50%'))
+                                            default_width='90%',
+                                            default_height='90%'))
 
         report_file.write('</html>')

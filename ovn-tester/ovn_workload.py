@@ -19,6 +19,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'monitor_all',
                             'logical_dp_groups',
                             'clustered_db',
+                            'raft_election_to',
                             'node_net',
                             'node_remote',
                             'node_timeout_s',
@@ -64,6 +65,17 @@ class CentralNode(Node):
         print('***** starting central node *****')
         self.phys_node.run(self.build_cmd(cluster_cfg, 'start'))
         time.sleep(5)
+        self.set_raft_election_timeout(cluster_cfg.raft_election_to)
+
+    def set_raft_election_timeout(self, timeout_s):
+        for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
+            print(f'***** set RAFT election timeout to {timeout}ms *****')
+            self.run(cmd=f'ovs-appctl -t '
+                     f'/run/ovn/ovnnb_db.ctl cluster/change-election-timer '
+                     f'OVN_Northbound {timeout}')
+            self.run(cmd=f'ovs-appctl -t '
+                     f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
+                     f'OVN_Southbound {timeout}')
 
 
 class WorkerNode(Node):

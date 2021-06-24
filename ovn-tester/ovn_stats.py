@@ -43,8 +43,8 @@ def report(test_name):
     fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
     headings = [
-        'Min (s)', 'Median (s)', '90%%ile (s)', 'Max (s)', 'Mean (s)',
-        'Count', 'Failed'
+        'Min (s)', 'Median (s)', '90%ile (s)', 'Max (s)', 'Mean (s)',
+        'Total (s)', 'Count', 'Failed'
     ]
     for (f, i), measurements in timed_functions.items():
         for (d, r) in measurements:
@@ -63,6 +63,7 @@ def report(test_name):
                          numpy.percentile(measurements, 90),
                          numpy.max(measurements),
                          numpy.mean(measurements),
+                         numpy.sum(measurements),
                          len(measurements),
                          len(fail_stats[f])])
         all_f.append(f)

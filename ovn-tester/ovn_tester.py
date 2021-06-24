@@ -168,7 +168,7 @@ def create_nodes(cluster_config, central, workers):
     worker_nodes = [
         WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
                    mgmt_net, mgmt_ip + i + 1, internal_net.next(i),
-                   external_net.next(i), gw_net.next(i), i)
+                   external_net.next(i), gw_net, i)
         for i in range(cluster_config.n_workers)
     ]
     return central_node, worker_nodes
@@ -185,6 +185,7 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
     # create ovn topology
     with Context("base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
         ovn.create_cluster_router("lr-cluster")
+        ovn.create_cluster_join_switch("ls-join")
         ovn.create_cluster_load_balancer("lb-cluster")
         for i in ctx:
             worker = ovn.worker_nodes[i]

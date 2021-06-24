@@ -88,7 +88,6 @@ class WorkerNode(Node):
         self.gw_net = gw_net
         self.id = unique_id
         self.switch = None
-        self.join_switch = None
         self.gw_router = None
         self.ext_switch = None
         self.lports = []
@@ -159,33 +158,19 @@ class WorkerNode(Node):
             self.switch, ls_rp_name, self.rp
         )
 
-        # Create a join switch and connect it to the cluster router.
-        self.join_switch = cluster.nbctl.ls_add(f'join-{self.container}',
-                                                cidr=self.gw_net)
-        join_lrp_name = f'rtr-to-join-{self.container}'
-        join_ls_rp_name = f'join-to-rtr-{self.container}'
-        lrp_ip = netaddr.IPAddress(self.gw_net.last - 1)
-        self.join_rp = cluster.nbctl.lr_port_add(
-            cluster.router, join_lrp_name, RandMac(), lrp_ip,
-            self.gw_net.prefixlen
-        )
-        self.join_ls_rp = cluster.nbctl.ls_port_add(
-            self.join_switch, join_ls_rp_name, self.join_rp
-        )
-
-        # Create a gw router and connect it to the join switch.
+        # Create a gw router and connect it to the cluster join switch.
         self.gw_router = cluster.nbctl.lr_add(f'gwrouter-{self.container}')
         cluster.nbctl.run(f'set Logical_Router {self.gw_router.name} '
                           f'options:chassis={self.container}')
         join_grp_name = f'gw-to-join-{self.container}'
         join_ls_grp_name = f'join-to-gw-{self.container}'
-        gr_gw = netaddr.IPAddress(self.gw_net.last - 2)
+        gr_gw = netaddr.IPAddress(self.gw_net.last - 2 - self.id)
         self.gw_rp = cluster.nbctl.lr_port_add(
             self.gw_router, join_grp_name, RandMac(), gr_gw,
             self.gw_net.prefixlen
         )
         self.join_gw_rp = cluster.nbctl.ls_port_add(
-            self.join_switch, join_ls_grp_name, self.gw_rp
+            cluster.join_switch, join_ls_grp_name, self.gw_rp
         )
 
         # Create an external switch connecting the gateway router to the
@@ -419,6 +404,7 @@ class Cluster(object):
         self.net = cluster_cfg.cluster_net
         self.router = None
         self.load_balancer = None
+        self.join_switch = None
         self.last_selected_worker = 0
 
     def start(self):
@@ -439,6 +425,19 @@ class Cluster(object):
         self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl,
                                                 self.cluster_cfg.vips)
         self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+
+    def create_cluster_join_switch(self, sw_name):
+        self.join_switch = self.nbctl.ls_add(sw_name,
+                                             self.cluster_cfg.gw_net)
+
+        lrp_ip = netaddr.IPAddress(self.cluster_cfg.gw_net.last - 1)
+        self.join_rp = self.nbctl.lr_port_add(
+            self.router, 'rtr-to-join', RandMac(), lrp_ip,
+            self.cluster_cfg.gw_net.prefixlen
+        )
+        self.join_ls_rp = self.nbctl.ls_port_add(
+            self.join_switch, 'join-to-rtr', self.join_rp
+        )
 
     def select_worker_for_port(self):
         self.last_selected_worker += 1

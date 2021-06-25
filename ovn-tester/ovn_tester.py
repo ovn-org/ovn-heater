@@ -205,19 +205,25 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
 def run_test_density_light(ovn, cfg):
     with Context('density_light', cfg.n_pods) as ctx:
         ns = Namespace(ovn, 'ns_density_light')
-        for i in ctx:
+        for _ in ctx:
             ports = ovn.provision_ports(1)
             ns.add_port(ports[0])
             ovn.ping_ports(ports)
+    with Context('density_light_cleanup', brief_report=True) as ctx:
+        ns.unprovision()
 
 def run_test_density_heavy(ovn, cfg):
     with Context('density_heavy', cfg.n_pods / cfg.pods_vip_ratio) as ctx:
         ns = Namespace(ovn, 'ns_density_heavy')
-        for i in ctx:
+        for _ in ctx:
             ports = ovn.provision_ports(cfg.pods_vip_ratio)
             ns.add_ports(ports)
             ovn.provision_vips_to_load_balancers([ports[0]])
             ovn.ping_ports(ports)
+    with Context('density_heavy_cleanup', brief_report=True) as ctx:
+        ovn.unprovision_vips()
+        ns.unprovision()
+
 
 def run_test_netpol_multitenant(ovn, cfg):
     """
@@ -250,7 +256,8 @@ def run_test_netpol_multitenant(ovn, cfg):
         netaddr.IPAddress('43.43.43.1') + i for i in range(cfg.n_external_ips2)
     ]
 
-    with Context("netpol_multitenant", cfg.n_namespaces) as ctx:
+    all_ns = []
+    with Context('netpol_multitenant', cfg.n_namespaces) as ctx:
         for i in ctx:
             # Get the number of pods from the "highest" range that includes i.
             n_ports = next((r.n_pods for r in cfg.ranges if i >= r.start), 1)
@@ -263,6 +270,10 @@ def run_test_netpol_multitenant(ovn, cfg):
             ns.allow_from_external(external_ips1)
             ns.allow_from_external(external_ips2, include_ext_gw=True)
             ns.check_enforcing_external()
+            all_ns.append(ns)
+    with Context('netpol_multitenant_cleanup', brief_report=True) as ctx:
+        for ns in all_ns:
+            ns.unprovision()
 
 
 if __name__ == '__main__':

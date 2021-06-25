@@ -38,7 +38,7 @@ def add(fname, duration, failed):
     timed_functions[(fname, iteration)].append(elem)
 
 
-def report(test_name):
+def report(test_name, brief=False):
     all_stats = collections.defaultdict(list)
     fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
@@ -74,6 +74,10 @@ def report(test_name):
     with open(f'{test_name}-report.html', 'w') as report_file:
         report_file.write('<html>')
         report_file.write(stats_html)
+
+        if brief:
+            report_file.write('</html>')
+            return
 
         for f, values in sorted(chart_stats.items()):
             df = pd.DataFrame(values,

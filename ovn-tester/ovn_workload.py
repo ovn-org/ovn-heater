@@ -237,6 +237,12 @@ class WorkerNode(Node):
         return lport
 
     @ovn_stats.timeit
+    def unprovision_port(self, cluster, port):
+        cluster.nbctl.ls_port_del(port)
+        self.unbind_port(port)
+        self.lports.remove(port)
+
+    @ovn_stats.timeit
     def provision_load_balancers(self, cluster, ports):
         # Add one port IP as a backend to the cluster load balancer.
         port_ips = (str(port.ip) for port in ports if port.ip is not None)
@@ -258,6 +264,12 @@ class WorkerNode(Node):
         vsctl = ovn_utils.OvsVsctl(self)
         vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
         vsctl.bind_vm_port(port)
+
+    @ovn_stats.timeit
+    def unbind_port(self, port):
+        vsctl = ovn_utils.OvsVsctl(self)
+        vsctl.unbind_vm_port(port)
+        vsctl.del_port(port)
 
     def provision_ports(self, cluster, n_ports):
         ports = [self.provision_port(cluster) for i in range(n_ports)]
@@ -306,7 +318,7 @@ class Namespace(object):
     def __init__(self, cluster, name):
         self.cluster = cluster
         self.nbctl = cluster.nbctl
-        self.lports = []
+        self.ports = []
         self.pg_def_deny_igr = \
             self.nbctl.port_group_create(f'pg_deny_igr_{name}')
         self.pg_def_deny_egr = \
@@ -340,7 +352,7 @@ class Namespace(object):
 
     @ovn_stats.timeit
     def add_port(self, port):
-        self.lports.append(port)
+        self.ports.append(port)
         self.nbctl.port_group_add(self.pg_def_deny_igr, port)
         self.nbctl.port_group_add(self.pg_def_deny_egr, port)
         self.nbctl.port_group_add(self.pg, port)
@@ -350,6 +362,15 @@ class Namespace(object):
     def add_ports(self, ports):
         for p in ports:
             self.add_port(p)
+
+    def unprovision(self):
+        self.cluster.unprovision_ports(self.ports)
+        self.nbctl.port_group_del(self.pg_def_deny_igr)
+        self.nbctl.port_group_del(self.pg_def_deny_egr)
+        self.nbctl.port_group_del(self.pg)
+        self.nbctl.address_set_del(self.addr_set)
+        # ACLs are garbage collected by OVSDB as soon as all the records
+        # referencing them are removed.
 
     @ovn_stats.timeit
     def allow_within_namespace(self):
@@ -371,8 +392,8 @@ class Namespace(object):
         # If requested, include the ext-gw of the first port in the namespace
         # so we can check that this rule is enforced.
         if include_ext_gw:
-            assert(len(self.lports) > 0)
-            external_ips.append(self.lports[0].ext_gw)
+            assert(len(self.ports) > 0)
+            external_ips.append(self.ports[0].ext_gw)
         ips = [str(ip) for ip in external_ips]
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
@@ -383,16 +404,16 @@ class Namespace(object):
     @ovn_stats.timeit
     def check_enforcing_internal(self):
         # "Random" check that first pod can reach last pod in the namespace.
-        if len(self.lports) > 1:
-            src = self.lports[0]
-            dst = self.lports[-1]
+        if len(self.ports) > 1:
+            src = self.ports[0]
+            dst = self.ports[-1]
             worker = src.metadata
             worker.ping_port(self.cluster, src, dst.ip)
 
     @ovn_stats.timeit
     def check_enforcing_external(self):
-        if len(self.lports) > 0:
-            dst = self.lports[0]
+        if len(self.ports) > 0:
+            dst = self.ports[0]
             worker = dst.metadata
             worker.ping_external(self.cluster, dst)
 
@@ -450,6 +471,11 @@ class Cluster(object):
             for _ in range(n_ports)
         ]
 
+    def unprovision_ports(self, ports):
+        for port in ports:
+            worker = port.metadata
+            worker.unprovision_port(self, port)
+
     def ping_ports(self, ports):
         ports_per_worker = defaultdict(list)
         for p in ports:
@@ -463,6 +489,10 @@ class Cluster(object):
         vip_ips = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
         vips = { str(vip_ips) : [ str(p.ip) for p in ports ] }
         self.load_balancer.add_vips(vips)
+
+    def unprovision_vips(self):
+        self.load_balancer.clear_vips()
+        self.load_balancer.add_vips(self.cluster_cfg.static_vips)
 
     def select_worker_for_port(self):
         self.last_selected_worker += 1

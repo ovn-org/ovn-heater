@@ -45,6 +45,14 @@ class OvnLoadBalancer(object):
         for lb in self.lbs:
             self.nbctl.lb_set_vips(lb.uuid, self.vips)
 
+    def clear_vips(self):
+        '''
+        Clear all VIPs from the load balancer.
+        '''
+        self.vips.clear()
+        for lb in self.lbs:
+            self.nbctl.lb_clear_vips(lb.uuid)
+
     def add_backends_to_vip(self, backends, vips=None):
         '''
         Add backends to existing load balancer VIPs.

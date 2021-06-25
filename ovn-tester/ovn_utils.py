@@ -31,6 +31,9 @@ class OvsVsctl:
                 f' -- set Interface {name} admin_state=up'
         self.run(cmd=cmd)
 
+    def del_port(self, port):
+        self.run(f'del-port {port.name}')
+
     def bind_vm_port(self, lport):
         self.run(f'ethtool -K {lport.name} tx off &> /dev/null', prefix="")
         self.run(f'ip netns add {lport.name}', prefix="")
@@ -46,6 +49,9 @@ class OvsVsctl:
         self.run(f'ip netns exec {lport.name} '
                  f'ip route add default via {lport.gw}',
                  prefix="")
+
+    def unbind_vm_port(self, lport):
+        self.run(f'ip netns del {lport.name}', prefix='')
 
 
 class OvnNbctl:
@@ -105,6 +111,9 @@ class OvnNbctl:
         return LSPort(name=name, mac=mac, ip=ip, plen=plen,
                       gw=gw, ext_gw=ext_gw, metadata=metadata, uuid=uuid)
 
+    def ls_port_del(self, port):
+        self.run(cmd=f'lsp-del {port.name}')
+
     def ls_port_set_set_options(self, port, options):
         self.run(cmd=f'lsp-set-options {port.name} {options}')
 
@@ -115,16 +124,26 @@ class OvnNbctl:
         self.run(cmd=f'create port_group name={name}')
         return PortGroup(name=name)
 
+    def port_group_add(self, pg, lport):
+        self.run(cmd=f'add port_group {pg.name} ports {lport.uuid}')
+
+    def port_group_del(self, pg):
+        self.run(cmd=f'destroy port_group {pg.name}')
+
     def address_set_create(self, name):
         self.run(cmd=f'create address_set name={name}')
         return AddressSet(name=name)
 
-    def port_group_add(self, pg, lport):
-        self.run(cmd=f'add port_group {pg.name} ports {lport.uuid}')
-
     def address_set_add(self, addr_set, addrs):
         cmd = f'add Address_Set {addr_set.name} addresses \"{addrs}\"'
         self.run(cmd=cmd)
+
+    def address_set_remove(self, addr_set, addr):
+        cmd = f'remove Address_Set {addr_set.name} addresses \"{addr}\"'
+        self.run(cmd=cmd)
+
+    def address_set_del(self, addr_set):
+        self.run(cmd=f'destroy Address_Set {addr_set.name}')
 
     def acl_add(self, name="", direction="from-lport", priority=100,
                 entity="switch", match="", verdict="allow"):
@@ -157,6 +176,9 @@ class OvnNbctl:
             vip_str += f'vips:\\"{vip}\\"=\\"{",".join(backends)}\\" '
         cmd = f"set Load_Balancer {lb_uuid} {vip_str}"
         self.run(cmd=cmd)
+
+    def lb_clear_vips(self, lb_uuid):
+        self.run(cmd=f'clear Load_Balancer {lb_uuid} vips')
 
     def lb_add_to_router(self, lb_uuid, router):
         cmd = f"lr-lb-add {router} {lb_uuid}"

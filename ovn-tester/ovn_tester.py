@@ -49,7 +49,7 @@ ClusterBringupCfg = namedtuple('ClusterBringupCfg',
 
 DensityCfg = namedtuple('DensityCfg',
                         ['n_pods',
-                         'lb'])
+                         'pods_vip_ratio'])
 
 NsRange = namedtuple('NsRange',
                      ['start', 'n_pods'])
@@ -120,6 +120,7 @@ def read_config(configuration):
             ),
             n_workers=cluster_args.get('n_workers', 2),
             vips=cluster_args.get('vips', calculate_default_vips()),
+            vip_subnet=DEFAULT_VIP_SUBNET,
             static_vips=cluster_args.get('static_vips',
                                          calculate_default_static_vips())
         )
@@ -135,7 +136,13 @@ def read_config(configuration):
         density_light_args = config.get('density_light', dict())
         density_light_cfg = DensityCfg(
             n_pods=density_light_args.get('n_pods', 2),
-            lb=density_light_args.get('lb', False)
+            pods_vip_ratio=0
+        )
+
+        density_heavy_args = config.get('density_heavy', dict())
+        density_heavy_cfg = DensityCfg(
+            n_pods=density_heavy_args.get('n_pods', 2),
+            pods_vip_ratio=density_heavy_args.get('pods_vip_ratio', 1)
         )
 
         netpol_multitenant_args = config.get('netpol_multitenant', dict())
@@ -153,7 +160,7 @@ def read_config(configuration):
             ranges=ranges
         )
         return log_cmds, cluster_cfg, brex_cfg, bringup_cfg, \
-            density_light_cfg, netpol_multitenant_cfg
+            density_light_cfg, density_heavy_cfg, netpol_multitenant_cfg
 
 
 def create_nodes(cluster_config, central, workers):
@@ -195,15 +202,22 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
             worker.provision_load_balancers(ovn, ports)
             worker.ping_ports(ovn, ports)
 
-def run_test_density(ovn, cfg):
-    context_name = "density_heavy" if cfg.lb else "density_light"
-    ns = Namespace(ovn, f'ns_{context_name}')
-    with Context(context_name, cfg.n_pods) as ctx:
+def run_test_density_light(ovn, cfg):
+    with Context('density_light', cfg.n_pods) as ctx:
+        ns = Namespace(ovn, 'ns_density_light')
         for i in ctx:
-            worker = ovn.select_worker_for_port()
-            ports = worker.provision_ports(ovn, 1)
+            ports = ovn.provision_ports(1)
             ns.add_port(ports[0])
-            worker.ping_ports(ovn, ports)
+            ovn.ping_ports(ports)
+
+def run_test_density_heavy(ovn, cfg):
+    with Context('density_heavy', cfg.n_pods / cfg.pods_vip_ratio) as ctx:
+        ns = Namespace(ovn, 'ns_density_heavy')
+        for i in ctx:
+            ports = ovn.provision_ports(cfg.pods_vip_ratio)
+            ns.add_ports(ports)
+            ovn.provision_vips_to_load_balancers([ports[0]])
+            ovn.ping_ports(ports)
 
 def run_test_netpol_multitenant(ovn, cfg):
     """
@@ -257,13 +271,14 @@ if __name__ == '__main__':
         sys.exit(1)
 
     log_cmds, cluster_cfg, brex_cfg, bringup_cfg, density_light_cfg, \
-        ns_multitenant_cfg = read_config(sys.argv[2])
+        density_heavy_cfg, ns_multitenant_cfg = read_config(sys.argv[2])
 
     central, workers = read_physical_deployment(sys.argv[1], log_cmds)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
 
     ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
     run_base_cluster_bringup(ovn, bringup_cfg)
-    run_test_density(ovn, density_light_cfg)
+    run_test_density_light(ovn, density_light_cfg)
+    run_test_density_heavy(ovn, density_heavy_cfg)
     run_test_netpol_multitenant(ovn, ns_multitenant_cfg)
     sys.exit(0)

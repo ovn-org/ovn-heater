@@ -21,7 +21,7 @@ DEFAULT_N_VIPS = 2
 def calculate_default_vips():
     vip_gen = DEFAULT_VIP_SUBNET.iter_hosts()
     vip_range = range(0, DEFAULT_N_VIPS)
-    return {str(next(vip_gen)):None for _ in vip_range}
+    return {str(next(vip_gen)): None for _ in vip_range}
 
 
 DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
@@ -41,7 +41,7 @@ def calculate_default_static_vips():
     # then this will need to be updated
     backend_list = [str(next(backend_gen)) for _ in backend_range]
 
-    return {str(next(vip_gen)):backend_list for _ in vip_range}
+    return {str(next(vip_gen)): backend_list for _ in vip_range}
 
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg',
@@ -202,6 +202,7 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
             worker.provision_load_balancers(ovn, ports)
             worker.ping_ports(ovn, ports)
 
+
 def run_test_density_light(ovn, cfg):
     with Context('density_light', cfg.n_pods) as ctx:
         ns = Namespace(ovn, 'ns_density_light')
@@ -211,6 +212,7 @@ def run_test_density_light(ovn, cfg):
             ovn.ping_ports(ports)
     with Context('density_light_cleanup', brief_report=True) as ctx:
         ns.unprovision()
+
 
 def run_test_density_heavy(ovn, cfg):
     with Context('density_heavy', cfg.n_pods / cfg.pods_vip_ratio) as ctx:

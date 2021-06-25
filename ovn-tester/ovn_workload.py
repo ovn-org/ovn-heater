@@ -31,7 +31,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'n_workers',
                             'vips',
                             'vip_subnet',
-                            'static_vips',])
+                            'static_vips'])
 
 
 BrExConfig = namedtuple('BrExConfig', ['physical_net'])
@@ -487,7 +487,7 @@ class Cluster(object):
     def provision_vips_to_load_balancers(self, ports):
         n_vips = len(self.load_balancer.vips.keys())
         vip_ips = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
-        vips = { str(vip_ips) : [ str(p.ip) for p in ports ] }
+        vips = {str(vip_ips): [str(p.ip) for p in ports]}
         self.load_balancer.add_vips(vips)
 
     def unprovision_vips(self):

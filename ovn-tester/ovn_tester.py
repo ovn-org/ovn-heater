@@ -267,6 +267,7 @@ def run_test_netpol_multitenant(ovn, cfg):
             for _ in range(n_ports):
                 for p in ovn.select_worker_for_port().provision_ports(ovn, 1):
                     ns.add_port(p)
+            ns.default_deny()
             ns.allow_within_namespace()
             ns.check_enforcing_internal()
             ns.allow_from_external(external_ips1)

@@ -326,7 +326,30 @@ class Namespace(object):
         self.pg = self.nbctl.port_group_create(f'pg_{name}')
         self.addr_set = self.nbctl.address_set_create(f'as_{name}')
 
-        # Default policies.
+    @ovn_stats.timeit
+    def add_port(self, port):
+        self.ports.append(port)
+        self.nbctl.port_group_add(self.pg_def_deny_igr, port)
+        self.nbctl.port_group_add(self.pg_def_deny_egr, port)
+        self.nbctl.port_group_add(self.pg, port)
+        if port.ip:
+            self.nbctl.address_set_add(self.addr_set, port.ip)
+
+    def add_ports(self, ports):
+        for p in ports:
+            self.add_port(p)
+
+    def unprovision(self):
+        self.cluster.unprovision_ports(self.ports)
+        self.nbctl.port_group_del(self.pg_def_deny_igr)
+        self.nbctl.port_group_del(self.pg_def_deny_egr)
+        self.nbctl.port_group_del(self.pg)
+        self.nbctl.address_set_del(self.addr_set)
+        # ACLs are garbage collected by OVSDB as soon as all the records
+        # referencing them are removed.
+
+    @ovn_stats.timeit
+    def default_deny(self):
         self.nbctl.acl_add(
             self.pg_def_deny_igr.name,
             'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
@@ -349,28 +372,6 @@ class Namespace(object):
             'to-lport', ACL_DEFAULT_ALLOW_ARP_PRIO, 'port-group',
             f'inport == @{self.pg_def_deny_egr.name} && arp',
             'allow')
-
-    @ovn_stats.timeit
-    def add_port(self, port):
-        self.ports.append(port)
-        self.nbctl.port_group_add(self.pg_def_deny_igr, port)
-        self.nbctl.port_group_add(self.pg_def_deny_egr, port)
-        self.nbctl.port_group_add(self.pg, port)
-        if port.ip:
-            self.nbctl.address_set_add(self.addr_set, port.ip)
-
-    def add_ports(self, ports):
-        for p in ports:
-            self.add_port(p)
-
-    def unprovision(self):
-        self.cluster.unprovision_ports(self.ports)
-        self.nbctl.port_group_del(self.pg_def_deny_igr)
-        self.nbctl.port_group_del(self.pg_def_deny_egr)
-        self.nbctl.port_group_del(self.pg)
-        self.nbctl.address_set_del(self.addr_set)
-        # ACLs are garbage collected by OVSDB as soon as all the records
-        # referencing them are removed.
 
     @ovn_stats.timeit
     def allow_within_namespace(self):

@@ -202,23 +202,12 @@ class OvnNbctl:
     def sync(self, wait="hv"):
         self.run(f'--wait={wait} sync')
 
-    def start_daemon(self):
-        cmd = "--detach --pidfile --log-file --no-leader-only"
-        # FIXME: this needs rework!
-        # if "remote" in nbctld_config:
-        #     ovn_remote = nbctld_config["remote"]
-        #     prot = nbctld_config["prot"]
-        #     central_ips = [ip.strip() for ip in ovn_remote.split('-')]
-        #     # If there is only one ip, then we can use unixctl socket.
-        #     if len(central_ips) > 1:
-        #         remote = ",".join(["{}:{}:6641".format(prot, r)
-        #                           for r in central_ips])
-        #         cmd += "--db=" + remote
-        #         if prot == "ssl":
-        #             cmd += "-p {} -c {} -C {}".format(
-        #                 nbctld_config["privkey"], nbctld_config["cert"],
-        #                 nbctld_config["cacert"])
-
+    def start_daemon(self, nb_cluster_ips):
+        remote = ','.join([f'ssl:{ip}:6641' for ip in nb_cluster_ips])
+        # FIXME: hardcoded args, are these really an issue?
+        cmd = f'--detach --pidfile --log-file --db={remote} ' \
+            f'-p /opt/ovn/ovn-privkey.pem -c /opt/ovn/ovn-cert.pem ' \
+            f'-C /opt/ovn/pki/switchca/cacert.pem'
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
         self.socket = stdout.getvalue().rstrip()

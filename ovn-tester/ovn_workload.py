@@ -439,7 +439,14 @@ class Cluster(object):
         for w in self.worker_nodes:
             w.start(self.cluster_cfg)
             w.configure(self.brex_cfg.physical_net)
-        self.nbctl.start_daemon()
+
+        if self.cluster_cfg.clustered_db:
+            nb_cluster_ips = [str(self.central_node.mgmt_ip),
+                              str(self.central_node.mgmt_ip + 1),
+                              str(self.central_node.mgmt_ip + 2)]
+        else:
+            nb_cluster_ips = [str(self.central_node.mgmt_ip)]
+        self.nbctl.start_daemon(nb_cluster_ips)
         self.nbctl.set_global(
             'use_logical_dp_groups',
             self.cluster_cfg.logical_dp_groups

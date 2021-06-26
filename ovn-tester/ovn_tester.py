@@ -135,13 +135,13 @@ def read_config(configuration):
 
         density_light_args = config.get('density_light', dict())
         density_light_cfg = DensityCfg(
-            n_pods=density_light_args.get('n_pods', 2),
+            n_pods=density_light_args.get('n_pods', 0),
             pods_vip_ratio=0
         )
 
         density_heavy_args = config.get('density_heavy', dict())
         density_heavy_cfg = DensityCfg(
-            n_pods=density_heavy_args.get('n_pods', 2),
+            n_pods=density_heavy_args.get('n_pods', 0),
             pods_vip_ratio=density_heavy_args.get('pods_vip_ratio', 1)
         )
 
@@ -215,6 +215,9 @@ def run_test_density_light(ovn, cfg):
 
 
 def run_test_density_heavy(ovn, cfg):
+    if cfg.pods_vip_ratio == 0:
+        return
+
     with Context('density_heavy', cfg.n_pods / cfg.pods_vip_ratio) as ctx:
         ns = Namespace(ovn, 'ns_density_heavy')
         for _ in ctx:

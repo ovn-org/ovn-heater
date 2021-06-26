@@ -4,17 +4,10 @@ global:
 cluster:
   clustered_db: true
   monitor_all: true
-  n_workers: 120
+  n_workers: 20
 
 base_cluster_bringup:
   n_pods_per_node: 10
-
-density_light:
-  n_pods: 31250
-
-density_heavy:
-  n_pods: 31250
-  pods_vip_ratio: 2
 
 netpol_multitenant:
   n_namespaces: 500

@@ -43,6 +43,7 @@ def calculate_default_static_vips():
 
     return {str(next(vip_gen)): backend_list for _ in vip_range}
 
+GlobalCfg = namedtuple('GlobalCfg', ['log_cmds', 'cleanup'])
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg',
                                ['n_pods_per_node'])
@@ -68,15 +69,15 @@ where TEST_CONF is the YAML file defining the test parameters.
 ''', file=sys.stderr)
 
 
-def read_physical_deployment(deployment, log_cmds):
+def read_physical_deployment(deployment, global_cfg):
     with open(deployment, 'r') as yaml_file:
         dep = yaml.safe_load(yaml_file)
 
         central_dep = dep['central-node']
         central_node = PhysicalNode(
-            central_dep.get('name', 'localhost'), log_cmds)
+            central_dep.get('name', 'localhost'), global_cfg.log_cmds)
         worker_nodes = [
-            PhysicalNode(worker, log_cmds)
+            PhysicalNode(worker, global_cfg.log_cmds)
             for worker in dep['worker-nodes']
         ]
         return central_node, worker_nodes
@@ -86,7 +87,10 @@ def read_config(configuration):
     with open(configuration, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
         global_args = config.get('global', dict())
-        log_cmds = global_args.get('log_cmds', False)
+        global_cfg = GlobalCfg(
+            log_cmds=global_args.get('log_cmds', False),
+            cleanup=global_args.get('cleanup', False)
+        )
 
         cluster_args = config.get('cluster', dict())
         cluster_cfg = ClusterConfig(
@@ -159,7 +163,7 @@ def read_config(configuration):
             n_external_ips2=netpol_multitenant_args.get('n_external_ips2', 20),
             ranges=ranges
         )
-        return log_cmds, cluster_cfg, brex_cfg, bringup_cfg, \
+        return global_cfg, cluster_cfg, brex_cfg, bringup_cfg, \
             density_light_cfg, density_heavy_cfg, netpol_multitenant_cfg
 
 
@@ -203,18 +207,21 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
             worker.ping_ports(ovn, ports)
 
 
-def run_test_density_light(ovn, cfg):
+def run_test_density_light(ovn, global_cfg, cfg):
     with Context('density_light', cfg.n_pods) as ctx:
         ns = Namespace(ovn, 'ns_density_light')
         for _ in ctx:
             ports = ovn.provision_ports(1)
             ns.add_port(ports[0])
             ovn.ping_ports(ports)
+
+    if not global_cfg.cleanup:
+        return
     with Context('density_light_cleanup', brief_report=True) as ctx:
         ns.unprovision()
 
 
-def run_test_density_heavy(ovn, cfg):
+def run_test_density_heavy(ovn, global_cfg, cfg):
     if cfg.pods_vip_ratio == 0:
         return
 
@@ -225,12 +232,15 @@ def run_test_density_heavy(ovn, cfg):
             ns.add_ports(ports)
             ovn.provision_vips_to_load_balancers([ports[0]])
             ovn.ping_ports(ports)
+
+    if not global_cfg.cleanup:
+        return
     with Context('density_heavy_cleanup', brief_report=True) as ctx:
         ovn.unprovision_vips()
         ns.unprovision()
 
 
-def run_test_netpol_multitenant(ovn, cfg):
+def run_test_netpol_multitenant(ovn, global_cfg, cfg):
     """
     Run a multitenant network policy test, for example:
 
@@ -277,6 +287,9 @@ def run_test_netpol_multitenant(ovn, cfg):
             ns.allow_from_external(external_ips2, include_ext_gw=True)
             ns.check_enforcing_external()
             all_ns.append(ns)
+
+    if not global_cfg.cleanup:
+        return
     with Context('netpol_multitenant_cleanup', brief_report=True) as ctx:
         for ns in all_ns:
             ns.unprovision()
@@ -287,15 +300,15 @@ if __name__ == '__main__':
         usage(sys.argv[0])
         sys.exit(1)
 
-    log_cmds, cluster_cfg, brex_cfg, bringup_cfg, density_light_cfg, \
+    global_cfg, cluster_cfg, brex_cfg, bringup_cfg, density_light_cfg, \
         density_heavy_cfg, ns_multitenant_cfg = read_config(sys.argv[2])
 
-    central, workers = read_physical_deployment(sys.argv[1], log_cmds)
+    central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
 
     ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
     run_base_cluster_bringup(ovn, bringup_cfg)
-    run_test_density_light(ovn, density_light_cfg)
-    run_test_density_heavy(ovn, density_heavy_cfg)
-    run_test_netpol_multitenant(ovn, ns_multitenant_cfg)
+    run_test_density_light(ovn, global_cfg, density_light_cfg)
+    run_test_density_heavy(ovn, global_cfg, density_heavy_cfg)
+    run_test_netpol_multitenant(ovn, global_cfg, ns_multitenant_cfg)
     sys.exit(0)

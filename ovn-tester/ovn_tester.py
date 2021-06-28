@@ -60,6 +60,8 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
                                'n_external_ips1',
                                'n_external_ips2'])
 
+ClusterDensityCfg = namedtuple('ClusterDensityCfg',
+                               ['n_runs'])
 
 def usage(name):
     print(f'''
@@ -163,8 +165,13 @@ def read_config(configuration):
             n_external_ips2=netpol_multitenant_args.get('n_external_ips2', 20),
             ranges=ranges
         )
+        cluster_density_args = config.get('cluster_density', dict())
+        cluster_density_cfg = ClusterDensityCfg(
+            n_runs=cluster_density_args.get('n_runs', 0)
+        )
         return global_cfg, cluster_cfg, brex_cfg, bringup_cfg, \
-            density_light_cfg, density_heavy_cfg, netpol_multitenant_cfg
+            density_light_cfg, density_heavy_cfg, netpol_multitenant_cfg, \
+            cluster_density_cfg
 
 
 def create_nodes(cluster_config, central, workers):
@@ -297,6 +304,31 @@ def run_test_netpol_multitenant(ovn, global_cfg, cfg):
         for ns in all_ns:
             ns.unprovision()
 
+def run_test_cluster_density(ovn, cfg):
+    all_ns = []
+    with Context('cluster_density', cfg.n_runs) as ctx:
+        for i in ctx:
+            ns = Namespace(ovn, f'NS_{i}')
+            all_ns.append(ns)
+            # create 6 short lived "build" pods
+            build_ports = ovn.provision_ports(6)
+            ns.add_ports(build_ports)
+            ovn.ping_ports(build_ports)
+            # create 4 legacy pods
+            ports = ovn.provision_ports(4)
+            ns.add_ports(ports)
+            # add VIPs and backends to cluster load-balancer
+            ovn.provision_vips_to_load_balancers([ports[0], ports[1]])
+            ovn.provision_vips_to_load_balancers([ports[2]])
+            ovn.provision_vips_to_load_balancers([ports[3]])
+            ovn.ping_ports(ports)
+            ovn.unprovision_ports(build_ports)
+
+    if not global_cfg.cleanup:
+        return
+    with Context('cluster_density_cleanup', brief_report=True) as ctx:
+        for ns in all_ns:
+            ns.unprovision()
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
@@ -304,7 +336,8 @@ if __name__ == '__main__':
         sys.exit(1)
 
     global_cfg, cluster_cfg, brex_cfg, bringup_cfg, density_light_cfg, \
-        density_heavy_cfg, ns_multitenant_cfg = read_config(sys.argv[2])
+        density_heavy_cfg, ns_multitenant_cfg, \
+        cluster_density_cfg = read_config(sys.argv[2])
 
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
@@ -314,4 +347,5 @@ if __name__ == '__main__':
     run_test_density_light(ovn, global_cfg, density_light_cfg)
     run_test_density_heavy(ovn, global_cfg, density_heavy_cfg)
     run_test_netpol_multitenant(ovn, global_cfg, ns_multitenant_cfg)
+    run_test_cluster_density(ovn, cluster_density_cfg)
     sys.exit(0)

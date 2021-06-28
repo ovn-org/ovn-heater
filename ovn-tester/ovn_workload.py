@@ -59,15 +59,17 @@ class Node(ovn_sandbox.Sandbox):
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, container, mgmt_net, mgmt_ip):
-        super(CentralNode, self).__init__(phys_node, container,
+    def __init__(self, phys_node, db_containers, mgmt_net, mgmt_ip):
+        super(CentralNode, self).__init__(phys_node, db_containers[0],
                                           mgmt_net, mgmt_ip)
+        self.db_containers = db_containers
 
     def start(self, cluster_cfg):
         print('***** starting central node *****')
         self.phys_node.run(self.build_cmd(cluster_cfg, 'start'))
         time.sleep(5)
         self.set_raft_election_timeout(cluster_cfg.raft_election_to)
+        self.enable_trim_on_compaction()
 
     def set_raft_election_timeout(self, timeout_s):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
@@ -78,6 +80,16 @@ class CentralNode(Node):
             self.run(cmd=f'ovs-appctl -t '
                      f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
                      f'OVN_Southbound {timeout}')
+
+    def enable_trim_on_compaction(self):
+        print(f'***** set DB trim-on-compaction *****')
+        for db_container in self.db_containers:
+            self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
+                               f'/run/ovn/ovnnb_db.ctl '
+                               f'ovsdb-server/memory-trim-on-compaction on')
+            self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
+                               f'/run/ovn/ovnsb_db.ctl '
+                               f'ovsdb-server/memory-trim-on-compaction on')
 
 
 class WorkerNode(Node):

@@ -173,9 +173,12 @@ def create_nodes(cluster_config, central, workers):
     internal_net = cluster_config.internal_net
     external_net = cluster_config.external_net
     gw_net = cluster_config.gw_net
-    central_name = \
-        'ovn-central-1' if cluster_config.clustered_db else 'ovn-central'
-    central_node = CentralNode(central, central_name, mgmt_net, mgmt_ip)
+    db_containers = [
+        'ovn-central-1', 'ovn-central-2', 'ovn-central-3'
+    ] if cluster_config.clustered_db else [
+        'ovn-central'
+    ]
+    central_node = CentralNode(central, db_containers, mgmt_net, mgmt_ip)
     worker_nodes = [
         WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
                    mgmt_net, mgmt_ip + i + 1, internal_net.next(i),

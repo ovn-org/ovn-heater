@@ -41,13 +41,15 @@ class OvnLoadBalancer(object):
         backend IP address strings. It's perfectly acceptable for the VIP to
         have no backends.
         '''
+        updated_vips = {}
         for vip, backends in vips.items():
             cur_backends = self.vips.setdefault(vip, [])
             if backends:
                 cur_backends.extend(backends)
+            updated_vips[vip] = cur_backends
 
         for lb in self.lbs:
-            self.nbctl.lb_set_vips(lb.uuid, self.vips)
+            self.nbctl.lb_set_vips(lb.uuid, updated_vips)
 
     def clear_vips(self):
         '''

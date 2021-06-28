@@ -84,6 +84,9 @@ def report(test_name, brief=False):
                               columns=['Iteration', 'Counter', 'Value (s)'])
             chart = px.bar(df, x='Iteration', y='Value (s)', color='Counter',
                            title=f)
+            chart.update_traces(marker_color='#005cb8', opacity=1.0,
+                                marker_line_width=1.5,
+                                marker_line_color='#005cb8')
             report_file.write(chart.to_html(full_html=False,
                                             include_plotlyjs='cdn',
                                             default_width='90%',

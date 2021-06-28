@@ -105,6 +105,7 @@ class WorkerNode(Node):
         self.gw_router = None
         self.ext_switch = None
         self.lports = []
+        self.next_lport_index = 0
 
     def start(self, cluster_cfg):
         print(f'***** starting worker {self.container} *****')
@@ -234,9 +235,9 @@ class WorkerNode(Node):
                               logical_ip=cluster.net)
 
     @ovn_stats.timeit
-    def provision_port(self, cluster):
-        name = f'lp-{self.id}-{len(self.lports)}'
-        ip = netaddr.IPAddress(self.int_net.first + len(self.lports) + 1)
+    def provision_port(self, cluster, passive=False):
+        name = f'lp-{self.id}-{self.next_lport_index}'
+        ip = netaddr.IPAddress(self.int_net.first + self.next_lport_index + 1)
         plen = self.int_net.prefixlen
         gw = netaddr.IPAddress(self.int_net.last - 1)
         ext_gw = netaddr.IPAddress(self.ext_net.last - 2)
@@ -244,8 +245,10 @@ class WorkerNode(Node):
         print(f'***** creating lport {name} *****')
         lport = cluster.nbctl.ls_port_add(self.switch, name,
                                           mac=str(RandMac()), ip=ip, plen=plen,
-                                          gw=gw, ext_gw=ext_gw, metadata=self)
+                                          gw=gw, ext_gw=ext_gw, metadata=self,
+                                          passive=passive)
         self.lports.append(lport)
+        self.next_lport_index += 1
         return lport
 
     @ovn_stats.timeit
@@ -275,16 +278,20 @@ class WorkerNode(Node):
     def bind_port(self, port):
         vsctl = ovn_utils.OvsVsctl(self)
         vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
-        vsctl.bind_vm_port(port)
+        # Skip creating a netns for "passive" ports, we won't be sending
+        # traffic on those.
+        if not port.passive:
+            vsctl.bind_vm_port(port)
 
     @ovn_stats.timeit
     def unbind_port(self, port):
         vsctl = ovn_utils.OvsVsctl(self)
-        vsctl.unbind_vm_port(port)
+        if not port.passive:
+            vsctl.unbind_vm_port(port)
         vsctl.del_port(port)
 
-    def provision_ports(self, cluster, n_ports):
-        ports = [self.provision_port(cluster) for i in range(n_ports)]
+    def provision_ports(self, cluster, n_ports, passive=False):
+        ports = [self.provision_port(cluster, passive) for i in range(n_ports)]
         for port in ports:
             self.bind_port(port)
         return ports
@@ -339,17 +346,13 @@ class Namespace(object):
         self.addr_set = self.nbctl.address_set_create(f'as_{name}')
 
     @ovn_stats.timeit
-    def add_port(self, port):
-        self.ports.append(port)
-        self.nbctl.port_group_add(self.pg_def_deny_igr, port)
-        self.nbctl.port_group_add(self.pg_def_deny_egr, port)
-        self.nbctl.port_group_add(self.pg, port)
-        if port.ip:
-            self.nbctl.address_set_add(self.addr_set, port.ip)
-
     def add_ports(self, ports):
-        for p in ports:
-            self.add_port(p)
+        self.ports.extend(ports)
+        self.nbctl.port_group_add_ports(self.pg_def_deny_igr, ports)
+        self.nbctl.port_group_add_ports(self.pg_def_deny_egr, ports)
+        self.nbctl.port_group_add_ports(self.pg, ports)
+        self.nbctl.address_set_add_addrs(self.addr_set,
+                                         [str(p.ip) for p in ports])
 
     def unprovision(self):
         self.cluster.unprovision_ports(self.ports)
@@ -485,9 +488,9 @@ class Cluster(object):
             self.join_switch, 'join-to-rtr', self.join_rp
         )
 
-    def provision_ports(self, n_ports):
+    def provision_ports(self, n_ports, passive=False):
         return [
-            self.select_worker_for_port().provision_ports(self, 1)[0]
+            self.select_worker_for_port().provision_ports(self, 1, passive)[0]
             for _ in range(n_ports)
         ]
 
@@ -504,10 +507,14 @@ class Cluster(object):
             w.ping_ports(self, ports)
 
     @ovn_stats.timeit
-    def provision_vips_to_load_balancers(self, ports):
+    def provision_vips_to_load_balancers(self, backend_lists):
         n_vips = len(self.load_balancer.vips.keys())
-        vip_ips = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
-        vips = {str(vip_ips): [str(p.ip) for p in ports]}
+        vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
+
+        vips = {
+            str(vip_ip + i): [str(p.ip) for p in ports]
+            for i, ports in enumerate(backend_lists)
+        }
         self.load_balancer.add_vips(vips)
 
     def unprovision_vips(self):

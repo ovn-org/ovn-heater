@@ -1,6 +1,7 @@
 import ovn_utils
 
-VALID_PROTOCOLS=['tcp', 'udp', 'sctp']
+VALID_PROTOCOLS = ['tcp', 'udp', 'sctp']
+
 
 class InvalidProtocol(Exception):
     def __init__(self, invalid_protocols):
@@ -8,6 +9,7 @@ class InvalidProtocol(Exception):
 
     def __str__(self):
         return f"Invalid Protocol: {self.args}"
+
 
 class OvnLoadBalancer(object):
     def __init__(self, lb_name, nbctl, vips=None, protocols=VALID_PROTOCOLS):
@@ -19,7 +21,9 @@ class OvnLoadBalancer(object):
         protocols: List of protocols to use when creating Load Balancers.
         '''
         self.nbctl = nbctl
-        self.protocols = [prot for prot in protocols if prot in VALID_PROTOCOLS]
+        self.protocols = [
+            prot for prot in protocols if prot in VALID_PROTOCOLS
+        ]
         if len(self.protocols) == 0:
             raise InvalidProtocol(protocols)
         self.name = lb_name
@@ -44,6 +48,14 @@ class OvnLoadBalancer(object):
 
         for lb in self.lbs:
             self.nbctl.lb_set_vips(lb.uuid, self.vips)
+
+    def clear_vips(self):
+        '''
+        Clear all VIPs from the load balancer.
+        '''
+        self.vips.clear()
+        for lb in self.lbs:
+            self.nbctl.lb_clear_vips(lb.uuid)
 
     def add_backends_to_vip(self, backends, vips=None):
         '''

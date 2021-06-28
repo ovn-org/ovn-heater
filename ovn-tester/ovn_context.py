@@ -8,10 +8,11 @@ ITERATION_STAT_NAME = 'Iteration Total'
 
 
 class Context(object):
-    def __init__(self, test_name, max_iterations=1):
+    def __init__(self, test_name, max_iterations=1, brief_report=False):
         self.iteration = -1
         self.test_name = test_name
         self.max_iterations = max_iterations
+        self.brief_report = brief_report
         self.iteration_start = None
 
     def __enter__(self):
@@ -22,7 +23,7 @@ class Context(object):
         return self
 
     def __exit__(self, type, value, traceback):
-        ovn_stats.report(self.test_name)
+        ovn_stats.report(self.test_name, brief=self.brief_report)
         print(f'***** Exiting context {self.test_name} *****')
 
     def __iter__(self):

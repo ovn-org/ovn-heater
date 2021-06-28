@@ -35,20 +35,13 @@ class OvsVsctl:
         self.run(f'del-port {port.name}')
 
     def bind_vm_port(self, lport):
-        self.run(f'ethtool -K {lport.name} tx off &> /dev/null', prefix="")
-        self.run(f'ip netns add {lport.name}', prefix="")
-        self.run(f'ip link set {lport.name} netns {lport.name}', prefix="")
-        self.run(f'ip netns exec {lport.name} '
-                 f'ip link set {lport.name} address {lport.mac}',
-                 prefix="")
-        self.run(f'ip netns exec {lport.name} '
-                 f'ip addr add {lport.ip}/{lport.plen} dev {lport.name}',
-                 prefix="")
-        self.run(f'ip netns exec {lport.name} ip link set {lport.name} up',
-                 prefix="")
-        self.run(f'ip netns exec {lport.name} '
-                 f'ip route add default via {lport.gw}',
-                 prefix="")
+        cmd = f'bash -c \'ip netns add {lport.name} ; \
+                ip link set {lport.name} netns {lport.name} ; \
+                ip -n {lport.name} link set {lport.name} address {lport.mac} ; \
+                ip -n {lport.name} addr add {lport.ip}/{lport.plen} dev {lport.name} ; \
+                ip -n {lport.name} link set {lport.name} up ; \
+                ip -n {lport.name} route add default via {lport.gw}\''
+        self.run(cmd, prefix="")
 
     def unbind_vm_port(self, lport):
         self.run(f'ip netns del {lport.name}', prefix='')

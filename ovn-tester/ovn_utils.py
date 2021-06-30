@@ -81,7 +81,7 @@ class OvnNbctl:
 
     def ls_port_add(self, lswitch, name, router_port=None,
                     mac=None, ip=None, plen=None, gw=None, ext_gw=None,
-                    metadata=None, passive=False):
+                    metadata=None, passive=False, security=False):
         cmd = f'lsp-add {lswitch.name} {name}'
         if router_port:
             cmd += \
@@ -89,12 +89,15 @@ class OvnNbctl:
                 f' -- lsp-set-addresses {name} router' \
                 f' -- lsp-set-options {name} router-port={router_port.name}'
         elif mac or ip:
-            cmd += f' -- lsp-set-addresses {name} \"'
+            addresses = []
             if mac:
-                cmd += f'{str(mac)} '
+                addresses.append(mac)
             if ip:
-                cmd += str(ip)
-            cmd += "\""
+                addresses.append(str(ip))
+            addresses = " ".join(addresses)
+            cmd += f' -- lsp-set-addresses {name} \"{addresses}\"'
+            if security:
+                cmd += f' -- lsp-set-port-security {name} \"{addresses}\"'
         self.run(cmd=cmd)
         stdout = StringIO()
         self.run(cmd=f'get logical_switch_port {name} _uuid', stdout=stdout)

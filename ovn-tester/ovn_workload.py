@@ -246,7 +246,7 @@ class WorkerNode(Node):
         lport = cluster.nbctl.ls_port_add(self.switch, name,
                                           mac=str(RandMac()), ip=ip, plen=plen,
                                           gw=gw, ext_gw=ext_gw, metadata=self,
-                                          passive=passive)
+                                          passive=passive, security=True)
         self.lports.append(lport)
         self.next_lport_index += 1
         return lport

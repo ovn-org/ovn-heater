@@ -6,7 +6,7 @@ LRPort = namedtuple('LRPort', ['name'])
 LSwitch = namedtuple('LSwitch', ['name', 'cidr'])
 LSPort = namedtuple('LSPort',
                     ['name', 'mac', 'ip', 'plen', 'gw', 'ext_gw',
-                     'metadata', 'uuid'])
+                     'metadata', 'passive', 'uuid'])
 PortGroup = namedtuple('PortGroup', ['name'])
 AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
@@ -25,30 +25,22 @@ class OvsVsctl:
         if internal:
             cmd += f' -- set interface {name} type=internal'
         if ifaceid:
-            cmd += \
-                f' -- set Interface {name} external_ids:iface-id={ifaceid}' \
-                f' -- set Interface {name} external_ids:iface-status=active' \
-                f' -- set Interface {name} admin_state=up'
+            cmd += f' -- set Interface {name} external_ids:iface-id={ifaceid}'
         self.run(cmd=cmd)
 
     def del_port(self, port):
         self.run(f'del-port {port.name}')
 
     def bind_vm_port(self, lport):
-        self.run(f'ethtool -K {lport.name} tx off &> /dev/null', prefix="")
-        self.run(f'ip netns add {lport.name}', prefix="")
-        self.run(f'ip link set {lport.name} netns {lport.name}', prefix="")
-        self.run(f'ip netns exec {lport.name} '
-                 f'ip link set {lport.name} address {lport.mac}',
-                 prefix="")
-        self.run(f'ip netns exec {lport.name} '
-                 f'ip addr add {lport.ip}/{lport.plen} dev {lport.name}',
-                 prefix="")
-        self.run(f'ip netns exec {lport.name} ip link set {lport.name} up',
-                 prefix="")
-        self.run(f'ip netns exec {lport.name} '
-                 f'ip route add default via {lport.gw}',
-                 prefix="")
+        cmd = f'bash -c \'ip netns add {lport.name} ; ' \
+              f'ip link set {lport.name} netns {lport.name} ; ' \
+              f'ip -n {lport.name} link set {lport.name} ' \
+              f'address {lport.mac} ; ' \
+              f'ip -n {lport.name} addr add {lport.ip}/{lport.plen} ' \
+              f'dev {lport.name} ; ' \
+              f'ip -n {lport.name} link set {lport.name} up ; ' \
+              f'ip -n {lport.name} route add default via {lport.gw}\''
+        self.run(cmd, prefix="")
 
     def unbind_vm_port(self, lport):
         self.run(f'ip netns del {lport.name}', prefix='')
@@ -89,27 +81,27 @@ class OvnNbctl:
 
     def ls_port_add(self, lswitch, name, router_port=None,
                     mac=None, ip=None, plen=None, gw=None, ext_gw=None,
-                    metadata=None):
-        self.run(cmd=f'lsp-add {lswitch.name} {name}')
+                    metadata=None, passive=False):
+        cmd = f'lsp-add {lswitch.name} {name}'
         if router_port:
-            cmd = \
-                f'lsp-set-type {name} router' \
+            cmd += \
+                f' -- lsp-set-type {name} router' \
                 f' -- lsp-set-addresses {name} router' \
                 f' -- lsp-set-options {name} router-port={router_port.name}'
-            self.run(cmd=cmd)
         elif mac or ip:
-            cmd = f'lsp-set-addresses {name} \"'
+            cmd += f' -- lsp-set-addresses {name} \"'
             if mac:
                 cmd += f'{str(mac)} '
             if ip:
                 cmd += str(ip)
             cmd += "\""
-            self.run(cmd=cmd)
+        self.run(cmd=cmd)
         stdout = StringIO()
         self.run(cmd=f'get logical_switch_port {name} _uuid', stdout=stdout)
-        uuid = stdout.getvalue()
+        uuid = stdout.getvalue().strip()
         return LSPort(name=name, mac=mac, ip=ip, plen=plen,
-                      gw=gw, ext_gw=ext_gw, metadata=metadata, uuid=uuid)
+                      gw=gw, ext_gw=ext_gw, metadata=metadata,
+                      passive=passive, uuid=uuid)
 
     def ls_port_del(self, port):
         self.run(cmd=f'lsp-del {port.name}')
@@ -127,6 +119,13 @@ class OvnNbctl:
     def port_group_add(self, pg, lport):
         self.run(cmd=f'add port_group {pg.name} ports {lport.uuid}')
 
+    def port_group_add_ports(self, pg, lports):
+        MAX_PORTS_IN_BATCH = 500
+        for i in range(0, len(lports), MAX_PORTS_IN_BATCH):
+            lports_slice = lports[i:i + MAX_PORTS_IN_BATCH]
+            port_uuids = " ".join(p.uuid for p in lports_slice)
+            self.run(cmd=f'add port_group {pg.name} ports {port_uuids}')
+
     def port_group_del(self, pg):
         self.run(cmd=f'destroy port_group {pg.name}')
 
@@ -134,9 +133,17 @@ class OvnNbctl:
         self.run(cmd=f'create address_set name={name}')
         return AddressSet(name=name)
 
-    def address_set_add(self, addr_set, addrs):
-        cmd = f'add Address_Set {addr_set.name} addresses \"{addrs}\"'
+    def address_set_add(self, addr_set, addr):
+        cmd = f'add Address_Set {addr_set.name} addresses \"{addr}\"'
         self.run(cmd=cmd)
+
+    def address_set_add_addrs(self, addr_set, addrs):
+        MAC_ADDRS_IN_BATCH = 500
+        for i in range(0, len(addrs), MAC_ADDRS_IN_BATCH):
+            addrs_slice = ' '.join(addrs[i:i + MAC_ADDRS_IN_BATCH])
+            cmd = \
+                f'add Address_Set {addr_set.name} addresses \"{addrs_slice}\"'
+            self.run(cmd=cmd)
 
     def address_set_remove(self, addr_set, addr):
         cmd = f'remove Address_Set {addr_set.name} addresses \"{addr}\"'

@@ -10,4 +10,5 @@ base_cluster_bringup:
   n_pods_per_node: 10
 
 density_light:
+  n_startup: 4000
   n_pods: 5000

@@ -10,5 +10,6 @@ base_cluster_bringup:
   n_pods_per_node: 10
 
 density_heavy:
+  n_startup: 4000
   n_pods: 5000
   pods_vip_ratio: 2

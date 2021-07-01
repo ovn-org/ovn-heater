@@ -10,5 +10,5 @@ base_cluster_bringup:
   n_pods_per_node: 10
 
 cluster_density:
-  n_startup: 900
+  n_startup: 800
   n_runs: 1000

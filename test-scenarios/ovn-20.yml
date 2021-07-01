@@ -31,3 +31,7 @@ netpol_multitenant:
     - r3:
       start:   495
       n_pods:  100
+
+network_policy_cross:
+  n_ns: 10
+  pods_ns_ratio: 5

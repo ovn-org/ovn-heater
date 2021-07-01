@@ -420,6 +420,22 @@ class Namespace(object):
         )
 
     @ovn_stats.timeit
+    def allow_cross_namespace(self, ns):
+        self.enforce()
+        self.nbctl.acl_add(
+            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            f'ip4.src == \\${self.addr_set.name} && '
+            f'outport == @{ns.pg.name}',
+            'allow-related'
+        )
+        self.nbctl.acl_add(
+            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            f'ip4.dst == \\${ns.addr_set.name} && '
+            f'inport == @{self.pg.name}',
+            'allow-related'
+        )
+
+    @ovn_stats.timeit
     def allow_from_external(self, external_ips, include_ext_gw=False):
         self.enforce()
         # If requested, include the ext-gw of the first port in the namespace

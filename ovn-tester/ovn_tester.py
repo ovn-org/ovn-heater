@@ -65,6 +65,10 @@ ClusterDensityCfg = namedtuple('ClusterDensityCfg',
                                ['n_runs',
                                 'n_startup'])
 
+NpCrossNsCfg = namedtuple('NpCrossNsCfg',
+                          ['n_ns',
+                           'pods_ns_ratio'])
+
 
 def usage(name):
     print(f'''
@@ -176,9 +180,14 @@ def read_config(configuration):
             n_runs=cluster_density_args.get('n_runs', 0),
             n_startup=cluster_density_args.get('n_startup', 0)
         )
+        np_cross_args = config.get('network_policy_cross', dict())
+        np_cross_cfg = NpCrossNsCfg(
+            n_ns=np_cross_args.get('n_ns', 0),
+            pods_ns_ratio=np_cross_args.get('pods_ns_ratio', 0)
+        )
         return global_cfg, cluster_cfg, brex_cfg, bringup_cfg, \
             density_light_cfg, density_heavy_cfg, netpol_multitenant_cfg, \
-            cluster_density_cfg
+            cluster_density_cfg, np_cross_cfg
 
 
 def create_nodes(cluster_config, central, workers):
@@ -380,6 +389,29 @@ def run_test_cluster_density(ovn, cfg):
         for ns in all_ns:
             ns.unprovision()
 
+def run_test_np_cross(ovn, cfg):
+    all_ns = []
+
+    with Context('np_cross_startup', brief_report=True) as ctx:
+        ports = ovn.provision_ports(cfg.pods_ns_ratio*cfg.n_ns)
+        for i in range(cfg.n_ns):
+            ns = Namespace(ovn, f'NS_{i}')
+            ns.add_ports(ports[i*cfg.pods_ns_ratio :
+                               (i + 1) *cfg.pods_ns_ratio - 1])
+            all_ns.append(ns)
+
+    with Context('np_cross', cfg.n_ns) as ctx:
+        for i in ctx:
+            ns = all_ns[i]
+            ext_ns = all_ns[(i+1) % cfg.n_ns]
+            ns.allow_cross_namespace(ext_ns)
+
+    if not global_cfg.cleanup:
+        return
+    with Context('np_cross_cleanup', brief_report=True) as ctx:
+        for ns in all_ns:
+            ns.unprovision()
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         usage(sys.argv[0])
@@ -387,7 +419,7 @@ if __name__ == '__main__':
 
     global_cfg, cluster_cfg, brex_cfg, bringup_cfg, density_light_cfg, \
         density_heavy_cfg, ns_multitenant_cfg, \
-        cluster_density_cfg = read_config(sys.argv[2])
+        cluster_density_cfg, np_cross_cfg = read_config(sys.argv[2])
 
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
@@ -398,4 +430,5 @@ if __name__ == '__main__':
     run_test_density_heavy(ovn, global_cfg, density_heavy_cfg)
     run_test_netpol_multitenant(ovn, global_cfg, ns_multitenant_cfg)
     run_test_cluster_density(ovn, cluster_density_cfg)
+    run_test_np_cross(ovn, np_cross_cfg)
     sys.exit(0)

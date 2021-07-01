@@ -338,6 +338,7 @@ class Namespace(object):
         self.cluster = cluster
         self.nbctl = cluster.nbctl
         self.ports = []
+        self.enforcing = False
         self.pg_def_deny_igr = \
             self.nbctl.port_group_create(f'pg_deny_igr_{name}')
         self.pg_def_deny_egr = \
@@ -348,23 +349,36 @@ class Namespace(object):
     @ovn_stats.timeit
     def add_ports(self, ports):
         self.ports.extend(ports)
-        self.nbctl.port_group_add_ports(self.pg_def_deny_igr, ports)
-        self.nbctl.port_group_add_ports(self.pg_def_deny_egr, ports)
-        self.nbctl.port_group_add_ports(self.pg, ports)
+        # Always add port IPs to the address set but not to the PGs.
+        # Simulate what OpenShift does, which is: create the port groups
+        # when the first network policy is applied.
         self.nbctl.address_set_add_addrs(self.addr_set,
                                          [str(p.ip) for p in ports])
+        if self.enforcing:
+            self.nbctl.port_group_add_ports(self.pg_def_deny_igr, ports)
+            self.nbctl.port_group_add_ports(self.pg_def_deny_egr, ports)
+            self.nbctl.port_group_add_ports(self.pg, ports)
 
     def unprovision(self):
+        # ACLs are garbage collected by OVSDB as soon as all the records
+        # referencing them are removed.
         self.cluster.unprovision_ports(self.ports)
         self.nbctl.port_group_del(self.pg_def_deny_igr)
         self.nbctl.port_group_del(self.pg_def_deny_egr)
         self.nbctl.port_group_del(self.pg)
         self.nbctl.address_set_del(self.addr_set)
-        # ACLs are garbage collected by OVSDB as soon as all the records
-        # referencing them are removed.
+
+    def enforce(self):
+        if self.enforcing:
+            return
+        self.enforcing = True
+        self.nbctl.port_group_add_ports(self.pg_def_deny_igr, self.ports)
+        self.nbctl.port_group_add_ports(self.pg_def_deny_egr, self.ports)
+        self.nbctl.port_group_add_ports(self.pg, self.ports)
 
     @ovn_stats.timeit
     def default_deny(self):
+        self.enforce()
         self.nbctl.acl_add(
             self.pg_def_deny_igr.name,
             'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
@@ -390,6 +404,7 @@ class Namespace(object):
 
     @ovn_stats.timeit
     def allow_within_namespace(self):
+        self.enforce()
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
             f'ip4.src == \\${self.addr_set.name} && '
@@ -405,6 +420,7 @@ class Namespace(object):
 
     @ovn_stats.timeit
     def allow_from_external(self, external_ips, include_ext_gw=False):
+        self.enforce()
         # If requested, include the ext-gw of the first port in the namespace
         # so we can check that this rule is enforced.
         if include_ext_gw:

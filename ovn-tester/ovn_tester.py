@@ -107,6 +107,7 @@ def read_config(configuration):
             logical_dp_groups=cluster_args.get('logical_dp_groups', True),
             clustered_db=cluster_args.get('clustered_db', True),
             raft_election_to=cluster_args.get('raft_election_to', 16),
+            db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
             node_net=netaddr.IPNetwork(
                 cluster_args.get('node_net', '192.16.0.0/16')
             ),

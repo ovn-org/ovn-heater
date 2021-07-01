@@ -21,6 +21,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'logical_dp_groups',
                             'clustered_db',
                             'raft_election_to',
+                            'db_inactivity_probe',
                             'node_net',
                             'node_remote',
                             'node_timeout_s',
@@ -466,6 +467,8 @@ class Cluster(object):
             'use_logical_dp_groups',
             self.cluster_cfg.logical_dp_groups
         )
+        self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
+        self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)

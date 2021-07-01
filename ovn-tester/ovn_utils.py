@@ -65,6 +65,9 @@ class OvnNbctl:
     def set_global(self, option, value):
         self.run(f'set NB_Global . options:{option}={value}')
 
+    def set_inactivity_probe(self, value):
+        self.run(f'set Connection . inactivity_probe={value}')
+
     def lr_add(self, name):
         print(f'***** creating lrouter {name} *****')
         self.run(cmd=f'lr-add {name}')
@@ -233,6 +236,9 @@ class OvnSbctl:
 
     def run(self, cmd="", stdout=None):
         self.sb.run(cmd="ovn-sbctl --no-leader-only " + cmd, stdout=stdout)
+
+    def set_inactivity_probe(self, value):
+        self.run(f'set Connection . inactivity_probe={value}')
 
     def chassis_bound(self, chassis=""):
         cmd = f'--bare --columns _uuid find chassis name={chassis}'

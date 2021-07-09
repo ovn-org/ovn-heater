@@ -1,0 +1,7 @@
+netaddr
+numpy
+paramiko
+pandas
+plotly
+pyyaml
+randmac

@@ -1,0 +1,14 @@
+global:
+  log_cmds: False
+
+cluster:
+  clustered_db: true
+  monitor_all: true
+  n_workers: 20
+
+base_cluster_bringup:
+  n_pods_per_node: 10
+
+cluster_density:
+  n_startup: 400
+  n_runs: 500

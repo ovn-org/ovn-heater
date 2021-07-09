@@ -1,0 +1,33 @@
+global:
+  log_cmds: False
+
+cluster:
+  clustered_db: true
+  monitor_all: true
+  n_workers: 2
+
+base_cluster_bringup:
+  n_pods_per_node: 2
+
+density_light:
+  n_pods: 10
+
+density_heavy:
+  n_pods: 10
+  pods_vip_ratio: 2
+
+cluster_density:
+  n_runs: 10
+
+netpol_multitenant:
+  n_namespaces: 5
+  ranges:
+    - r1:
+      start:   2
+      n_pods:  2
+    - r2:
+      start:   3
+      n_pods:  5
+    - r3:
+      start:   4
+      n_pods: 10

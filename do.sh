@@ -8,15 +8,8 @@ deployment_dir=${topdir}/physical-deployments
 result_dir=${topdir}/test_results
 
 phys_deployment="${PHYS_DEPLOYMENT:-${deployment_dir}/physical-deployment.yml}"
+ovn_heater_venv=venv
 
-browbeat_venv=${rundir}/browbeat/.browbeat-venv
-
-rally_ovs_venv=${rundir}/browbeat/.rally-ovs-venv
-deployment="${RALLY_DEPLOYMENT:-ovn-fake-multinode}"
-deployment_file=${rundir}/deployment.json
-
-rally_utils=${topdir}/ovn-scale-test-utils
-rally_deployment_generate=${rally_utils}/generate-deployment.py
 clustered_db=${CLUSTERED_DB:-True}
 
 ovn_fmn_utils=${topdir}/ovn-fake-multinode-utils
@@ -30,6 +23,9 @@ docker_daemon_file=${rundir}/docker-daemon.json
 podman_registry_file=${rundir}/registries.conf
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
+
+ovn_tester=${topdir}/ovn-tester
+ovn_tester_log_file=test-log
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 
@@ -45,7 +41,6 @@ function generate() {
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
     PYTHONPATH=${topdir}/utils ${ovn_fmn_docker} ${phys_deployment} > ${docker_daemon_file}
     PYTHONPATH=${topdir}/utils ${ovn_fmn_podman} ${phys_deployment} > ${podman_registry_file}
-    PYTHONPATH=${topdir}/utils ${rally_deployment_generate} ${phys_deployment} ${clustered_db}> ${deployment_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
     cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
 }
@@ -81,6 +76,15 @@ registries = ['localhost:5000']
 [registries.block]
 registries = []
 EOF
+}
+
+function install_venv() {
+    pushd ${rundir}
+    python3 -m virtualenv ${ovn_heater_venv}
+    source ${ovn_heater_venv}/bin/activate
+    pip install -r ${ovn_tester}/requirements.txt
+    deactivate
+    popd
 }
 
 function configure_docker() {
@@ -133,54 +137,6 @@ function clone_component() {
         popd
         return 1
     fi
-    popd
-}
-
-# browbeat env vars
-#TODO: right now we clone a fork. Do we try to get the changes in master?
-browbeat_repo="${BROWBEAT_REPO:-https://github.com/dceara/browbeat.git}"
-browbeat_branch="${BROWBEAT_BRANCH:-master}"
-
-function install_browbeat() {
-    if clone_component browbeat ${browbeat_repo} ${browbeat_branch}; then
-        return 0
-    fi
-
-    pushd ${rundir}/browbeat
-    virtualenv ${browbeat_venv}
-    source ${browbeat_venv}/bin/activate
-    pip install -r requirements.txt
-    deactivate
-    popd
-}
-
-# rally env vars
-#TODO: right now we clone a fork. Do we try to get the changes in master?
-rally_repo="${RALLY_REPO:-https://github.com/dceara/rally.git}"
-rally_branch="${RALLY_BRANCH:-master}"
-
-function install_rally() {
-    if clone_component rally ${rally_repo} ${rally_branch}; then
-        return 0
-    fi
-
-    pushd ${rundir}/rally
-    ./install_rally.sh -y -d ${rally_ovs_venv}
-    popd
-}
-
-# rally-ovs env vars
-rally_ovs_repo="${RALLY_OVS_REPO:-https://github.com/ovn-org/ovn-scale-test.git}"
-rally_ovs_branch="${RALLY_OVS_BRANCH:-master}"
-
-function install_rally_ovs() {
-    if clone_component ovn-scale-test ${rally_ovs_repo} ${rally_ovs_branch}; then
-        return 0
-    fi
-
-    pushd ${rundir}/ovn-scale-test
-    git checkout ${rally_ovs_branch}
-    ./install.sh -y -d ${rundir}/browbeat/.rally-ovs-venv
     popd
 }
 
@@ -278,10 +234,8 @@ function pull_ovn_fake_multinode() {
 function install() {
     pushd ${rundir}
     install_deps
+    install_venv
     configure_docker
-    install_browbeat
-    install_rally
-    install_rally_ovs
     install_ovn_fake_multinode
     init_ovn_fake_multinode
     pull_ovn_fake_multinode
@@ -303,7 +257,7 @@ function record_test_config() {
     echo "-- Storing test components versions in ${out_file}"
     > ${out_file}
 
-    components=("browbeat" "rally" "ovn-scale-test" "ovn-fake-multinode" "ovs" "ovn")
+    components=("ovn-fake-multinode" "ovs" "ovn")
     for d in "${components[@]}"; do
         pushd ${rundir}/$d
         local origin=$(git config --get remote.origin.url)
@@ -328,17 +282,17 @@ function run_test() {
     # Perform a fast cleanup by doing a minimal redeploy.
     init_ovn_fake_multinode
 
-    pushd ${rundir}/browbeat
-    source ${browbeat_venv}/bin/activate
-    python browbeat.py -s ${test_file} --debug
+    source ${rundir}/${ovn_heater_venv}/bin/activate
+    pushd ${out_dir}
 
-    echo "-- Moving results and logs to: ${out_dir}"
-    mv results/* ${out_dir}
+    python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}
+
+    echo "-- Collecting logs to: ${out_dir}"
     ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"
 
     pushd ${out_dir}/logs
     for f in *.tgz; do
-        tar xvfz $f
+       tar xvfz $f
     done
     popd
 
@@ -347,7 +301,7 @@ function run_test() {
 }
 
 function usage() {
-    die "Usage: $0 install|generate|rally-deploy|rally-undeploy|init|browbeat-run <scenario> <out-dir>"
+    die "Usage: $0 install|generate|init|run <scenario> <out-dir>"
 }
 
 do_lockfile=/tmp/do.sh.lock
@@ -362,13 +316,9 @@ case "${1:-"usage"}" in
         ;&
     "generate")
         ;&
-    "rally-deploy")
-        ;&
-    "rally-undeploy")
-        ;&
     "init")
         ;&
-    "browbeat-run")
+    "run")
         take_lock $0
         trap "rm -f ${do_lockfile}" EXIT
         ;;
@@ -396,21 +346,11 @@ case "${1:-"usage"}" in
     "generate")
         generate
         ;;
-    "rally-deploy")
-        source ${rally_ovs_venv}/bin/activate
-        rally-ovs deployment create --file ${deployment_file} --name ${deployment}
-        deactivate
-        ;;
-    "rally-undeploy")
-        source ${rally_ovs_venv}/bin/activate
-        rally-ovs deployment destroy ${deployment}
-        deactivate
-        ;;
     "init")
         init_ovn_fake_multinode
         pull_ovn_fake_multinode
         ;;
-    "browbeat-run")
+    "run")
         cmd=$0
         shift
         test_file=$1
@@ -436,12 +376,6 @@ case "${1:-"usage"}" in
             usage ${cmd}
         fi
         shift; shift
-
-        # Cleanup previous deployments.
-        source ${rally_ovs_venv}/bin/activate
-        rally-ovs deployment destroy ${deployment}
-        rally-ovs deployment create --file ${deployment_file} --name ${deployment}
-        deactivate
 
         # Run the new test.
         run_test ${test_file} ${out_dir}

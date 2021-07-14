@@ -1,0 +1,15 @@
+global:
+  log_cmds: False
+
+cluster:
+  clustered_db: true
+  datapath_type: netdev
+  monitor_all: true
+  n_workers: 120
+
+base_cluster_bringup:
+  n_pods_per_node: 10
+
+cluster_density:
+  n_startup: 800
+  n_runs: 1000

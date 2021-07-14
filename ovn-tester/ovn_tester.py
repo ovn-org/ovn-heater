@@ -88,6 +88,7 @@ def read_config(config):
         monitor_all=cluster_args.get('monitor_all', True),
         logical_dp_groups=cluster_args.get('logical_dp_groups', True),
         clustered_db=cluster_args.get('clustered_db', True),
+        datapath_type=cluster_args.get('datapath_type', 'system'),
         raft_election_to=cluster_args.get('raft_election_to', 16),
         node_net=netaddr.IPNetwork(
             cluster_args.get('node_net', '192.16.0.0/16')

@@ -36,3 +36,8 @@ netpol_multitenant:
 netpol_cross_ns:
   n_ns: 10
   pods_ns_ratio: 5
+
+netpol_small:
+  n_ns: 2
+  pods_ns_ratio: 16
+  n_labels: 4

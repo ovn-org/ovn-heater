@@ -8,6 +8,7 @@ NpSmallCfg = namedtuple('NpSmallCfg',
                          'n_labels',
                          'pods_ns_ratio'])
 
+
 class NetpolSmall(object):
     def __init__(self, config):
         self.config = NpSmallCfg(
@@ -28,24 +29,25 @@ class NetpolSmall(object):
             ports = ovn.provision_ports(
                     self.config.pods_ns_ratio*self.config.n_ns)
             for i in range(self.config.pods_ns_ratio*self.config.n_ns):
-                all_labels.setdefault(i % self.config.n_labels, []).append(ports[i])
+                all_labels.setdefault(i % self.config.n_labels,
+                                      []).append(ports[i])
 
             for i in range(self.config.n_ns):
                 ns = Namespace(ovn, f'NS_{i}')
-                ns.add_ports(ports[i*self.config.pods_ns_ratio :
-                                   (i+1)*self.config.pods_ns_ratio])
+                ns.add_ports(ports[i * self.config.pods_ns_ratio:
+                                   (i + 1)*self.config.pods_ns_ratio])
                 ns.default_deny()
                 all_ns.append(ns)
 
         with Context('netpol_small', self.config.n_ns) as ctx:
             for i in ctx:
                 ns = all_ns[i]
-                for l in range(self.config.n_labels):
-                    label = all_labels[l];
+                for lbl in range(self.config.n_labels):
+                    label = all_labels[lbl]
                     sub_ns_src = ns.create_sub_ns(label)
 
                     ex_label = label
-                    n = (l+1)%self.config.n_labels
+                    n = (lbl + 1) % self.config.n_labels
                     ex_label = ex_label + all_labels[n]
                     nlabel = [p for p in ports if p not in ex_label]
                     sub_ns_dst = ns.create_sub_ns(nlabel)
@@ -59,4 +61,3 @@ class NetpolSmall(object):
         with Context('netpol_small_cleanup', brief_report=True) as ctx:
             for ns in all_ns:
                 ns.unprovision()
-

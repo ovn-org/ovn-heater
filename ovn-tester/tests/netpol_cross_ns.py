@@ -6,6 +6,7 @@ NpCrossNsCfg = namedtuple('NpCrossNsCfg',
                           ['n_ns',
                            'pods_ns_ratio'])
 
+
 class NetpolCrossNs(object):
     def __init__(self, config):
         self.config = NpCrossNsCfg(
@@ -21,8 +22,8 @@ class NetpolCrossNs(object):
                     self.config.pods_ns_ratio*self.config.n_ns)
             for i in range(self.config.n_ns):
                 ns = Namespace(ovn, f'NS_{i}')
-                ns.add_ports(ports[i*self.config.pods_ns_ratio :
-                                   (i + 1) *self.config.pods_ns_ratio])
+                ns.add_ports(ports[i*self.config.pods_ns_ratio:
+                                   (i + 1) * self.config.pods_ns_ratio])
                 ns.default_deny()
                 all_ns.append(ns)
 

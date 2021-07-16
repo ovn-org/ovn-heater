@@ -34,7 +34,7 @@ class NetpolMultitenant(object):
     def run(self, ovn, global_cfg):
         """
         Run a multitenant network policy test, for example:
-    
+
         for i in range(n_namespaces):
             create address set AS_ns_i
             create port group PG_ns_i
@@ -50,26 +50,34 @@ class NetpolMultitenant(object):
             add n_pods to AS_ns_i
             add n_pods to PG_ns_i
             create acls:
-    
-        to-lport, ip.src == $AS_ns_i && outport == @PG_ns_i, allow-related
-        to-lport, ip.src == {ip1, ip2, ip3} && outport == @PG_ns_i, allow-related
-        to-lport, ip.src == {ip1, ..., ip20} && outport == @PG_ns_i, allow-related
+
+        to-lport, ip.src == $AS_ns_i && outport == @PG_ns_i,
+                  allow-related
+        to-lport, ip.src == {ip1, ip2, ip3} && outport == @PG_ns_i,
+                  allow-related
+        to-lport, ip.src == {ip1, ..., ip20} && outport == @PG_ns_i,
+                  allow-related
         """
         external_ips1 = [
-            netaddr.IPAddress('42.42.42.1') + i for i in range(self.config.n_external_ips1)
+            netaddr.IPAddress('42.42.42.1') + i
+            for i in range(self.config.n_external_ips1)
         ]
         external_ips2 = [
-            netaddr.IPAddress('43.43.43.1') + i for i in range(self.config.n_external_ips2)
+            netaddr.IPAddress('43.43.43.1') + i
+            for i in range(self.config.n_external_ips2)
         ]
-    
+
         all_ns = []
         with Context('netpol_multitenant', self.config.n_namespaces) as ctx:
             for i in ctx:
-                # Get the number of pods from the "highest" range that includes i.
-                n_ports = next((r.n_pods for r in self.config.ranges if i >= r.start), 1)
+                # Get the number of pods from the "highest" range that
+                # includes i.
+                ranges = self.config.ranges
+                n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
                 ns = Namespace(ovn, f'ns_{i}')
                 for _ in range(n_ports):
-                    for p in ovn.select_worker_for_port().provision_ports(ovn, 1):
+                    worker = ovn.select_worker_for_port()
+                    for p in worker.provision_ports(ovn, 1):
                         ns.add_ports([p])
                 ns.default_deny()
                 ns.allow_within_namespace()
@@ -78,10 +86,9 @@ class NetpolMultitenant(object):
                 ns.allow_from_external(external_ips2, include_ext_gw=True)
                 ns.check_enforcing_external()
                 all_ns.append(ns)
-    
+
         if not global_cfg.cleanup:
             return
         with Context('netpol_multitenant_cleanup', brief_report=True) as ctx:
             for ns in all_ns:
                 ns.unprovision()
-    

@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 
-import os
 import sys
-import ovn_context
-import ovn_stats
 import netaddr
-import time
 import yaml
 import importlib
 
@@ -13,7 +9,7 @@ from collections import namedtuple
 from ovn_context import Context
 from ovn_sandbox import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
-from ovn_workload import CentralNode, WorkerNode, Cluster, Namespace
+from ovn_workload import CentralNode, WorkerNode, Cluster
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
 DEFAULT_N_VIPS = 2
@@ -43,6 +39,7 @@ def calculate_default_static_vips():
     backend_list = [str(next(backend_gen)) for _ in backend_range]
 
     return {str(next(vip_gen)): backend_list for _ in vip_range}
+
 
 GlobalCfg = namedtuple('GlobalCfg', ['log_cmds', 'cleanup'])
 
@@ -109,7 +106,8 @@ def read_config(config):
         raft_election_to=cluster_args.get('raft_election_to', 16),
         node_net=node_net,
         n_relays=n_relays,
-        node_remote=cluster_args.get('node_remote',
+        node_remote=cluster_args.get(
+            'node_remote',
             calculate_default_node_remotes(node_net, clustered_db, n_relays)
         ),
         db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),

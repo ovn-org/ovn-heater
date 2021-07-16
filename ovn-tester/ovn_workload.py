@@ -1,4 +1,3 @@
-import ovn_context
 import ovn_exceptions
 import ovn_sandbox
 import ovn_stats
@@ -6,9 +5,6 @@ import ovn_utils
 import ovn_load_balancer as lb
 import time
 import netaddr
-import random
-import string
-import copy
 from collections import namedtuple
 from collections import defaultdict
 from randmac import RandMac
@@ -87,7 +83,7 @@ class CentralNode(Node):
                      f'OVN_Southbound {timeout}')
 
     def enable_trim_on_compaction(self):
-        print(f'***** set DB trim-on-compaction *****')
+        print('***** set DB trim-on-compaction *****')
         for db_container in self.db_containers:
             self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
                                f'/run/ovn/ovnnb_db.ctl '
@@ -388,15 +384,15 @@ class Namespace(object):
         self.nbctl.port_group_add_ports(self.pg, self.ports)
 
     def create_sub_ns(self, ports):
-        l = len(self.sub_pg)
-        pg = self.nbctl.port_group_create(f'sub_pg_{l}')
+        n_sub_pgs = len(self.sub_pg)
+        pg = self.nbctl.port_group_create(f'sub_pg_{n_sub_pgs}')
         self.nbctl.port_group_add_ports(pg, ports)
         self.sub_pg.append(pg)
-        addr_set = self.nbctl.address_set_create(f'sub_as_{l}')
+        addr_set = self.nbctl.address_set_create(f'sub_as_{n_sub_pgs}')
         self.nbctl.address_set_add_addrs(addr_set,
                                          [str(p.ip) for p in ports])
         self.sub_as.append(addr_set)
-        return l
+        return n_sub_pgs
 
     @ovn_stats.timeit
     def default_deny(self):
@@ -509,6 +505,7 @@ class Namespace(object):
             src = self.ports[0]
             worker = src.metadata
             worker.ping_port(self.cluster, src, dst.ip)
+
 
 class Cluster(object):
     def __init__(self, central_node, worker_nodes, cluster_cfg, brex_cfg):

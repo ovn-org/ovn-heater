@@ -5,6 +5,7 @@ cluster:
   clustered_db: true
   monitor_all: true
   n_workers: 2
+  n_relays: 3
 
 base_cluster_bringup:
   n_pods_per_node: 2

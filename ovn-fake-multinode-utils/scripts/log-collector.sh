@@ -31,6 +31,14 @@ for c in $(docker ps --format "{{.Names}}" --filter "name=ovn-central"); do
     docker cp $c:/var/log/openvswitch/ovn-nbctl.log ${host}/$c/
 done
 
+for c in $(docker ps --format "{{.Names}}" --filter "name=ovn-relay"); do
+    mkdir ${host}/$c
+    docker exec $c ps -aux > ${host}/$c/ps-before-compaction
+    docker exec $c ovs-appctl --timeout=30 -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/compact
+    docker exec $c ps -aux > ${host}/$c/ps-after-compaction
+    docker cp $c:/var/log/ovn/ovsdb-server-sb.log ${host}/$c/
+done
+
 journalctl --since "8 hours ago" -a > ${host}/messages
 
 tar cvfz ${host}.tgz ${host}

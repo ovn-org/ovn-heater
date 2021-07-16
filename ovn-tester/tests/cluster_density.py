@@ -27,9 +27,11 @@ class ClusterDensity(object):
                                         passive=True)
             for i in range(self.config.n_startup):
                 ns = Namespace(ovn, f'NS_{i}')
-                ns.add_ports(ports[DENSITY_N_PODS * i:DENSITY_N_PODS * (i + 1)])
+                ns.add_ports(
+                    ports[DENSITY_N_PODS * i:DENSITY_N_PODS * (i + 1)]
+                )
                 all_ns.append(ns)
-    
+
             backends = []
             backends.extend([
                 ports[i * DENSITY_N_PODS:i * DENSITY_N_PODS + 1]
@@ -44,12 +46,13 @@ class ClusterDensity(object):
                 for i in range(self.config.n_startup)
             ])
             ovn.provision_vips_to_load_balancers(backends)
-    
-        with Context('cluster_density', self.config.n_runs - self.config.n_startup) as ctx:
+
+        with Context('cluster_density',
+                     self.config.n_runs - self.config.n_startup) as ctx:
             for i in ctx:
                 ns = Namespace(ovn, 'NS_{}'.format(self.config.n_startup + i))
                 all_ns.append(ns)
-    
+
                 # create 6 short lived "build" pods
                 build_ports = ovn.provision_ports(DENSITY_N_BUILD_PODS)
                 ns.add_ports(build_ports)
@@ -63,10 +66,9 @@ class ClusterDensity(object):
                                                       ports[3:4]])
                 ovn.ping_ports(ports)
                 ovn.unprovision_ports(build_ports)
-    
+
         if not global_cfg.cleanup:
             return
         with Context('cluster_density_cleanup', brief_report=True) as ctx:
             for ns in all_ns:
                 ns.unprovision()
-

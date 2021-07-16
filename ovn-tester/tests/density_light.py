@@ -22,16 +22,15 @@ class DensityLight(object):
         with Context('density_light_startup', 1, brief_report=True) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)
             ns.add_ports(ports)
-    
+
         n_iterations = self.config.n_pods - self.config.n_startup
         with Context('density_light', n_iterations) as ctx:
             for _ in ctx:
                 ports = ovn.provision_ports(1)
                 ns.add_ports(ports[0:1])
                 ovn.ping_ports(ports)
-    
+
         if not global_cfg.cleanup:
             return
         with Context('density_light_cleanup', brief_report=True) as ctx:
             ns.unprovision()
-

@@ -1,5 +1,4 @@
 import itertools
-import ovn_utils
 
 VALID_PROTOCOLS = ['tcp', 'udp', 'sctp']
 

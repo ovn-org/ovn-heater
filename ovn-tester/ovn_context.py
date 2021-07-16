@@ -14,6 +14,7 @@ class Context(object):
         self.max_iterations = max_iterations
         self.brief_report = brief_report
         self.iteration_start = None
+        self.failed = False
 
     def __enter__(self):
         global active_context
@@ -33,7 +34,11 @@ class Context(object):
         now = time.perf_counter()
         if self.iteration_start:
             duration = now - self.iteration_start
-            ovn_stats.add(ITERATION_STAT_NAME, duration, failed=False)
+            ovn_stats.add(ITERATION_STAT_NAME, duration, failed=self.failed)
+            print(f'***** Context {self.test_name}, '
+                  f'Iteration {self.iteration}, '
+                  f'Result: {"FAILURE" if self.failed else "SUCCESS"} *****')
+        self.failed = False
         self.iteration_start = now
         if self.iteration < self.max_iterations - 1:
             self.iteration += 1
@@ -41,3 +46,6 @@ class Context(object):
                   f'Iteration {self.iteration} *****')
             return self.iteration
         raise StopIteration
+
+    def fail(self):
+        self.failed = True

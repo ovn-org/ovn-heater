@@ -33,6 +33,8 @@ def clear():
 
 
 def add(fname, duration, failed):
+    if failed:
+        ovn_context.active_context.fail()
     iteration = ovn_context.active_context.iteration
     elem = (duration, failed)
     timed_functions[(fname, iteration)].append(elem)

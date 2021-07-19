@@ -90,7 +90,7 @@ On Fedora 33 RSA keys are not considered secure enough, an alternative is:
 ssh-keygen -t ed25519 -a 64 -N '' -f ~/.ssh/id_ed25519
 ```
 
-Then append `~/.ssh/id_ed25519` to `~/.ssh/authorized_keys` on all physical
+Then append `~/.ssh/id_ed25519.pub` to `~/.ssh/authorized_keys` on all physical
 nodes.
 
 ## Get the code:

@@ -41,3 +41,8 @@ netpol_small:
   n_ns: 2
   pods_ns_ratio: 16
   n_labels: 4
+
+netpol_large:
+  n_ns: 2
+  pods_ns_ratio: 16
+  n_labels: 4

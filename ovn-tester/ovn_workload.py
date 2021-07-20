@@ -18,6 +18,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'clustered_db',
                             'datapath_type',
                             'raft_election_to',
+                            'northd_probe_interval',
                             'db_inactivity_probe',
                             'node_net',
                             'node_remote',
@@ -538,6 +539,10 @@ class Cluster(object):
         self.nbctl.set_global(
             'use_logical_dp_groups',
             self.cluster_cfg.logical_dp_groups
+        )
+        self.nbctl.set_global(
+            'northd_probe_interval',
+            self.cluster_cfg.northd_probe_interval
         )
         self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
         self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)

@@ -110,6 +110,7 @@ def read_config(config):
             'node_remote',
             calculate_default_node_remotes(node_net, clustered_db, n_relays)
         ),
+        northd_probe_interval=cluster_args.get('northd_probe_interval', 5000),
         db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
         node_timeout_s=cluster_args.get('node_timeout_s', 20),
         internal_net=netaddr.IPNetwork(

@@ -1,6 +1,7 @@
 from collections import namedtuple
 from ovn_context import Context
 from ovn_workload import Namespace
+from ovn_ext_cmd import ExtCmd
 
 
 DensityCfg = namedtuple('DensityCfg',
@@ -9,12 +10,15 @@ DensityCfg = namedtuple('DensityCfg',
                          'pods_vip_ratio'])
 
 
-class DensityHeavy(object):
-    def __init__(self, config):
+class DensityHeavy(ExtCmd):
+    def __init__(self, config, central_node, worker_nodes):
+        super(DensityHeavy, self).__init__(
+                config, central_node, worker_nodes)
+        test_config = config.get('density_heavy', dict())
         self.config = DensityCfg(
-            n_pods=config.get('n_pods', 0),
-            n_startup=config.get('n_startup', 0),
-            pods_vip_ratio=config.get('pods_vip_ratio', 1)
+            n_pods=test_config.get('n_pods', 0),
+            n_startup=test_config.get('n_startup', 0),
+            pods_vip_ratio=test_config.get('pods_vip_ratio', 1)
         )
 
     def run(self, ovn, global_cfg):
@@ -34,7 +38,10 @@ class DensityHeavy(object):
         with Context('density_heavy',
                      (self.config.n_pods - self.config.n_startup) /
                      self.config.pods_vip_ratio) as ctx:
-            for _ in ctx:
+            for i in ctx:
+                # exec external cmd
+                self.exec_cmd(i, 'density_heavy')
+
                 ports = ovn.provision_ports(self.config.pods_vip_ratio)
                 ns.add_ports(ports)
                 ovn.provision_vips_to_load_balancers([[ports[0]]])

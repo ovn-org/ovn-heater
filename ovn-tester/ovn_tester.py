@@ -146,10 +146,11 @@ RESERVED = [
     'global',
     'cluster',
     'base_cluster_bringup',
+    'ext_cmd',
 ]
 
 
-def configure_tests(yaml):
+def configure_tests(yaml, central_node, worker_nodes):
     tests = []
     for section, cfg in yaml.items():
         if section in RESERVED:
@@ -158,7 +159,7 @@ def configure_tests(yaml):
         mod = importlib.import_module(f'tests.{section}')
         class_name = ''.join(s.title() for s in section.split('_'))
         cls = getattr(mod, class_name)
-        tests.append(cls(cfg))
+        tests.append(cls(yaml, central_node, worker_nodes))
     return tests
 
 
@@ -217,10 +218,9 @@ if __name__ == '__main__':
 
     global_cfg, cluster_cfg, brex_cfg, bringup_cfg = read_config(config)
 
-    tests = configure_tests(config)
-
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
+    tests = configure_tests(config, central_node, worker_nodes)
 
     ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
     run_base_cluster_bringup(ovn, bringup_cfg)

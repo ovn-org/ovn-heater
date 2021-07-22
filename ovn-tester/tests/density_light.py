@@ -1,6 +1,7 @@
 from collections import namedtuple
 from ovn_context import Context
 from ovn_workload import Namespace
+from ovn_ext_cmd import ExtCmd
 
 
 DensityCfg = namedtuple('DensityCfg',
@@ -9,11 +10,14 @@ DensityCfg = namedtuple('DensityCfg',
                          'pods_vip_ratio'])
 
 
-class DensityLight(object):
-    def __init__(self, config):
+class DensityLight(ExtCmd):
+    def __init__(self, config, central_node, worker_nodes):
+        super(DensityLight, self).__init__(
+                config, central_node, worker_nodes)
+        test_config = config.get('density_light', dict())
         self.config = DensityCfg(
-            n_pods=config.get('n_pods', 0),
-            n_startup=config.get('n_startup', 0),
+            n_pods=test_config.get('n_pods', 0),
+            n_startup=test_config.get('n_startup', 0),
             pods_vip_ratio=0
         )
 
@@ -25,7 +29,10 @@ class DensityLight(object):
 
         n_iterations = self.config.n_pods - self.config.n_startup
         with Context('density_light', n_iterations) as ctx:
-            for _ in ctx:
+            for i in ctx:
+                # exec external cmd
+                self.exec_cmd(i, 'density_light')
+
                 ports = ovn.provision_ports(1)
                 ns.add_ports(ports[0:1])
                 ovn.ping_ports(ports)

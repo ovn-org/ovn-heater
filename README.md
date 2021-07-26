@@ -326,3 +326,22 @@ By default tests configure NB/SB ovsdb-servers to run in clustered mode
 (RAFT). If instead tests should be run in standalone mode then the test
 scenarios must be adapted by setting `clustered_db: false` in the `cluster`
 section of the test scenario YAML file.
+
+## Scenario execution with ovsdb-etcd in standalone node
+
+ This test requires ovn-fake-multinode, etcd and ovsdb-etcd
+
+to build and run with ETCD
+
+```
+USE_OVSDB_ETCD=yes ./do.sh install
+
+cd ~/ovn-heater
+./do.sh run test-scenarios/ovn-etcd-low-scale.yml etcd-test-low-scale
+```
+
+The following fields are important for ovn-fake-node to detect and run ovsdb-etcd
+```
+  enable_ssl: False
+  use_ovsdb_etcd: true
+```

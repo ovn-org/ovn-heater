@@ -11,8 +11,21 @@ class InvalidProtocol(Exception):
         return f"Invalid Protocol: {self.args}"
 
 
+async def create_load_balancer(lb_name, nbctl, vips=None,
+                               protocols=VALID_PROTOCOLS):
+    lb = OvnLoadBalancer(lb_name, nbctl)
+    valid_protocols = [prot for prot in protocols if prot in VALID_PROTOCOLS]
+    if len(valid_protocols) == 0:
+        raise InvalidProtocol(protocols)
+    for protocol in valid_protocols:
+        lb.lbs.append(await nbctl.create_lb(lb_name, protocol))
+    if vips:
+        await lb.add_vips(vips)
+    return lb
+
+
 class OvnLoadBalancer(object):
-    def __init__(self, lb_name, nbctl, vips=None, protocols=VALID_PROTOCOLS):
+    def __init__(self, lb_name, nbctl):
         '''
         Create load balancers with optional vips.
         lb_name: String used as basis for load balancer name.
@@ -21,20 +34,11 @@ class OvnLoadBalancer(object):
         protocols: List of protocols to use when creating Load Balancers.
         '''
         self.nbctl = nbctl
-        self.protocols = [
-            prot for prot in protocols if prot in VALID_PROTOCOLS
-        ]
-        if len(self.protocols) == 0:
-            raise InvalidProtocol(protocols)
         self.name = lb_name
-        self.vips = {}
+        self.vips = dict()
         self.lbs = []
-        for protocol in self.protocols:
-            self.lbs.append(self.nbctl.create_lb(self.name, protocol))
-        if vips:
-            self.add_vips(vips)
 
-    def add_vips(self, vips):
+    async def add_vips(self, vips):
         '''
         Add VIPs to a load balancer.
         vips: Dictionary with key being a VIP string, and value being a list of
@@ -52,17 +56,17 @@ class OvnLoadBalancer(object):
                 updated_vips[vip] = cur_backends
 
             for lb in self.lbs:
-                self.nbctl.lb_set_vips(lb.uuid, updated_vips)
+                await self.nbctl.lb_set_vips(lb.uuid, updated_vips)
 
-    def clear_vips(self):
+    async def clear_vips(self):
         '''
         Clear all VIPs from the load balancer.
         '''
         self.vips.clear()
         for lb in self.lbs:
-            self.nbctl.lb_clear_vips(lb.uuid)
+            await self.nbctl.lb_clear_vips(lb.uuid)
 
-    def add_backends_to_vip(self, backends, vips=None):
+    async def add_backends_to_vip(self, backends, vips=None):
         '''
         Add backends to existing load balancer VIPs.
         backends: A list of IP addresses to add as backends to VIPs.
@@ -74,20 +78,20 @@ class OvnLoadBalancer(object):
                 cur_backends.extend(backends)
 
         for lb in self.lbs:
-            self.nbctl.lb_set_vips(lb.uuid, self.vips)
+            await self.nbctl.lb_set_vips(lb.uuid, self.vips)
 
-    def add_to_routers(self, routers):
+    async def add_to_routers(self, routers):
         for lb in self.lbs:
-            self.nbctl.lb_add_to_routers(lb.uuid, routers)
+            await self.nbctl.lb_add_to_routers(lb.uuid, routers)
 
-    def add_to_switches(self, switches):
+    async def add_to_switches(self, switches):
         for lb in self.lbs:
-            self.nbctl.lb_add_to_switches(lb.uuid, switches)
+            await self.nbctl.lb_add_to_switches(lb.uuid, switches)
 
-    def remove_from_routers(self, routers):
+    async def remove_from_routers(self, routers):
         for lb in self.lbs:
-            self.nbctl.lb_remove_from_routers(lb.uuid, routers)
+            await self.nbctl.lb_remove_from_routers(lb.uuid, routers)
 
-    def remove_from_switches(self, switches):
+    async def remove_from_switches(self, switches):
         for lb in self.lbs:
-            self.nbctl.lb_remove_from_switches(lb.uuid, switches)
+            await self.nbctl.lb_remove_from_switches(lb.uuid, switches)

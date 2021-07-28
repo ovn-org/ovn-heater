@@ -58,7 +58,7 @@ class ExtCmd(object):
                 break
         return cmd_map
 
-    def exec_cmd(self, iteration, test):
+    async def exec_cmd(self, iteration, test):
         ext_cmd = self.cmd_map.get((iteration, test), None)
         if not ext_cmd:
             return
@@ -68,7 +68,7 @@ class ExtCmd(object):
 
         if len(ext_cmd['pid_name']):
             stdout = StringIO()
-            w.run("pidof -s " + ext_cmd['pid_name'], stdout=stdout)
+            await w.run("pidof -s " + ext_cmd['pid_name'], stdout=stdout)
             pid = stdout.getvalue().strip()
             cmd = cmd + " " + ext_cmd['pid_opt'] + " " + pid
 
@@ -76,5 +76,5 @@ class ExtCmd(object):
             cmd = cmd + " &"
 
         stdout = StringIO()
-        w.run(cmd, stdout=stdout)
+        await w.run(cmd, stdout=stdout)
         return stdout.getvalue().strip()

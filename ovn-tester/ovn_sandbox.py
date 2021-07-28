@@ -1,18 +1,27 @@
 import logging
-import paramiko
+import asyncssh
 
 from ovn_exceptions import SSHError
 
 log = logging.getLogger(__name__)
 
+# asyncssh is VERY chatty when its log level is anything looser than
+# "warning".
+asyncssh.set_log_level(logging.WARNING)
+
+
+async def create_ssh(hostname, log):
+    ssh = SSH(hostname, log)
+    # XXX Need to mirror the paramiko auto add policy?
+    ssh.conn = await asyncssh.connect(hostname)
+    return ssh
+
 
 class SSH:
     def __init__(self, hostname, cmd_log):
         self.hostname = hostname
-        self.ssh = paramiko.SSHClient()
-        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.ssh.connect(hostname)
         self.cmd_log = cmd_log
+        self.conn = None
 
     @staticmethod
     def printable_result(out):
@@ -20,38 +29,49 @@ class SSH:
             out = "---\n" + out
         return out
 
-    def run(self, cmd="", stdout=None, raise_on_error=False):
+    async def run(self, cmd="", stdout=None, raise_on_error=False):
         if self.cmd_log:
             log.info(f'Logging command: ssh {self.hostname} "{cmd}"')
 
-        ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd)
-        exit_status = ssh_stdout.channel.recv_exit_status()
+        while True:
+            try:
+                result = await self.conn.run(cmd)
+            except asyncssh.misc.ChannelOpenError:
+                # We sometimes see these exceptions seemingly at random.
+                # Just retry if it happens.
+                continue
+            else:
+                break
 
-        if exit_status != 0 and raise_on_error:
-            out = self.printable_result(ssh_stderr.read().decode().strip())
-            if len(out):
+        if result.exit_status != 0 and raise_on_error:
+            out = self.printable_result(result.stderr)
+            if len(out) > 0:
                 log.warning(out)
             raise SSHError(
-                f'Command "{cmd}" failed with exit_status {exit_status}.'
+                f'Command {cmd} failed with exit_status {result.exit_status}.'
             )
 
-        if not ssh_stdout.channel.recv_ready():
-            return
-
         if stdout:
-            stdout.write(ssh_stdout.read().decode('ascii'))
+            stdout.write(result.stdout.strip())
         else:
-            out = self.printable_result(ssh_stdout.read().decode().strip())
-            if len(out):
+            out = self.printable_result(result.stdout.strip())
+            if len(out) > 0:
                 log.info(out)
 
 
-class PhysicalNode(object):
-    def __init__(self, hostname, log_cmds):
-        self.ssh = SSH(hostname, log_cmds)
+async def create_physical_node(hostname, log_cmds):
+    node = PhysicalNode()
+    node.ssh = await create_ssh(hostname, log_cmds)
+    return node
 
-    def run(self, cmd="", stdout=None, raise_on_error=False):
-        self.ssh.run(cmd=cmd, stdout=stdout, raise_on_error=raise_on_error)
+
+class PhysicalNode(object):
+    def __init__(self):
+        self.ssh = None
+
+    async def run(self, cmd="", stdout=None, raise_on_error=False):
+        await self.ssh.run(cmd=cmd, stdout=stdout,
+                           raise_on_error=raise_on_error)
 
 
 class Sandbox(object):
@@ -59,8 +79,8 @@ class Sandbox(object):
         self.phys_node = phys_node
         self.container = container
 
-    def run(self, cmd="", stdout=None, raise_on_error=False):
+    async def run(self, cmd="", stdout=None, raise_on_error=False):
         if self.container:
             cmd = 'docker exec ' + self.container + ' ' + cmd
-        self.phys_node.run(cmd=cmd, stdout=stdout,
-                           raise_on_error=raise_on_error)
+        await self.phys_node.run(cmd=cmd, stdout=stdout,
+                                 raise_on_error=raise_on_error)

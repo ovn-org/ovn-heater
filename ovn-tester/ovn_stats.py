@@ -12,12 +12,12 @@ timed_functions = collections.defaultdict(list)
 
 def timeit(func):
     @functools.wraps(func)
-    def _timeit(*args, **kwargs):
+    async def _timeit(*args, **kwargs):
         start = time.perf_counter()
         failed = False
         value = None
         try:
-            value = func(*args, **kwargs)
+            value = await func(*args, **kwargs)
         except ovn_exceptions.OvnTestException:
             failed = True
         finally:
@@ -73,6 +73,9 @@ def report(test_name, brief=False):
     df = pd.DataFrame(all_avgs, index=all_f, columns=headings)
     stats_html = df.to_html()
 
+    # Creating report files happens at the end of a context, meaning that file
+    # I/O will not interfere with any running tests. As such, there's not a
+    # good reason to make the file I/O asynchronous.
     with open(f'{test_name}-report.html', 'w') as report_file:
         report_file.write('<html>')
         report_file.write(stats_html)

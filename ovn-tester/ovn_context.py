@@ -46,7 +46,8 @@ class Context(object):
         self.failed = False
         if self.test:
             # exec external cmd
-            self.test.exec_cmd(self.iteration, self.test_name)
+            # self.test.exec_cmd(self.iteration, self.test_name)
+            pass
         self.iteration_start = now
         if self.iteration < self.max_iterations - 1:
             self.iteration += 1

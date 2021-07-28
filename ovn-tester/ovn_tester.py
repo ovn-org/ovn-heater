@@ -5,10 +5,11 @@ import sys
 import netaddr
 import yaml
 import importlib
+import asyncio
 
 from collections import namedtuple
 from ovn_context import Context
-from ovn_sandbox import PhysicalNode
+from ovn_sandbox import create_physical_node
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
 
@@ -83,15 +84,15 @@ where TEST_CONF is the YAML file defining the test parameters.
 ''', file=sys.stderr)
 
 
-def read_physical_deployment(deployment, global_cfg):
+async def read_physical_deployment(deployment, global_cfg):
     with open(deployment, 'r') as yaml_file:
         dep = yaml.safe_load(yaml_file)
 
         central_dep = dep['central-node']
-        central_node = PhysicalNode(
+        central_node = await create_physical_node(
             central_dep.get('name', 'localhost'), global_cfg.log_cmds)
         worker_nodes = [
-            PhysicalNode(worker, global_cfg.log_cmds)
+            await create_physical_node(worker, global_cfg.log_cmds)
             for worker in dep['worker-nodes']
         ]
         return central_node, worker_nodes
@@ -206,26 +207,37 @@ def create_nodes(cluster_config, central, workers):
     return central_node, worker_nodes
 
 
-def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
+async def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
     ovn = Cluster(central_node, worker_nodes, cluster_cfg, brex_cfg)
     with Context("prepare_test"):
-        ovn.start()
+        await ovn.start()
     return ovn
 
 
-def run_base_cluster_bringup(ovn, bringup_cfg):
+async def run_base_cluster_bringup(ovn, bringup_cfg):
     # create ovn topology
     with Context("base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
-        ovn.create_cluster_router("lr-cluster")
-        ovn.create_cluster_join_switch("ls-join")
-        ovn.create_cluster_load_balancer("lb-cluster")
+        await ovn.create_cluster_router("lr-cluster")
+        await ovn.create_cluster_join_switch("ls-join")
+        await ovn.create_cluster_load_balancer("lb-cluster")
         for i in ctx:
             worker = ovn.worker_nodes[i]
-            worker.provision(ovn)
-            ports = worker.provision_ports(ovn,
+            await worker.provision(ovn)
+            ports = await worker.provision_ports(ovn,
                                            bringup_cfg.n_pods_per_node)
-            worker.provision_load_balancers(ovn, ports)
-            worker.ping_ports(ovn, ports)
+            await worker.provision_load_balancers(ovn, ports)
+            await worker.ping_ports(ovn, ports)
+
+
+async def main(global_cfg, cluster_cfg, brex_cfg, bringup_cfg):
+    central, workers = await read_physical_deployment(sys.argv[1], global_cfg)
+    central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
+    tests = configure_tests(config, central_node, worker_nodes)
+
+    ovn = await prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
+    await run_base_cluster_bringup(ovn, bringup_cfg)
+    for test in tests:
+        await test.run(ovn, global_cfg)
 
 
 if __name__ == '__main__':
@@ -238,12 +250,6 @@ if __name__ == '__main__':
 
     global_cfg, cluster_cfg, brex_cfg, bringup_cfg = read_config(config)
 
-    central, workers = read_physical_deployment(sys.argv[1], global_cfg)
-    central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
-    tests = configure_tests(config, central_node, worker_nodes)
+    asyncio.run(main(global_cfg, cluster_cfg, brex_cfg, bringup_cfg))
 
-    ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
-    run_base_cluster_bringup(ovn, bringup_cfg)
-    for test in tests:
-        test.run(ovn, global_cfg)
     sys.exit(0)

@@ -1,8 +1,8 @@
 from collections import namedtuple
 import netaddr
 from ovn_context import Context
-from ovn_workload import Namespace
 from ovn_ext_cmd import ExtCmd
+from ovn_workload import create_namespace
 
 
 NsRange = namedtuple('NsRange',
@@ -35,7 +35,7 @@ class NetpolMultitenant(ExtCmd):
             ranges=ranges
         )
 
-    def run(self, ovn, global_cfg):
+    async def run(self, ovn, global_cfg):
         """
         Run a multitenant network policy test, for example:
 
@@ -79,21 +79,21 @@ class NetpolMultitenant(ExtCmd):
                 # includes i.
                 ranges = self.config.ranges
                 n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
-                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}')
+                ns = await create_namespace(ovn, f'ns_netpol_multitenant_{i}')
                 for _ in range(n_ports):
                     worker = ovn.select_worker_for_port()
-                    for p in worker.provision_ports(ovn, 1):
-                        ns.add_ports([p])
-                ns.default_deny()
-                ns.allow_within_namespace()
-                ns.check_enforcing_internal()
-                ns.allow_from_external(external_ips1)
-                ns.allow_from_external(external_ips2, include_ext_gw=True)
-                ns.check_enforcing_external()
+                    for p in await worker.provision_ports(ovn, 1):
+                        await ns.add_ports([p])
+                await ns.default_deny()
+                await ns.allow_within_namespace()
+                await ns.check_enforcing_internal()
+                await ns.allow_from_external(external_ips1)
+                await ns.allow_from_external(external_ips2, include_ext_gw=True)
+                await ns.check_enforcing_external()
                 all_ns.append(ns)
 
         if not global_cfg.cleanup:
             return
         with Context('netpol_multitenant_cleanup', brief_report=True) as ctx:
             for ns in all_ns:
-                ns.unprovision()
+                await ns.unprovision()

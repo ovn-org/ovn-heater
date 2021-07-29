@@ -30,7 +30,8 @@ density_light:
   n_pods: 10
 
 density_heavy:
-  n_pods: 10
+  n_pods: 20
+  batch: 4
   pods_vip_ratio: 2
 
 cluster_density:

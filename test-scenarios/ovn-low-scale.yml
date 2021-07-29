@@ -36,6 +36,7 @@ density_heavy:
 
 cluster_density:
   n_runs: 10
+  batch: 10
 
 netpol_multitenant:
   n_namespaces: 5

@@ -3,6 +3,7 @@ import ovn_exceptions
 import ovn_sandbox
 import ovn_stats
 import ovn_utils
+import ovn_context
 from ovn_load_balancer import create_load_balancer
 import netaddr
 from collections import namedtuple
@@ -359,8 +360,10 @@ class WorkerNode(Node):
         await self.run_ping(cluster, 'ext-ns', port.ip)
 
     async def ping_ports(self, cluster, ports):
-        for port in ports:
-            await self.ping_port(cluster, port)
+        ctx = ovn_context.active_context
+        tasks = [ctx.create_task(self.ping_port(cluster, port))
+                 for port in ports]
+        await asyncio.gather(*tasks)
 
 
 ACL_DEFAULT_DENY_PRIO = 1

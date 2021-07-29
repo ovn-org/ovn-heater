@@ -33,11 +33,11 @@ def clear():
 
 
 def add(fname, duration, failed):
+    iteration = ovn_context.get_current_iteration()
     if failed:
-        ovn_context.active_context.fail()
-    iteration = ovn_context.active_context.iteration
+        iteration.fail()
     elem = (duration, failed)
-    timed_functions[(fname, iteration)].append(elem)
+    timed_functions[(fname, iteration.num)].append(elem)
 
 
 def report(test_name, brief=False):
@@ -48,7 +48,7 @@ def report(test_name, brief=False):
         'Min (s)', 'Median (s)', '90%ile (s)', 'Max (s)', 'Mean (s)',
         'Total (s)', 'Count', 'Failed'
     ]
-    for (f, i), measurements in timed_functions.items():
+    for (f, i), measurements in sorted(timed_functions.items()):
         for (d, r) in measurements:
             all_stats[f].append(d)
             chart_stats[f].append([f'{i}', f, d])

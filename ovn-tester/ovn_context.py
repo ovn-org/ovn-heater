@@ -1,6 +1,7 @@
 import logging
 import ovn_stats
 import time
+import asyncio
 
 log = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ ITERATION_STAT_NAME = 'Iteration Total'
 
 
 class Context(object):
-    def __init__(self, test_name, max_iterations=1, brief_report=False,
+    def __init__(self, test_name, max_iterations=None, brief_report=False,
                  test=None):
         self.iteration = -1
         self.test_name = test_name
@@ -20,6 +21,11 @@ class Context(object):
         self.iteration_start = None
         self.failed = False
         self.test = test
+        self.iterations = dict()
+        if self.max_iterations is None:
+            self.iteration_singleton = ContextIteration(0, self)
+        else:
+            self.iteration_singleton = None
 
     def __enter__(self):
         global active_context
@@ -57,3 +63,56 @@ class Context(object):
 
     def fail(self):
         self.failed = True
+
+    def iteration_started(self, iteration):
+        '''Explicitly begin iteration 'n'. This is necessary when running
+        asynchronously since task starts and ends can overlap.'''
+        iteration.start()
+        log.info(f'Context {self.test_name}, Iteration {iteration.num}')
+
+    def iteration_completed(self, iteration):
+        ''' Explicitly end iteration 'n'. This is necessary when running
+        asynchronously since task starts and ends can overlap.'''
+        iteration.end()
+        duration = iteration.end_time - iteration.start_time
+        ovn_stats.add(ITERATION_STAT_NAME, duration, iteration.failed)
+        self.iterations = {task_name: it for task_name, it in
+                           self.iterations.items() if it != iteration}
+        log.log(logging.WARNING if iteration.failed else logging.INFO,
+                f'Context {self.test_name}, Iteration {iteration.num}, '
+                f'Result: {"FAILURE" if iteration.failed else "SUCCESS"}')
+
+    def create_task(self, coro, iteration=None):
+        '''Create a task to run in this context.'''
+        if iteration is None:
+            iteration = get_current_iteration()
+        task = asyncio.create_task(coro)
+        self.iterations[task.get_name()] = iteration
+        return task
+
+
+def get_current_iteration():
+    ctx = active_context
+    if ctx.iteration_singleton is not None:
+        return ctx.iteration_singleton
+
+    cur_task = asyncio.current_task()
+    return active_context.iterations[cur_task.get_name()]
+
+
+class ContextIteration(object):
+    def __init__(self, num, context):
+        self.num = num
+        self.context = context
+        self.start_time = None
+        self.end_time = None
+        self.failed = False
+
+    def fail(self):
+        self.failed = True
+
+    def start(self):
+        self.start_time = time.perf_counter()
+
+    def end(self):
+        self.end_time = time.perf_counter()

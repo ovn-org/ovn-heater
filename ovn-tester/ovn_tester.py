@@ -8,7 +8,7 @@ import importlib
 import asyncio
 
 from collections import namedtuple
-from ovn_context import Context
+from ovn_context import Context, get_current_iteration
 from ovn_sandbox import create_physical_node
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
@@ -57,7 +57,8 @@ def calculate_default_static_vips():
 GlobalCfg = namedtuple('GlobalCfg', ['log_cmds', 'cleanup'])
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg',
-                               ['n_pods_per_node'])
+                               ['n_pods_per_node',
+                                'queries_per_second'])
 
 
 def calculate_default_node_remotes(net, clustered, n_relays, enable_ssl):
@@ -157,7 +158,8 @@ def read_config(config):
 
     bringup_args = config.get('base_cluster_bringup', dict())
     bringup_cfg = ClusterBringupCfg(
-        n_pods_per_node=bringup_args.get('n_pods_per_node', 10)
+        n_pods_per_node=bringup_args.get('n_pods_per_node', 10),
+        queries_per_second=bringup_args.get('queries_per_second', 20),
     )
     return global_cfg, cluster_cfg, brex_cfg, bringup_cfg
 
@@ -214,19 +216,24 @@ async def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
     return ovn
 
 
+async def base_cluster_provisioner(ovn, bringup_cfg):
+    iteration = get_current_iteration()
+    worker = ovn.worker_nodes[iteration.num]
+    await worker.provision(ovn)
+    ports = await worker.provision_ports(ovn,
+                                         bringup_cfg.n_pods_per_node)
+    await worker.provision_load_balancers(ovn, ports)
+    await worker.ping_ports(ovn, ports)
+
+
 async def run_base_cluster_bringup(ovn, bringup_cfg):
     # create ovn topology
     with Context("base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
         await ovn.create_cluster_router("lr-cluster")
         await ovn.create_cluster_join_switch("ls-join")
         await ovn.create_cluster_load_balancer("lb-cluster")
-        for i in ctx:
-            worker = ovn.worker_nodes[i]
-            await worker.provision(ovn)
-            ports = await worker.provision_ports(ovn,
-                                           bringup_cfg.n_pods_per_node)
-            await worker.provision_load_balancers(ovn, ports)
-            await worker.ping_ports(ovn, ports)
+        await ctx.qps_test(bringup_cfg.queries_per_second,
+                           base_cluster_provisioner, ovn, bringup_cfg)
 
 
 async def main(global_cfg, cluster_cfg, brex_cfg, bringup_cfg):

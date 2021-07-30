@@ -1,6 +1,7 @@
 from collections import namedtuple
 from ovn_context import Context
 from ovn_workload import Namespace
+from ovn_ext_cmd import ExtCmd
 
 
 DENSITY_N_BUILD_PODS = 6
@@ -12,11 +13,14 @@ ClusterDensityCfg = namedtuple('ClusterDensityCfg',
                                 'n_startup'])
 
 
-class ClusterDensity(object):
-    def __init__(self, config):
+class ClusterDensity(ExtCmd):
+    def __init__(self, config, central_node, worker_nodes):
+        super(ClusterDensity, self).__init__(
+                config, central_node, worker_nodes)
+        test_config = config.get('cluster_density', dict())
         self.config = ClusterDensityCfg(
-            n_runs=config.get('n_runs', 0),
-            n_startup=config.get('n_startup', 0)
+            n_runs=test_config.get('n_runs', 0),
+            n_startup=test_config.get('n_startup', 0)
         )
 
     def run(self, ovn, global_cfg):
@@ -50,6 +54,9 @@ class ClusterDensity(object):
         with Context('cluster_density',
                      self.config.n_runs - self.config.n_startup) as ctx:
             for i in ctx:
+                # exec external cmd
+                self.exec_cmd(i, 'cluster_density')
+
                 ns = Namespace(ovn, 'NS_{}'.format(self.config.n_startup + i))
                 all_ns.append(ns)
 

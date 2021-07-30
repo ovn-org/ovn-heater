@@ -2,6 +2,7 @@ from collections import namedtuple
 import netaddr
 from ovn_context import Context
 from ovn_workload import Namespace
+from ovn_ext_cmd import ExtCmd
 
 
 NsRange = namedtuple('NsRange',
@@ -15,19 +16,22 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
                                'n_external_ips2'])
 
 
-class NetpolMultitenant(object):
-    def __init__(self, config):
+class NetpolMultitenant(ExtCmd):
+    def __init__(self, config, central_node, worker_nodes):
+        super(NetpolMultitenant, self).__init__(
+                config, central_node, worker_nodes)
+        test_config = config.get('netpol_multitenant', dict())
         ranges = [
             NsRange(
                 start=range_args.get('start', 0),
                 n_pods=range_args.get('n_pods', 5),
-            ) for range_args in config.get('ranges', list())
+            ) for range_args in test_config.get('ranges', list())
         ]
         ranges.sort(key=lambda x: x.start, reverse=True)
         self.config = NsMultitenantCfg(
-            n_namespaces=config.get('n_namespaces', 0),
-            n_external_ips1=config.get('n_external_ips1', 3),
-            n_external_ips2=config.get('n_external_ips2', 20),
+            n_namespaces=test_config.get('n_namespaces', 0),
+            n_external_ips1=test_config.get('n_external_ips1', 3),
+            n_external_ips2=test_config.get('n_external_ips2', 20),
             ranges=ranges
         )
 
@@ -70,6 +74,9 @@ class NetpolMultitenant(object):
         all_ns = []
         with Context('netpol_multitenant', self.config.n_namespaces) as ctx:
             for i in ctx:
+                # exec external cmd
+                self.exec_cmd(i, 'netpol_multitenant')
+
                 # Get the number of pods from the "highest" range that
                 # includes i.
                 ranges = self.config.ranges

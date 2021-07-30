@@ -1,17 +1,21 @@
 from collections import namedtuple
 from ovn_context import Context
 from ovn_workload import Namespace
+from ovn_ext_cmd import ExtCmd
 
 NpCrossNsCfg = namedtuple('NpCrossNsCfg',
                           ['n_ns',
                            'pods_ns_ratio'])
 
 
-class NetpolCrossNs(object):
-    def __init__(self, config):
+class NetpolCrossNs(ExtCmd):
+    def __init__(self, config, central_node, worker_nodes):
+        super(NetpolCrossNs, self).__init__(
+                config, central_node, worker_nodes)
+        test_config = config.get('netpol_cross', dict())
         self.config = NpCrossNsCfg(
-            n_ns=config.get('n_ns', 0),
-            pods_ns_ratio=config.get('pods_ns_ratio', 0),
+            n_ns=test_config.get('n_ns', 0),
+            pods_ns_ratio=test_config.get('pods_ns_ratio', 0),
         )
 
     def run(self, ovn, global_cfg):
@@ -29,6 +33,9 @@ class NetpolCrossNs(object):
 
         with Context('netpol_cross_ns', self.config.n_ns) as ctx:
             for i in ctx:
+                # exec external cmd
+                self.exec_cmd(i, 'netpol_cross_ns')
+
                 ns = all_ns[i]
                 ext_ns = all_ns[(i+1) % self.config.n_ns]
                 ns.allow_cross_namespace(ext_ns)

@@ -18,17 +18,21 @@ class SSH:
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd)
         exit_status = ssh_stdout.channel.recv_exit_status()
 
+        if exit_status != 0 and raise_on_error:
+            print(ssh_stderr.read().decode())
+            raise SSHError(
+                f'Command "{cmd}" failed with exit_status {exit_status}.'
+            )
+
+        if not ssh_stdout.channel.recv_ready():
+            return
+
         if stdout:
             stdout.write(ssh_stdout.read().decode('ascii'))
         else:
             out = ssh_stdout.read().decode().strip()
             if len(out):
                 print(out)
-        if exit_status != 0 and raise_on_error:
-            print(ssh_stderr.read().decode())
-            raise SSHError(
-                f'Command "{cmd}" failed with exit_status {exit_status}.'
-            )
 
 
 class PhysicalNode(object):

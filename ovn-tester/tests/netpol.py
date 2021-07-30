@@ -1,6 +1,7 @@
 from collections import namedtuple
 from ovn_context import Context
 from ovn_workload import Namespace
+from ovn_ext_cmd import ExtCmd
 import ovn_exceptions
 
 NpCfg = namedtuple('NpCfg',
@@ -9,12 +10,15 @@ NpCfg = namedtuple('NpCfg',
                     'pods_ns_ratio'])
 
 
-class NetPol(object):
-    def __init__(self, name, config):
+class NetPol(ExtCmd):
+    def __init__(self, name, config, central_node, worker_nodes):
+        super(NetPol, self).__init__(
+                config, central_node, worker_nodes)
+        test_config = config.get(name, dict())
         self.config = NpCfg(
-            n_ns=config.get('n_ns', 0),
-            n_labels=config.get('n_labels', 0),
-            pods_ns_ratio=config.get('pods_ns_ratio', 0),
+            n_ns=test_config.get('n_ns', 0),
+            n_labels=test_config.get('n_labels', 0),
+            pods_ns_ratio=test_config.get('pods_ns_ratio', 0),
         )
         n_ports = self.config.pods_ns_ratio*self.config.n_ns
         if self.config.n_labels >= n_ports or self.config.n_labels <= 2:
@@ -44,6 +48,9 @@ class NetPol(object):
     def run(self, ovn, global_cfg, exclude=False):
         with Context(self.name, self.config.n_ns) as ctx:
             for i in ctx:
+                # exec external cmd
+                self.exec_cmd(i, self.name)
+
                 ns = self.all_ns[i]
                 for lbl in range(self.config.n_labels):
                     label = self.all_labels[lbl]

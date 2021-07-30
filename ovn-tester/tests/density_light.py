@@ -28,11 +28,8 @@ class DensityLight(ExtCmd):
             ns.add_ports(ports)
 
         n_iterations = self.config.n_pods - self.config.n_startup
-        with Context('density_light', n_iterations) as ctx:
+        with Context('density_light', n_iterations, test=self) as ctx:
             for i in ctx:
-                # exec external cmd
-                self.exec_cmd(i, 'density_light')
-
                 ports = ovn.provision_ports(1)
                 ns.add_ports(ports[0:1])
                 ovn.ping_ports(ports)

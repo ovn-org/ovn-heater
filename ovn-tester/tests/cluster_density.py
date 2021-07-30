@@ -52,11 +52,9 @@ class ClusterDensity(ExtCmd):
             ovn.provision_vips_to_load_balancers(backends)
 
         with Context('cluster_density',
-                     self.config.n_runs - self.config.n_startup) as ctx:
+                     self.config.n_runs - self.config.n_startup,
+                     test=self) as ctx:
             for i in ctx:
-                # exec external cmd
-                self.exec_cmd(i, 'cluster_density')
-
                 ns = Namespace(ovn, 'NS_{}'.format(self.config.n_startup + i))
                 all_ns.append(ns)
 

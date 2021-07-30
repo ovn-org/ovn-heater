@@ -31,11 +31,8 @@ class NetpolCrossNs(ExtCmd):
                 ns.default_deny()
                 all_ns.append(ns)
 
-        with Context('netpol_cross_ns', self.config.n_ns) as ctx:
+        with Context('netpol_cross_ns', self.config.n_ns, test=self) as ctx:
             for i in ctx:
-                # exec external cmd
-                self.exec_cmd(i, 'netpol_cross_ns')
-
                 ns = all_ns[i]
                 ext_ns = all_ns[(i+1) % self.config.n_ns]
                 ns.allow_cross_namespace(ext_ns)

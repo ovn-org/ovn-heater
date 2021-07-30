@@ -37,11 +37,8 @@ class DensityHeavy(ExtCmd):
 
         with Context('density_heavy',
                      (self.config.n_pods - self.config.n_startup) /
-                     self.config.pods_vip_ratio) as ctx:
+                     self.config.pods_vip_ratio, test=self) as ctx:
             for i in ctx:
-                # exec external cmd
-                self.exec_cmd(i, 'density_heavy')
-
                 ports = ovn.provision_ports(self.config.pods_vip_ratio)
                 ns.add_ports(ports)
                 ovn.provision_vips_to_load_balancers([[ports[0]]])

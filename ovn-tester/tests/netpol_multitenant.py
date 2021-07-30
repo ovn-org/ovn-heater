@@ -72,11 +72,9 @@ class NetpolMultitenant(ExtCmd):
         ]
 
         all_ns = []
-        with Context('netpol_multitenant', self.config.n_namespaces) as ctx:
+        with Context('netpol_multitenant', self.config.n_namespaces,
+                     test=self) as ctx:
             for i in ctx:
-                # exec external cmd
-                self.exec_cmd(i, 'netpol_multitenant')
-
                 # Get the number of pods from the "highest" range that
                 # includes i.
                 ranges = self.config.ranges

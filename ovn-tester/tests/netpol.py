@@ -46,11 +46,8 @@ class NetPol(ExtCmd):
                 self.all_ns.append(ns)
 
     def run(self, ovn, global_cfg, exclude=False):
-        with Context(self.name, self.config.n_ns) as ctx:
+        with Context(self.name, self.config.n_ns, test=self) as ctx:
             for i in ctx:
-                # exec external cmd
-                self.exec_cmd(i, self.name)
-
                 ns = self.all_ns[i]
                 for lbl in range(self.config.n_labels):
                     label = self.all_labels[lbl]

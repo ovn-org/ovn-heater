@@ -8,13 +8,15 @@ ITERATION_STAT_NAME = 'Iteration Total'
 
 
 class Context(object):
-    def __init__(self, test_name, max_iterations=1, brief_report=False):
+    def __init__(self, test_name, max_iterations=1, brief_report=False,
+                 test=None):
         self.iteration = -1
         self.test_name = test_name
         self.max_iterations = max_iterations
         self.brief_report = brief_report
         self.iteration_start = None
         self.failed = False
+        self.test = test
 
     def __enter__(self):
         global active_context
@@ -39,6 +41,9 @@ class Context(object):
                   f'Iteration {self.iteration}, '
                   f'Result: {"FAILURE" if self.failed else "SUCCESS"} *****')
         self.failed = False
+        if self.test:
+            # exec external cmd
+            self.test.exec_cmd(self.iteration, self.test_name)
         self.iteration_start = now
         if self.iteration < self.max_iterations - 1:
             self.iteration += 1

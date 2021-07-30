@@ -215,8 +215,11 @@ class OvnNbctl:
     def sync(self, wait="hv"):
         self.run(f'--wait={wait} sync')
 
-    def start_daemon(self, nb_cluster_ips):
-        remote = ','.join([f'ssl:{ip}:6641' for ip in nb_cluster_ips])
+    def start_daemon(self, nb_cluster_ips, enable_ssl):
+        if enable_ssl:
+            remote = ','.join([f'ssl:{ip}:6641' for ip in nb_cluster_ips])
+        else:
+            remote = ','.join([f'tcp:{ip}:6641' for ip in nb_cluster_ips])
         # FIXME: hardcoded args, are these really an issue?
         cmd = f'--detach --pidfile --log-file --db={remote} ' \
             f'-p /opt/ovn/ovn-privkey.pem -c /opt/ovn/ovn-cert.pem ' \

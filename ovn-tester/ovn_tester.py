@@ -47,7 +47,7 @@ ClusterBringupCfg = namedtuple('ClusterBringupCfg',
                                ['n_pods_per_node'])
 
 
-def calculate_default_node_remotes(net, clustered, n_relays):
+def calculate_default_node_remotes(net, clustered, n_relays, enable_ssl):
     ip_gen = net.iter_hosts()
     if n_relays > 0:
         skip = 3 if clustered else 1
@@ -56,7 +56,10 @@ def calculate_default_node_remotes(net, clustered, n_relays):
         ip_range = range(0, n_relays)
     else:
         ip_range = range(0, 3 if clustered else 1)
-    remotes = ["ssl:" + str(next(ip_gen)) + ":6642" for _ in ip_range]
+    if enable_ssl:
+        remotes = ["ssl:" + str(next(ip_gen)) + ":6642" for _ in ip_range]
+    else:
+        remotes = ["tcp:" + str(next(ip_gen)) + ":6642" for _ in ip_range]
     return ','.join(remotes)
 
 
@@ -93,6 +96,7 @@ def read_config(config):
     clustered_db = cluster_args.get('clustered_db', True)
     node_net = netaddr.IPNetwork(
         cluster_args.get('node_net', '192.16.0.0/16'))
+    enable_ssl = cluster_args.get('enable_ssl', True)
     n_relays = cluster_args.get('n_relays', 0)
     cluster_cfg = ClusterConfig(
         cluster_cmd_path=cluster_args.get(
@@ -106,9 +110,11 @@ def read_config(config):
         raft_election_to=cluster_args.get('raft_election_to', 16),
         node_net=node_net,
         n_relays=n_relays,
+        enable_ssl=enable_ssl,
         node_remote=cluster_args.get(
             'node_remote',
-            calculate_default_node_remotes(node_net, clustered_db, n_relays)
+            calculate_default_node_remotes(node_net, clustered_db,
+                                           n_relays, enable_ssl)
         ),
         northd_probe_interval=cluster_args.get('northd_probe_interval', 5000),
         db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
@@ -129,7 +135,8 @@ def read_config(config):
         vips=cluster_args.get('vips', calculate_default_vips()),
         vip_subnet=DEFAULT_VIP_SUBNET,
         static_vips=cluster_args.get('static_vips',
-                                     calculate_default_static_vips())
+                                     calculate_default_static_vips()),
+        use_ovsdb_etcd=cluster_args.get('use_ovsdb_etcd', False),
     )
     brex_cfg = BrExConfig(
         physical_net=cluster_args.get('physical_net', 'providernet'),

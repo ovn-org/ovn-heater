@@ -21,6 +21,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'northd_probe_interval',
                             'db_inactivity_probe',
                             'node_net',
+                            'enable_ssl',
                             'node_remote',
                             'node_timeout_s',
                             'internal_net',
@@ -31,7 +32,8 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'n_relays',
                             'vips',
                             'vip_subnet',
-                            'static_vips'])
+                            'static_vips',
+                            'use_ovsdb_etcd'])
 
 
 BrExConfig = namedtuple('BrExConfig', ['physical_net'])
@@ -46,10 +48,13 @@ class Node(ovn_sandbox.Sandbox):
 
     def build_cmd(self, cluster_cfg, cmd, *args):
         monitor_all = 'yes' if cluster_cfg.monitor_all else 'no'
+        etcd_cmd = 'yes' if cluster_cfg.use_ovsdb_etcd else 'no'
         clustered_db = 'yes' if cluster_cfg.clustered_db else 'no'
+        enable_ssl = 'yes' if cluster_cfg.enable_ssl else 'no'
         cmd = \
             f'cd {cluster_cfg.cluster_cmd_path} && ' \
-            f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} ' \
+            f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} '\
+            f'ENABLE_SSL={enable_ssl} ENABLE_ETCD={etcd_cmd} '\
             f'OVN_DP_TYPE={cluster_cfg.datapath_type} ' \
             f'CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 '\
             f'RELAY_COUNT={cluster_cfg.n_relays} '\
@@ -535,7 +540,7 @@ class Cluster(object):
                               str(self.central_node.mgmt_ip + 2)]
         else:
             nb_cluster_ips = [str(self.central_node.mgmt_ip)]
-        self.nbctl.start_daemon(nb_cluster_ips)
+        self.nbctl.start_daemon(nb_cluster_ips, self.cluster_cfg.enable_ssl)
         self.nbctl.set_global(
             'use_logical_dp_groups',
             self.cluster_cfg.logical_dp_groups

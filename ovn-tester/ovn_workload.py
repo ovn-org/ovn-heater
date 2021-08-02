@@ -127,6 +127,7 @@ class WorkerNode(Node):
         self.ext_switch = None
         self.lports = []
         self.next_lport_index = 0
+        self.lock = asyncio.Lock()
 
     async def start(self, cluster_cfg):
         log.info(f'Starting worker {self.container}')
@@ -265,7 +266,9 @@ class WorkerNode(Node):
     @ovn_stats.timeit
     async def provision_port(self, cluster, passive=False):
         name = f'lp-{self.id}-{self.next_lport_index}'
-        ip = netaddr.IPAddress(self.int_net.first + self.next_lport_index + 1)
+        ip = netaddr.IPAddress(self.int_net.first +
+                               self.next_lport_index + 1)
+        self.next_lport_index += 1
         plen = self.int_net.prefixlen
         gw = netaddr.IPAddress(self.int_net.last - 1)
         ext_gw = netaddr.IPAddress(self.ext_net.last - 2)
@@ -277,7 +280,6 @@ class WorkerNode(Node):
                                                 ext_gw=ext_gw, metadata=self,
                                                 passive=passive, security=True)
         self.lports.append(lport)
-        self.next_lport_index += 1
         return lport
 
     @ovn_stats.timeit

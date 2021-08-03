@@ -397,6 +397,7 @@ class Namespace(object):
         self.load_balancer = None
         self.cluster.n_ns += 1
         self.name = name
+        self.lock = asyncio.Lock()
 
     @ovn_stats.timeit
     async def add_ports(self, ports):
@@ -571,16 +572,17 @@ class Namespace(object):
 
     @ovn_stats.timeit
     async def provision_vips_to_load_balancers(self, backend_lists):
-        vip_net = DEFAULT_NS_VIP_SUBNET.next(self.cluster.n_ns)
-        n_vips = len(self.load_balancer.vips.keys())
-        vip_ip = vip_net.ip.__add__(n_vips + 1)
+        async with self.lock:
+            vip_net = DEFAULT_NS_VIP_SUBNET.next(self.cluster.n_ns)
+            n_vips = len(self.load_balancer.vips.keys())
+            vip_ip = vip_net.ip.__add__(n_vips + 1)
 
-        vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
-                [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
-            for i, ports in enumerate(backend_lists)
-        }
-        await self.load_balancer.add_vips(vips)
+            vips = {
+                f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
+                    [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
+                for i, ports in enumerate(backend_lists)
+            }
+            await self.load_balancer.add_vips(vips)
 
 
 class Cluster(object):
@@ -598,6 +600,7 @@ class Cluster(object):
         self.join_switch = None
         self.last_selected_worker = 0
         self.n_ns = 0
+        self.lock = asyncio.Lock()
 
     async def start(self):
         await self.central_node.start(self.cluster_cfg)
@@ -671,15 +674,16 @@ class Cluster(object):
 
     @ovn_stats.timeit
     async def provision_vips_to_load_balancers(self, backend_lists):
-        n_vips = len(self.load_balancer.vips.keys())
-        vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
+        async with self.lock:
+            n_vips = len(self.load_balancer.vips.keys())
+            vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
 
-        vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
-                [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
-            for i, ports in enumerate(backend_lists)
-        }
-        await self.load_balancer.add_vips(vips)
+            vips = {
+                f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
+                    [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
+                for i, ports in enumerate(backend_lists)
+            }
+            await self.load_balancer.add_vips(vips)
 
     async def unprovision_vips(self):
         await self.load_balancer.clear_vips()

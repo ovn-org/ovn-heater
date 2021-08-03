@@ -94,6 +94,24 @@ class Context(object):
         self.iterations[task.get_name()] = iteration
         return task
 
+    async def qps_test(self, qps, coro, *args):
+        tasks = []
+        for i in range(self.max_iterations):
+            iteration = ContextIteration(i, self)
+            tasks.append(self.create_task(
+                self.qps_task(iteration, coro, *args), iteration)
+            )
+            # Use i+1 so that we don't sleep on task 0 and so that
+            # we sleep after 20 iterations instead of 21.
+            if (i + 1) % qps == 0:
+                await asyncio.sleep(1)
+        await asyncio.gather(*tasks)
+
+    async def qps_task(self, iteration, coro, *args):
+        await self.iteration_started(iteration)
+        await coro(*args)
+        self.iteration_completed(iteration)
+
 
 def get_current_iteration():
     ctx = active_context

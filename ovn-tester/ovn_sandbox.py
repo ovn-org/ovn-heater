@@ -58,6 +58,12 @@ class SSH:
             if len(out) > 0:
                 log.info(out)
 
+    async def run_deferred(self, cmd=""):
+        if self.cmd_log:
+            log.info(f'Logging deferred command: ssh {self.hostname} "{cmd}"')
+
+        return await self.conn.create_process(cmd)
+
 
 async def create_physical_node(hostname, log_cmds):
     node = PhysicalNode()
@@ -73,6 +79,9 @@ class PhysicalNode(object):
         await self.ssh.run(cmd=cmd, stdout=stdout,
                            raise_on_error=raise_on_error)
 
+    async def run_deferred(self, cmd=""):
+        return await self.ssh.run_deferred(cmd=cmd)
+
 
 class Sandbox(object):
     def __init__(self, phys_node, container):
@@ -84,3 +93,8 @@ class Sandbox(object):
             cmd = 'docker exec ' + self.container + ' ' + cmd
         await self.phys_node.run(cmd=cmd, stdout=stdout,
                                  raise_on_error=raise_on_error)
+
+    async def run_deferred(self, cmd=""):
+        if self.container:
+            cmd = 'docker exec ' + self.container + ' ' + cmd
+        return await self.phys_node.run_deferred(cmd=cmd)

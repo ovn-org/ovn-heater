@@ -64,11 +64,13 @@ class Context(object):
     def fail(self):
         self.failed = True
 
-    def iteration_started(self, iteration):
+    async def iteration_started(self, iteration):
         '''Explicitly begin iteration 'n'. This is necessary when running
         asynchronously since task starts and ends can overlap.'''
         iteration.start()
         log.info(f'Context {self.test_name}, Iteration {iteration.num}')
+        if self.test:
+            await self.test.exec_cmd(iteration.num, self.test_name)
 
     def iteration_completed(self, iteration):
         ''' Explicitly end iteration 'n'. This is necessary when running
@@ -78,6 +80,8 @@ class Context(object):
         ovn_stats.add(ITERATION_STAT_NAME, duration, iteration.failed)
         self.iterations = {task_name: it for task_name, it in
                            self.iterations.items() if it != iteration}
+        if self.test:
+            self.test.terminate_process(self.test_name)
         log.log(logging.WARNING if iteration.failed else logging.INFO,
                 f'Context {self.test_name}, Iteration {iteration.num}, '
                 f'Result: {"FAILURE" if iteration.failed else "SUCCESS"}')

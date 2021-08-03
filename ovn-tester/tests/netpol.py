@@ -1,5 +1,5 @@
 from collections import namedtuple
-from ovn_context import Context
+from ovn_context import Context, get_current_iteration
 from ovn_ext_cmd import ExtCmd
 from ovn_workload import create_namespace
 import ovn_exceptions
@@ -7,7 +7,8 @@ import ovn_exceptions
 NpCfg = namedtuple('NpCfg',
                    ['n_ns',
                     'n_labels',
-                    'pods_ns_ratio'])
+                    'pods_ns_ratio',
+                    'queries_per_second'])
 
 
 class NetPol(ExtCmd):
@@ -19,6 +20,7 @@ class NetPol(ExtCmd):
             n_ns=test_config.get('n_ns', 0),
             n_labels=test_config.get('n_labels', 0),
             pods_ns_ratio=test_config.get('pods_ns_ratio', 0),
+            queries_per_second=test_config.get('queries_per_second', 20),
         )
         n_ports = self.config.pods_ns_ratio*self.config.n_ns
         if self.config.n_labels >= n_ports or self.config.n_labels <= 2:
@@ -47,26 +49,30 @@ class NetPol(ExtCmd):
 
     async def run(self, ovn, global_cfg, exclude=False):
         with Context(self.name, self.config.n_ns, test=self) as ctx:
-            for i in ctx:
-                ns = self.all_ns[i]
-                for lbl in range(self.config.n_labels):
-                    label = self.all_labels[lbl]
-                    sub_ns_src = await ns.create_sub_ns(label)
-
-                    n = (lbl + 1) % self.config.n_labels
-                    if exclude:
-                        ex_label = label + self.all_labels[n]
-                        nlabel = [p for p in self.ports if p not in ex_label]
-                    else:
-                        nlabel = self.all_labels[n]
-                    sub_ns_dst = await ns.create_sub_ns(nlabel)
-
-                    await ns.allow_sub_namespace(sub_ns_src, sub_ns_dst)
-                    worker = label[0].metadata
-                    await worker.ping_port(ovn, label[0], nlabel[0].ip)
+            await ctx.qps_test(self.config.queries_per_second,
+                               self.tester, ovn, exclude)
 
         if not global_cfg.cleanup:
             return
         with Context(f'{self.name}_cleanup', brief_report=True) as ctx:
             for ns in self.all_ns:
                 await ns.unprovision()
+
+    async def tester(self, ovn, exclude):
+        iter_num = get_current_iteration().num
+        ns = self.all_ns[iter_num]
+        for lbl in range(self.config.n_labels):
+            label = self.all_labels[lbl]
+            sub_ns_src = await ns.create_sub_ns(label)
+
+            n = (lbl + 1) % self.config.n_labels
+            if exclude:
+                ex_label = label + self.all_labels[n]
+                nlabel = [p for p in self.ports if p not in ex_label]
+            else:
+                nlabel = self.all_labels[n]
+            sub_ns_dst = await ns.create_sub_ns(nlabel)
+
+            await ns.allow_sub_namespace(sub_ns_src, sub_ns_dst)
+            worker = label[0].metadata
+            await worker.ping_port(ovn, label[0], nlabel[0].ip)

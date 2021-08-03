@@ -1,6 +1,6 @@
 from collections import namedtuple
 import netaddr
-from ovn_context import Context
+from ovn_context import Context, get_current_iteration
 from ovn_ext_cmd import ExtCmd
 from ovn_workload import create_namespace
 
@@ -13,7 +13,8 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
                               ['n_namespaces',
                                'ranges',
                                'n_external_ips1',
-                               'n_external_ips2'])
+                               'n_external_ips2',
+                               'queries_per_second'])
 
 
 class NetpolMultitenant(ExtCmd):
@@ -32,7 +33,8 @@ class NetpolMultitenant(ExtCmd):
             n_namespaces=test_config.get('n_namespaces', 0),
             n_external_ips1=test_config.get('n_external_ips1', 3),
             n_external_ips2=test_config.get('n_external_ips2', 20),
-            ranges=ranges
+            ranges=ranges,
+            queries_per_second=test_config.get('queries_per_second', 20),
         )
 
     async def run(self, ovn, global_cfg):
@@ -74,26 +76,31 @@ class NetpolMultitenant(ExtCmd):
         all_ns = []
         with Context('netpol_multitenant', self.config.n_namespaces,
                      test=self) as ctx:
-            for i in ctx:
-                # Get the number of pods from the "highest" range that
-                # includes i.
-                ranges = self.config.ranges
-                n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
-                ns = await create_namespace(ovn, f'ns_netpol_multitenant_{i}')
-                for _ in range(n_ports):
-                    worker = ovn.select_worker_for_port()
-                    for p in await worker.provision_ports(ovn, 1):
-                        await ns.add_ports([p])
-                await ns.default_deny()
-                await ns.allow_within_namespace()
-                await ns.check_enforcing_internal()
-                await ns.allow_from_external(external_ips1)
-                await ns.allow_from_external(external_ips2, include_ext_gw=True)
-                await ns.check_enforcing_external()
-                all_ns.append(ns)
+            await ctx.qps_test(self.config.queries_per_second,
+                               self.tester, ovn, external_ips1, external_ips2,
+                               all_ns)
 
         if not global_cfg.cleanup:
             return
         with Context('netpol_multitenant_cleanup', brief_report=True) as ctx:
             for ns in all_ns:
                 await ns.unprovision()
+
+    async def tester(self, ovn, external_ips1, external_ips2, all_ns):
+        # Get the number of pods from the "highest" range that
+        # includes iteration.
+        iter_num = get_current_iteration().num
+        ranges = self.config.ranges
+        n_ports = next((r.n_pods for r in ranges if iter_num >= r.start), 1)
+        ns = await create_namespace(ovn, f'ns_netpol_multitenant_{iter_num}')
+        for _ in range(n_ports):
+            worker = ovn.select_worker_for_port()
+            for p in await worker.provision_ports(ovn, 1):
+                await ns.add_ports([p])
+        await ns.default_deny()
+        await ns.allow_within_namespace()
+        await ns.check_enforcing_internal()
+        await ns.allow_from_external(external_ips1)
+        await ns.allow_from_external(external_ips2, include_ext_gw=True)
+        await ns.check_enforcing_external()
+        all_ns.append(ns)

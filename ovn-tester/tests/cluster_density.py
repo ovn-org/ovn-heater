@@ -63,6 +63,9 @@ class ClusterDensity(ExtCmd):
                      self.batch_ratio, test=self) as ctx:
             for i in ctx:
                 ns = Namespace(ovn, 'NS_{}'.format(self.config.n_startup + i))
+                ns.create_load_balancer(
+                        'lb_NS_{}'.format(self.config.n_startup + i))
+                ovn.provision_lb(ns.load_balancer)
                 all_ns.append(ns)
 
                 iter_ports = ovn.provision_ports(self.config.batch)
@@ -79,8 +82,9 @@ class ClusterDensity(ExtCmd):
                             (j+1)*DENSITY_N_TOT_PODS]
                     ns.add_ports(ports)
                     # add VIPs and backends to cluster load-balancer
-                    ovn.provision_vips_to_load_balancers(
-                            [ports[0:1], ports[2:3], ports[3:4]])
+                    ns.provision_vips_to_load_balancers(
+                            [ports[0:2], ports[2:3], ports[3:4]])
+
                     ovn.ping_ports(ports)
                     ovn.unprovision_ports(build_ports)
 

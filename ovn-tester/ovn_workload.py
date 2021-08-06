@@ -338,7 +338,7 @@ class WorkerNode(Node):
 ACL_DEFAULT_DENY_PRIO = 1
 ACL_DEFAULT_ALLOW_ARP_PRIO = 2
 ACL_NETPOL_ALLOW_PRIO = 3
-
+DEFAULT_NS_VIP_SUBNET = netaddr.IPNetwork('30.0.0.0/16')
 
 class Namespace(object):
     def __init__(self, cluster, name):
@@ -354,6 +354,8 @@ class Namespace(object):
         self.addr_set = self.nbctl.address_set_create(f'as_{name}')
         self.sub_as = []
         self.sub_pg = []
+        self.load_balancer = None
+        self.cluster.n_ns += 1
 
     @ovn_stats.timeit
     def add_ports(self, ports):
@@ -512,6 +514,21 @@ class Namespace(object):
             worker = src.metadata
             worker.ping_port(self.cluster, src, dst.ip)
 
+    def create_load_balancer(self, lb_name):
+        self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl)
+
+    @ovn_stats.timeit
+    def provision_vips_to_load_balancers(self, backend_lists):
+        vip_net = DEFAULT_NS_VIP_SUBNET.next(self.cluster.n_ns)
+        n_vips = len(self.load_balancer.vips.keys())
+        vip_ip = vip_net.ip.__add__(n_vips + 1)
+
+        vips = {
+            str(vip_ip + i): [str(p.ip) for p in ports]
+            for i, ports in enumerate(backend_lists)
+        }
+        self.load_balancer.add_vips(vips)
+
 
 class Cluster(object):
     def __init__(self, central_node, worker_nodes, cluster_cfg, brex_cfg):
@@ -527,6 +544,7 @@ class Cluster(object):
         self.load_balancer = None
         self.join_switch = None
         self.last_selected_worker = 0
+        self.n_ns = 0
 
     def start(self):
         self.central_node.start(self.cluster_cfg)
@@ -610,3 +628,7 @@ class Cluster(object):
         self.last_selected_worker += 1
         self.last_selected_worker %= len(self.worker_nodes)
         return self.worker_nodes[self.last_selected_worker]
+
+    def provision_lb(self, lb):
+        for w in self.worker_nodes:
+            lb.add_to_switch(w.switch.name)

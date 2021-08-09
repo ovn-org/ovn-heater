@@ -340,6 +340,7 @@ ACL_DEFAULT_ALLOW_ARP_PRIO = 2
 ACL_NETPOL_ALLOW_PRIO = 3
 DEFAULT_NS_VIP_SUBNET = netaddr.IPNetwork('30.0.0.0/16')
 
+
 class Namespace(object):
     def __init__(self, cluster, name):
         self.cluster = cluster

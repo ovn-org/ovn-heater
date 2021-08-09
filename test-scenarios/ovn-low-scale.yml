@@ -30,11 +30,13 @@ density_light:
   n_pods: 10
 
 density_heavy:
-  n_pods: 10
+  n_pods: 20
+  batch: 4
   pods_vip_ratio: 2
 
 cluster_density:
   n_runs: 10
+  batch: 10
 
 netpol_multitenant:
   n_namespaces: 5

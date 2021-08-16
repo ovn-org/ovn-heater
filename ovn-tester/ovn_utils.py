@@ -77,6 +77,10 @@ class OvnNbctl:
         self.run(cmd=f'lrp-add {router.name} {name} {mac} {ip}/{plen}')
         return LRPort(name=name)
 
+    def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
+        print(f'** Setting gw chassis {chassis} for router port {rp.name} **')
+        self.run(cmd=f'lrp-set-gateway-chassis {rp.name} {chassis} {priority}')
+
     def ls_add(self, name, cidr):
         print(f'***** creating lswitch {name} *****')
         self.run(cmd=f'ls-add {name}')

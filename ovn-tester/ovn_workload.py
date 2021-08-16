@@ -175,6 +175,9 @@ class WorkerNode(Node):
             self.switch, ls_rp_name, self.rp
         )
 
+        # Make the lrp as distributed gateway router port.
+        cluster.nbctl.lr_port_set_gw_chassis(self.rp, self.container)
+
         # Create a gw router and connect it to the cluster join switch.
         self.gw_router = cluster.nbctl.lr_add(f'gwrouter-{self.container}')
         cluster.nbctl.run(f'set Logical_Router {self.gw_router.name} '

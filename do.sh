@@ -60,7 +60,9 @@ function install_deps() {
     yum install redhat-lsb-core python3-pip python3-virtualenv python3 python3-devel python-virtualenv --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
-    for container_name in `docker ps | grep -v "CONTAINER ID" | awk '{print $1}'`
+    containers=$(docker ps --filter='name=(ovn|registry)' \
+                        | grep -v "CONTAINER ID" | awk '{print $1}')
+    for container_name in $containers
     do
         docker stop $container_name
         docker rm $container_name

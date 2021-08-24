@@ -229,7 +229,7 @@ class WorkerNode(Node):
         cluster.nbctl.route_add(self.gw_router, gw=str(gr_def_gw))
 
         # Force return traffic to return on the same node.
-        cluster.nbctl.run(f'set Logical_Router {self.gw_router} '
+        cluster.nbctl.run(f'set Logical_Router {self.gw_router.name} '
                           f'options:lb_force_snat_ip={gr_gw}')
 
         # Route for traffic that needs to exit the cluster

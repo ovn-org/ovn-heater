@@ -8,9 +8,8 @@
       state: started
 
   - name: Delete old docker volumes
-    file:
-      path: /var/lib/docker/volumes/
-      state: absent
+    shell: |
+      docker volume prune -f
 
   - name: Delete old docker containers if any
     shell: |

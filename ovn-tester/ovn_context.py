@@ -1,5 +1,8 @@
+import logging
 import ovn_stats
 import time
+
+log = logging.getLogger(__name__)
 
 active_context = None
 
@@ -20,14 +23,14 @@ class Context(object):
 
     def __enter__(self):
         global active_context
-        print(f'***** Entering context {self.test_name} *****')
+        log.info(f'Entering context {self.test_name}')
         ovn_stats.clear()
         active_context = self
         return self
 
     def __exit__(self, type, value, traceback):
         ovn_stats.report(self.test_name, brief=self.brief_report)
-        print(f'***** Exiting context {self.test_name} *****')
+        log.info(f'Exiting context {self.test_name}')
 
     def __iter__(self):
         return self
@@ -37,9 +40,9 @@ class Context(object):
         if self.iteration_start:
             duration = now - self.iteration_start
             ovn_stats.add(ITERATION_STAT_NAME, duration, failed=self.failed)
-            print(f'***** Context {self.test_name}, '
-                  f'Iteration {self.iteration}, '
-                  f'Result: {"FAILURE" if self.failed else "SUCCESS"} *****')
+            log.log(logging.WARNING if self.failed else logging.INFO,
+                    f'Context {self.test_name}, Iteration {self.iteration}, '
+                    f'Result: {"FAILURE" if self.failed else "SUCCESS"}')
         self.failed = False
         if self.test:
             # exec external cmd
@@ -47,8 +50,7 @@ class Context(object):
         self.iteration_start = now
         if self.iteration < self.max_iterations - 1:
             self.iteration += 1
-            print(f'***** Context {self.test_name}, '
-                  f'Iteration {self.iteration} *****')
+            log.info(f'Context {self.test_name}, Iteration {self.iteration}')
             return self.iteration
         raise StopIteration
 

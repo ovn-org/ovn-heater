@@ -1,3 +1,4 @@
+import logging
 import ovn_exceptions
 import ovn_sandbox
 import ovn_stats
@@ -10,6 +11,7 @@ from collections import defaultdict
 from randmac import RandMac
 from datetime import datetime
 
+log = logging.getLogger(__name__)
 
 ClusterConfig = namedtuple('ClusterConfig',
                            ['cluster_cmd_path',
@@ -72,7 +74,7 @@ class CentralNode(Node):
         self.db_containers = db_containers
 
     def start(self, cluster_cfg):
-        print('***** starting central node *****')
+        log.info('Starting central node')
         self.phys_node.run(self.build_cmd(cluster_cfg, 'start'))
         time.sleep(5)
         self.set_raft_election_timeout(cluster_cfg.raft_election_to)
@@ -80,7 +82,7 @@ class CentralNode(Node):
 
     def set_raft_election_timeout(self, timeout_s):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
-            print(f'***** set RAFT election timeout to {timeout}ms *****')
+            log.info(f'Setting RAFT election timeout to {timeout}ms')
             self.run(cmd=f'ovs-appctl -t '
                      f'/run/ovn/ovnnb_db.ctl cluster/change-election-timer '
                      f'OVN_Northbound {timeout}')
@@ -89,7 +91,7 @@ class CentralNode(Node):
                      f'OVN_Southbound {timeout}')
 
     def enable_trim_on_compaction(self):
-        print('***** set DB trim-on-compaction *****')
+        log.info('Setting DB trim-on-compaction')
         for db_container in self.db_containers:
             self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
                                f'/run/ovn/ovnnb_db.ctl '
@@ -115,25 +117,25 @@ class WorkerNode(Node):
         self.next_lport_index = 0
 
     def start(self, cluster_cfg):
-        print(f'***** starting worker {self.container} *****')
+        log.info(f'Starting worker {self.container}')
         self.phys_node.run(self.build_cmd(cluster_cfg, 'add-chassis',
                                           self.container, 'tcp:0.0.0.1:6642'))
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
-        print(f'***** connecting worker {self.container} *****')
+        log.info(f'Connecting worker {self.container}')
         self.phys_node.run(self.build_cmd(cluster_cfg,
                                           'set-chassis-ovn-remote',
                                           self.container,
                                           cluster_cfg.node_remote))
 
     def configure_localnet(self, physical_net):
-        print(f'***** creating localnet on {self.container} *****')
+        log.info(f'Creating localnet on {self.container}')
         self.run(cmd=f'ovs-vsctl -- set open_vswitch . '
                  f'external-ids:ovn-bridge-mappings={physical_net}:br-ex')
 
     def configure_external_host(self):
-        print(f'***** add external host on {self.container} *****')
+        log.info(f'Adding external host on {self.container}')
         gw_ip = netaddr.IPAddress(self.ext_net.last - 1)
         host_ip = netaddr.IPAddress(self.ext_net.last - 2)
 
@@ -252,7 +254,7 @@ class WorkerNode(Node):
         gw = netaddr.IPAddress(self.int_net.last - 1)
         ext_gw = netaddr.IPAddress(self.ext_net.last - 2)
 
-        print(f'***** creating lport {name} *****')
+        log.info(f'Creating lport {name}')
         lport = cluster.nbctl.ls_port_add(self.switch, name,
                                           mac=str(RandMac()), ip=ip, plen=plen,
                                           gw=gw, ext_gw=ext_gw, metadata=self,
@@ -307,7 +309,7 @@ class WorkerNode(Node):
         return ports
 
     def run_ping(self, cluster, src, dest):
-        print(f'***** pinging from {src} to {dest} *****')
+        log.info(f'Pinging from {src} to {dest}')
         cmd = f'ip netns exec {src} ping -q -c 1 -W 0.1 {dest}'
         start_time = datetime.now()
         while True:
@@ -319,8 +321,8 @@ class WorkerNode(Node):
 
             duration = (datetime.now() - start_time).seconds
             if (duration > cluster.cluster_cfg.node_timeout_s):
-                print(f'***** Error: Timeout waiting for {src} '
-                      f'to be able to ping {dest} *****')
+                log.error(f'Timeout waiting for {src} '
+                          f'to be able to ping {dest}')
                 raise ovn_exceptions.OvnPingTimeoutException()
 
     @ovn_stats.timeit

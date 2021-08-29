@@ -1,25 +1,36 @@
+import logging
 import paramiko
 
 from ovn_exceptions import SSHError
 
+log = logging.getLogger(__name__)
+
 
 class SSH:
-    def __init__(self, hostname, log):
+    def __init__(self, hostname, cmd_log):
         self.hostname = hostname
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.ssh.connect(hostname)
-        self.log = log
+        self.cmd_log = cmd_log
+
+    @staticmethod
+    def printable_result(out):
+        if '\n' in out or '\r' in out:
+            out = "---\n" + out
+        return out
 
     def run(self, cmd="", stdout=None, raise_on_error=False):
-        if self.log:
-            print(f'Logging command: ssh {self.hostname} "{cmd}"')
+        if self.cmd_log:
+            log.info(f'Logging command: ssh {self.hostname} "{cmd}"')
 
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd)
         exit_status = ssh_stdout.channel.recv_exit_status()
 
         if exit_status != 0 and raise_on_error:
-            print(ssh_stderr.read().decode())
+            out = self.printable_result(ssh_stderr.read().decode().strip())
+            if len(out):
+                log.warning(out)
             raise SSHError(
                 f'Command "{cmd}" failed with exit_status {exit_status}.'
             )
@@ -30,9 +41,9 @@ class SSH:
         if stdout:
             stdout.write(ssh_stdout.read().decode('ascii'))
         else:
-            out = ssh_stdout.read().decode().strip()
+            out = self.printable_result(ssh_stdout.read().decode().strip())
             if len(out):
-                print(out)
+                log.info(out)
 
 
 class PhysicalNode(object):

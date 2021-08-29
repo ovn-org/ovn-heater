@@ -57,7 +57,9 @@ function install_deps() {
     else
         yum install -y podman podman-docker
     fi
-    yum install redhat-lsb-core python3-pip python3-virtualenv python3 python3-devel python-virtualenv --skip-broken -y
+    yum install redhat-lsb-core datamash \
+        python3-pip python3-virtualenv python3 python3-devel python-virtualenv \
+        --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
     containers=$(docker ps --filter='name=(ovn|registry)' \
@@ -298,6 +300,16 @@ function run_test() {
        tar xvfz $f
     done
     popd
+
+    mkdir -p mined-data
+    for p in ovn-northd ovn-controller ovn-nbctl; do
+        logs=$(find ${out_dir}/logs -name ${p}.log)
+        ${topdir}/utils/mine-poll-intervals.sh ${logs} > mined-data/${p}
+    done
+    for p in ovsdb-server-sb ovsdb-server-nb; do
+        logs=$(find ${out_dir}/logs -name ${p}.log)
+        ${topdir}/utils/mine-db-poll-intervals.sh ${logs} > mined-data/${p}
+    done
 
     deactivate
     popd

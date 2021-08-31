@@ -5,6 +5,11 @@ from ovn_ext_cmd import ExtCmd
 import ovn_exceptions
 
 
+# By default simulate a deployment with 2 pods, one of which is the
+# backend of a service.
+DENSITY_PODS_VIP_RATIO = 2
+
+
 DensityCfg = namedtuple('DensityCfg',
                         ['n_pods',
                          'n_startup',
@@ -17,11 +22,13 @@ class DensityHeavy(ExtCmd):
         super(DensityHeavy, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('density_heavy', dict())
+        pods_vip_ratio = test_config.get('pods_vip_ratio',
+                                         DENSITY_PODS_VIP_RATIO)
         self.config = DensityCfg(
             n_pods=test_config.get('n_pods', 0),
             n_startup=test_config.get('n_startup', 0),
-            batch=test_config.get('batch', 1),
-            pods_vip_ratio=test_config.get('pods_vip_ratio', 1)
+            batch=test_config.get('batch', pods_vip_ratio),
+            pods_vip_ratio=pods_vip_ratio
         )
         if self.config.pods_vip_ratio > self.config.batch or \
            self.config.batch % self.config.pods_vip_ratio or \

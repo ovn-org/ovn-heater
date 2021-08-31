@@ -12,4 +12,3 @@ base_cluster_bringup:
 density_heavy:
   n_startup: 4000
   n_pods: 5000
-  pods_vip_ratio: 2

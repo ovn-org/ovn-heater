@@ -40,7 +40,7 @@ class DensityHeavy(ExtCmd):
             return
 
         ns = Namespace(ovn, 'ns_density_heavy')
-        ns.create_load_balancer('lb_density_heavy')
+        ns.create_load_balancer()
         ovn.provision_lb(ns.load_balancer)
 
         with Context('density_heavy_startup', brief_report=True) as ctx:

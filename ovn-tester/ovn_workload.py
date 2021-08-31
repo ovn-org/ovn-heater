@@ -362,6 +362,7 @@ class Namespace(object):
         self.sub_pg = []
         self.load_balancer = None
         self.cluster.n_ns += 1
+        self.name = name
 
     @ovn_stats.timeit
     def add_ports(self, ports):
@@ -520,8 +521,8 @@ class Namespace(object):
             worker = src.metadata
             worker.ping_port(self.cluster, src, dst.ip)
 
-    def create_load_balancer(self, lb_name):
-        self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl)
+    def create_load_balancer(self):
+        self.load_balancer = lb.OvnLoadBalancer(f'lb_{self.name}', self.nbctl)
 
     @ovn_stats.timeit
     def provision_vips_to_load_balancers(self, backend_lists):
@@ -638,3 +639,4 @@ class Cluster(object):
     def provision_lb(self, lb):
         for w in self.worker_nodes:
             lb.add_to_switch(w.switch.name)
+            lb.add_to_router(w.gw_router.name)

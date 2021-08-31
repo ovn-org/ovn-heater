@@ -656,12 +656,14 @@ class Cluster(object):
         )
 
     async def provision_ports(self, n_ports, passive=False):
-        ret_list = []
+        tasks = []
+        ctx = ovn_context.active_context
         for _ in range(n_ports):
             worker = self.select_worker_for_port()
-            ports = await worker.provision_ports(self, 1, passive)
-            ret_list.append(ports[0])
-        return ret_list
+            tasks.append(ctx.create_task(worker.provision_ports(self, 1,
+                                                                passive)))
+        results = await asyncio.gather(*tasks)
+        return [ports[0] for ports in results]
 
     async def unprovision_ports(self, ports):
         for port in ports:

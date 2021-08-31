@@ -1,5 +1,8 @@
+import logging
 from collections import namedtuple
 from io import StringIO
+
+log = logging.getLogger(__name__)
 
 LRouter = namedtuple('LRouter', ['name'])
 LRPort = namedtuple('LRPort', ['name'])
@@ -69,7 +72,7 @@ class OvnNbctl:
         self.run(f'set Connection . inactivity_probe={value}')
 
     def lr_add(self, name):
-        print(f'***** creating lrouter {name} *****')
+        log.info(f'Creating lrouter {name}')
         self.run(cmd=f'lr-add {name}')
         return LRouter(name=name)
 
@@ -78,11 +81,11 @@ class OvnNbctl:
         return LRPort(name=name)
 
     def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
-        print(f'** Setting gw chassis {chassis} for router port {rp.name} **')
+        log.info(f'Setting gw chassis {chassis} for router port {rp.name}')
         self.run(cmd=f'lrp-set-gateway-chassis {rp.name} {chassis} {priority}')
 
     def ls_add(self, name, cidr):
-        print(f'***** creating lswitch {name} *****')
+        log.info(f'Creating lswitch {name}')
         self.run(cmd=f'ls-add {name}')
         return LSwitch(name=name, cidr=cidr)
 

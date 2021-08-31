@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import logging
 import sys
 import netaddr
 import yaml
@@ -10,6 +11,9 @@ from ovn_context import Context
 from ovn_sandbox import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
+
+FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
+logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
 DEFAULT_N_VIPS = 2

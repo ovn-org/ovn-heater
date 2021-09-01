@@ -68,10 +68,12 @@ class Node(ovn_sandbox.Sandbox):
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, db_containers, mgmt_net, mgmt_ip):
+    def __init__(self, phys_node, db_containers, relay_containers, mgmt_net,
+                 mgmt_ip):
         super(CentralNode, self).__init__(phys_node, db_containers[0],
                                           mgmt_net, mgmt_ip)
         self.db_containers = db_containers
+        self.relay_containers = relay_containers
 
     def start(self, cluster_cfg):
         log.info('Starting central node')
@@ -97,6 +99,10 @@ class CentralNode(Node):
                                f'/run/ovn/ovnnb_db.ctl '
                                f'ovsdb-server/memory-trim-on-compaction on')
             self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
+                               f'/run/ovn/ovnsb_db.ctl '
+                               f'ovsdb-server/memory-trim-on-compaction on')
+        for relay_container in self.relay_containers:
+            self.phys_node.run(f'docker exec {relay_container} ovs-appctl -t '
                                f'/run/ovn/ovnsb_db.ctl '
                                f'ovsdb-server/memory-trim-on-compaction on')
 

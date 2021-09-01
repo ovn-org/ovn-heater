@@ -17,12 +17,14 @@ logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
 DEFAULT_N_VIPS = 2
+DEFAULT_VIP_PORT = 80
+DEFAULT_BACKEND_PORT = 8080
 
 
 def calculate_default_vips():
     vip_gen = DEFAULT_VIP_SUBNET.iter_hosts()
     vip_range = range(0, DEFAULT_N_VIPS)
-    return {str(next(vip_gen)): None for _ in vip_range}
+    return {f'{next(vip_gen)}:{DEFAULT_VIP_PORT}': None for _ in vip_range}
 
 
 DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
@@ -40,9 +42,15 @@ def calculate_default_static_vips():
     # This assumes it's OK to use the same backend list for each
     # VIP. If we need to use different backends for each VIP,
     # then this will need to be updated
-    backend_list = [str(next(backend_gen)) for _ in backend_range]
+    backend_list = [
+        f'{next(backend_gen)}:{DEFAULT_BACKEND_PORT}'
+        for _ in backend_range
+    ]
 
-    return {str(next(vip_gen)): backend_list for _ in vip_range}
+    return {
+        f'{next(vip_gen)}:{DEFAULT_VIP_PORT}': backend_list
+        for _ in vip_range
+    }
 
 
 GlobalCfg = namedtuple('GlobalCfg', ['log_cmds', 'cleanup'])

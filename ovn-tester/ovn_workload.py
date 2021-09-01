@@ -140,7 +140,6 @@ class WorkerNode(Node):
         host_ip = netaddr.IPAddress(self.ext_net.last - 2)
 
         self.run(cmd='ip link add veth0 type veth peer name veth1')
-        self.run(cmd='ip link add veth0 type veth peer name veth1')
         self.run(cmd='ip netns add ext-ns')
         self.run(cmd='ip link set netns ext-ns dev veth0')
         self.run(cmd='ip netns exec ext-ns ip link set dev veth0 up')

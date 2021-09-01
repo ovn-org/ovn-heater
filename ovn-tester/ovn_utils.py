@@ -200,20 +200,20 @@ class OvnNbctl:
     def lb_clear_vips(self, lb_uuid):
         self.run(cmd=f'clear Load_Balancer {lb_uuid} vips')
 
-    def lb_add_to_router(self, lb_uuid, router):
-        cmd = f"lr-lb-add {router} {lb_uuid}"
+    def lb_add_to_routers(self, lb_uuid, routers):
+        cmd = ' -- '.join([f'lr-lb-add {r} {lb_uuid}' for r in routers])
         self.run(cmd=cmd)
 
-    def lb_add_to_switch(self, lb_uuid, switch):
-        cmd = f"ls-lb-add {switch} {lb_uuid}"
+    def lb_add_to_switches(self, lb_uuid, switches):
+        cmd = ' -- '.join([f'ls-lb-add {s} {lb_uuid}' for s in switches])
         self.run(cmd=cmd)
 
-    def lb_remove_from_router(self, lb_uuid, router):
-        cmd = f"lr-lb-del {router} {lb_uuid}"
+    def lb_remove_from_routers(self, lb_uuid, routers):
+        cmd = ' -- '.join([f'lr-lb-del {r} {lb_uuid}' for r in routers])
         self.run(cmd=cmd)
 
-    def lb_remove_from_switch(self, lb_uuid, switch):
-        cmd = f"ls-lb-del {switch} {lb_uuid}"
+    def lb_remove_from_switches(self, lb_uuid, switches):
+        cmd = ' -- '.join([f'ls-lb-del {s} {lb_uuid}' for s in switches])
         self.run(cmd=cmd)
 
     def wait_until(self, cmd=""):

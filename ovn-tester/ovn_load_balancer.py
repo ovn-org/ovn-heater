@@ -76,18 +76,18 @@ class OvnLoadBalancer(object):
         for lb in self.lbs:
             self.nbctl.lb_set_vips(lb.uuid, self.vips)
 
-    def add_to_router(self, router):
+    def add_to_routers(self, routers):
         for lb in self.lbs:
-            self.nbctl.lb_add_to_router(lb.uuid, router)
+            self.nbctl.lb_add_to_routers(lb.uuid, routers)
 
-    def add_to_switch(self, switch):
+    def add_to_switches(self, switches):
         for lb in self.lbs:
-            self.nbctl.lb_add_to_switch(lb.uuid, switch)
+            self.nbctl.lb_add_to_switches(lb.uuid, switches)
 
-    def remove_from_router(self, router):
+    def remove_from_routers(self, routers):
         for lb in self.lbs:
-            self.nbctl.lb_remove_from_router(lb.uuid, router)
+            self.nbctl.lb_remove_from_routers(lb.uuid, routers)
 
-    def remove_from_switch(self, switch):
+    def remove_from_switches(self, switches):
         for lb in self.lbs:
-            self.nbctl.lb_remove_from_switch(lb.uuid, switch)
+            self.nbctl.lb_remove_from_switches(lb.uuid, switches)

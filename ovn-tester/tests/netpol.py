@@ -38,7 +38,7 @@ class NetPol(ExtCmd):
                         i % self.config.n_labels, []).append(self.ports[i])
 
             for i in range(self.config.n_ns):
-                ns = Namespace(ovn, f'NS_{i}')
+                ns = Namespace(ovn, f'NS_{self.name}_{i}')
                 ns.add_ports(
                         self.ports[i * self.config.pods_ns_ratio:
                                    (i + 1)*self.config.pods_ns_ratio])

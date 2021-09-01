@@ -79,7 +79,7 @@ class NetpolMultitenant(ExtCmd):
                 # includes i.
                 ranges = self.config.ranges
                 n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
-                ns = Namespace(ovn, f'ns_{i}')
+                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}')
                 for _ in range(n_ports):
                     worker = ovn.select_worker_for_port()
                     for p in worker.provision_ports(ovn, 1):

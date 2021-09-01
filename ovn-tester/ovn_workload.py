@@ -405,10 +405,11 @@ class Namespace(object):
 
     def create_sub_ns(self, ports):
         n_sub_pgs = len(self.sub_pg)
-        pg = self.nbctl.port_group_create(f'sub_pg_{n_sub_pgs}')
+        suffix = f'{self.name}_{n_sub_pgs}'
+        pg = self.nbctl.port_group_create(f'sub_pg_{suffix}')
         self.nbctl.port_group_add_ports(pg, ports)
         self.sub_pg.append(pg)
-        addr_set = self.nbctl.address_set_create(f'sub_as_{n_sub_pgs}')
+        addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}')
         self.nbctl.address_set_add_addrs(addr_set,
                                          [str(p.ip) for p in ports])
         self.sub_as.append(addr_set)

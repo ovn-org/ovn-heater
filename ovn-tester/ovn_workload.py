@@ -276,15 +276,15 @@ class WorkerNode(Node):
         cluster_vips = cluster.cluster_cfg.vips.keys()
         cluster.load_balancer.add_backends_to_vip(port_ips,
                                                   cluster_vips)
-        cluster.load_balancer.add_to_switch(self.switch.name)
-        cluster.load_balancer.add_to_router(self.gw_router.name)
+        cluster.load_balancer.add_to_switches([self.switch.name])
+        cluster.load_balancer.add_to_routers([self.gw_router.name])
 
         # GW Load balancer has no VIPs/backends configured on it, since
         # this load balancer is used for hostnetwork services. We're not
         # using those right now so the load blaancer is empty.
         self.gw_load_balancer = lb.OvnLoadBalancer(
             f'lb-{self.gw_router.name}', cluster.nbctl)
-        self.gw_load_balancer.add_to_router(self.gw_router.name)
+        self.gw_load_balancer.add_to_routers([self.gw_router.name])
 
     @ovn_stats.timeit
     def bind_port(self, port):
@@ -637,6 +637,5 @@ class Cluster(object):
         return self.worker_nodes[self.last_selected_worker]
 
     def provision_lb(self, lb):
-        for w in self.worker_nodes:
-            lb.add_to_switch(w.switch.name)
-            lb.add_to_router(w.gw_router.name)
+        lb.add_to_switches([w.switch.name for w in self.worker_nodes])
+        lb.add_to_routers([w.gw_router.name for w in self.worker_nodes])

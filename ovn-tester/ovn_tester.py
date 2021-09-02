@@ -193,9 +193,10 @@ def create_nodes(cluster_config, central, workers):
     ] if cluster_config.clustered_db else [
         'ovn-central'
     ]
-    for i in range(cluster_config.n_relays):
-        db_containers.append(f'ovn-relay-{i + 1}')
-    central_node = CentralNode(central, db_containers, mgmt_net, mgmt_ip)
+    relay_containers = [f'ovn-relay-{i + 1}' for i in
+                        range(cluster_config.n_relays)]
+    central_node = CentralNode(central, db_containers, relay_containers,
+                               mgmt_net, mgmt_ip)
     worker_nodes = [
         WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
                    mgmt_net, mgmt_ip + i + 1, internal_net.next(i),

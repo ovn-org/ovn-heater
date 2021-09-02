@@ -394,6 +394,15 @@ class Namespace(object):
         for addr_set in self.sub_as:
             self.nbctl.address_set_del(addr_set)
 
+    def unprovision_ports(self, ports):
+        '''Unprovision a subset of ports in the namespace without having to
+        unprovision the entire namespace or any of its network policies.'''
+
+        for port in ports:
+            self.ports.remove(port)
+
+        self.cluster.unprovision_ports(ports)
+
     def enforce(self):
         if self.enforcing:
             return

@@ -76,7 +76,7 @@ class ClusterDensity(ExtCmd):
                             [ports[0:2], ports[2:3], ports[3:4]])
 
                     ovn.ping_ports(ports)
-                    ovn.unprovision_ports(build_ports)
+                    ns.unprovision_ports(build_ports)
 
         if not global_cfg.cleanup:
             return

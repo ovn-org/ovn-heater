@@ -38,6 +38,7 @@ class DensityHeavy(ExtCmd):
             pods_vip_ratio=pods_vip_ratio,
             queries_per_second=test_config.get('queries_per_second', 20),
         )
+        self.test_port_iters = []
         if self.config.pods_vip_ratio > self.config.batch or \
            self.config.batch % self.config.pods_vip_ratio or \
            self.config.n_pods % self.config.batch:
@@ -80,6 +81,7 @@ class DensityHeavy(ExtCmd):
                      self.config.batch, test=self) as ctx:
             await ctx.qps_test(self.config.queries_per_second,
                                self.provisioner, ns, ovn)
+            await ovn.wait_for_ports_up(self.test_port_iters)
 
         if not global_cfg.cleanup:
             return
@@ -88,7 +90,8 @@ class DensityHeavy(ExtCmd):
             await ns.unprovision()
 
     async def provisioner(self, ns, ovn):
-        iter_num = get_current_iteration().num
+        iteration = get_current_iteration()
+        iter_num = iteration.num
         ports = await ovn.provision_ports(self.config.batch)
         await ns.add_ports(ports)
         for j in range(0, self.config.batch,
@@ -96,4 +99,5 @@ class DensityHeavy(ExtCmd):
             name = 'density_heavy_' + \
                 str(self.config.n_startup + iter_num * self.config.batch + j)
             await self.create_lb(ovn, name, [[ports[j]]])
-        await ovn.ping_ports(ports)
+        self.test_port_iters.extend([(port, iteration)
+                               for port in ports])

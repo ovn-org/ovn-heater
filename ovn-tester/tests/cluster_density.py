@@ -28,6 +28,7 @@ class ClusterDensity(ExtCmd):
             n_startup=test_config.get('n_startup', 0),
             queries_per_second=test_config.get('queries_per_second', 20),
         )
+        self.test_port_iters = []
         if self.config.batch % DENSITY_N_TOT_PODS:
             raise ovn_exceptions.OvnInvalidConfigException()
         self.batch_ratio = self.config.batch // DENSITY_N_TOT_PODS
@@ -58,6 +59,7 @@ class ClusterDensity(ExtCmd):
                      self.batch_ratio, test=self) as ctx:
             await ctx.qps_test(self.config.queries_per_second,
                                self.tester, ovn, all_ns)
+            await ovn.wait_for_ports_up(self.test_port_iters)
 
         if not global_cfg.cleanup:
             return
@@ -80,7 +82,8 @@ class ClusterDensity(ExtCmd):
                     j*DENSITY_N_TOT_PODS:
                     j*DENSITY_N_TOT_PODS+DENSITY_N_BUILD_PODS]
             await ns.add_ports(build_ports)
-            await ovn.ping_ports(build_ports)
+            await ovn.wait_for_ports_up([(port, iteration)
+                                         for port in build_ports])
             # create 4 legacy pods
             ports = iter_ports[
                     j*DENSITY_N_TOT_PODS+DENSITY_N_BUILD_PODS:
@@ -89,5 +92,5 @@ class ClusterDensity(ExtCmd):
             # add VIPs and backends to cluster load-balancer
             await ns.provision_vips_to_load_balancers(
                     [ports[0:1], ports[2:3], ports[3:4]])
-            await ovn.ping_ports(ports)
+            self.test_port_iters.extend([(port, iteration) for port in ports])
             await ns.unprovision_ports(build_ports)

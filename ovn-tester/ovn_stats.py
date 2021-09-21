@@ -32,8 +32,9 @@ def clear():
     timed_functions.clear()
 
 
-def add(fname, duration, failed):
-    iteration = ovn_context.get_current_iteration()
+def add(fname, duration, failed, iteration=None):
+    if iteration is None:
+        iteration = ovn_context.get_current_iteration()
     if failed:
         iteration.fail()
     elem = (duration, failed)

@@ -1,5 +1,5 @@
 from collections import namedtuple
-from ovn_context import Context
+from ovn_context import Context, get_current_iteration
 from ovn_ext_cmd import ExtCmd
 from ovn_workload import create_namespace
 
@@ -22,6 +22,7 @@ class DensityLight(ExtCmd):
             pods_vip_ratio=0,
             queries_per_second=config.get('queries_per_second', 20),
         )
+        self.test_port_iters = []
 
     async def run(self, ovn, global_cfg):
         ns = await create_namespace(ovn, 'ns_density_light')
@@ -34,6 +35,7 @@ class DensityLight(ExtCmd):
         with Context('density_light', n_iterations, test=self) as ctx:
             await ctx.qps_test(self.config.queries_per_second,
                                self.provisioner, ns, ovn)
+            await ovn.wait_for_ports_up(self.test_port_iters)
 
         if not global_cfg.cleanup:
             return
@@ -43,4 +45,5 @@ class DensityLight(ExtCmd):
     async def provisioner(self, ns, ovn):
         ports = await ovn.provision_ports(1)
         await ns.add_ports(ports[0:1])
-        await ovn.ping_ports(ports)
+        self.test_port_iters.extend([(port, get_current_iteration())
+                                    for port in ports])

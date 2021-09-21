@@ -11,6 +11,7 @@ from collections import defaultdict
 from randmac import RandMac
 from datetime import datetime
 import asyncio
+from io import StringIO
 
 log = logging.getLogger(__name__)
 
@@ -365,6 +366,28 @@ class WorkerNode(Node):
                  for port in ports]
         await asyncio.gather(*tasks)
 
+    async def wait_for_port_up(self, port, iteration, timeout):
+        log.debug(f"Waiting for port {port.name} to be up")
+        await self.run(cmd=f'ovs-vsctl --timeout={timeout} wait-until '
+                       f'Interface {port.name} '
+                       f'external_ids:ovn-installed=true')
+        log.debug(f'Port {port.name} is up')
+        stdout = StringIO()
+        await self.run(cmd=f'ovs-vsctl get Interface {port.name} '
+                       f'external_ids:ovn-installed-ts', stdout=stdout)
+        timestamp = stdout.getvalue().strip().strip('"')
+        # Installed ts is in milliseconds, so we need to convert
+        # to seconds.
+        duration = (float(timestamp) / 1000) - port.created_ts
+        failed = duration > timeout
+        ovn_stats.add('wait_for_port_up', duration, failed=failed,
+                      iteration=iteration)
+
+    async def wait_for_ports_up(self, cluster, port_iters):
+        for port, iteration in port_iters:
+            await self.wait_for_port_up(port, iteration,
+                                        cluster.cluster_cfg.node_timeout_s)
+
 
 ACL_DEFAULT_DENY_PRIO = 1
 ACL_DEFAULT_ALLOW_ARP_PRIO = 2
@@ -676,6 +699,13 @@ class Cluster(object):
             ports_per_worker[p.metadata].append(p)
         for w, ports in ports_per_worker.items():
             await w.ping_ports(self, ports)
+
+    async def wait_for_ports_up(self, ports):
+        ports_per_worker = defaultdict(list)
+        for p, iteration in ports:
+            ports_per_worker[p.metadata].append((p, iteration))
+        for w, ports in ports_per_worker.items():
+            await w.wait_for_ports_up(self, ports)
 
     @ovn_stats.timeit
     async def provision_vips_to_load_balancers(self, backend_lists):

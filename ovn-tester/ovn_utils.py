@@ -1,6 +1,7 @@
 import logging
 from collections import namedtuple
 from io import StringIO
+import time
 
 log = logging.getLogger(__name__)
 
@@ -9,7 +10,7 @@ LRPort = namedtuple('LRPort', ['name'])
 LSwitch = namedtuple('LSwitch', ['name', 'cidr'])
 LSPort = namedtuple('LSPort',
                     ['name', 'mac', 'ip', 'plen', 'gw', 'ext_gw',
-                     'metadata', 'passive', 'uuid'])
+                     'metadata', 'passive', 'uuid', 'created_ts'])
 PortGroup = namedtuple('PortGroup', ['name'])
 AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
@@ -116,7 +117,8 @@ class OvnNbctl:
         uuid = stdout.getvalue().strip()
         return LSPort(name=name, mac=mac, ip=ip, plen=plen,
                       gw=gw, ext_gw=ext_gw, metadata=metadata,
-                      passive=passive, uuid=uuid)
+                      passive=passive, uuid=uuid,
+                      created_ts=time.clock_gettime(time.CLOCK_REALTIME))
 
     async def ls_port_del(self, port):
         await self.run(cmd=f'lsp-del {port.name}')

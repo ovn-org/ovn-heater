@@ -4,15 +4,16 @@ from io import StringIO
 
 log = logging.getLogger(__name__)
 
-LRouter = namedtuple('LRouter', ['name'])
+LRouter = namedtuple('LRouter', ['uuid', 'name'])
 LRPort = namedtuple('LRPort', ['name'])
-LSwitch = namedtuple('LSwitch', ['name', 'cidr'])
+LSwitch = namedtuple('LSwitch', ['uuid', 'name', 'cidr'])
 LSPort = namedtuple('LSPort',
                     ['name', 'mac', 'ip', 'plen', 'gw', 'ext_gw',
                      'metadata', 'passive', 'uuid'])
 PortGroup = namedtuple('PortGroup', ['name'])
 AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
+LoadBalancerGroup = namedtuple('LoadBalancerGroup', ['name', 'uuid'])
 
 
 class OvsVsctl:
@@ -73,8 +74,11 @@ class OvnNbctl:
 
     def lr_add(self, name):
         log.info(f'Creating lrouter {name}')
-        self.run(cmd=f'lr-add {name}')
-        return LRouter(name=name)
+
+        cmd = f'create Logical_Router name={name}'
+        stdout = StringIO()
+        self.run(cmd=cmd, stdout=stdout)
+        return LRouter(name=name, uuid=stdout.getvalue().strip())
 
     def lr_port_add(self, router, name, mac, ip, plen):
         self.run(cmd=f'lrp-add {router.name} {name} {mac} {ip}/{plen}')
@@ -86,8 +90,11 @@ class OvnNbctl:
 
     def ls_add(self, name, cidr):
         log.info(f'Creating lswitch {name}')
-        self.run(cmd=f'ls-add {name}')
-        return LSwitch(name=name, cidr=cidr)
+
+        cmd = f'create Logical_Switch name={name}'
+        stdout = StringIO()
+        self.run(cmd=cmd, stdout=stdout)
+        return LSwitch(name=name, cidr=cidr, uuid=stdout.getvalue().strip())
 
     def ls_port_add(self, lswitch, name, router_port=None,
                     mac=None, ip=None, plen=None, gw=None, ext_gw=None,
@@ -189,6 +196,24 @@ class OvnNbctl:
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
         return LoadBalancer(name=lb_name, uuid=stdout.getvalue().strip())
+
+    def create_lbg(self, name):
+        cmd = f'create Load_Balancer_Group name={name}'
+        stdout = StringIO()
+        self.run(cmd=cmd, stdout=stdout)
+        return LoadBalancerGroup(name=name, uuid=stdout.getvalue().strip())
+
+    def lbg_add_lb(self, lbg_uuid, lb):
+        cmd = f'add Load_Balancer_Group {lbg_uuid} load_balancer {lb.uuid}'
+        self.run(cmd=cmd)
+
+    def ls_add_lbg(self, ls_uuid, lbg):
+        cmd = f'add Logical_Switch {ls_uuid} load_balancer_group {lbg.uuid}'
+        self.run(cmd=cmd)
+
+    def lr_add_lbg(self, lr_uuid, lbg):
+        cmd = f'add Logical_Router {lr_uuid} load_balancer_group {lbg.uuid}'
+        self.run(cmd=cmd)
 
     def lb_set_vips(self, lb_uuid, vips):
         vip_str = ''

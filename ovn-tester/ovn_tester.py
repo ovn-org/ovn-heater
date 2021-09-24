@@ -226,6 +226,7 @@ def run_base_cluster_bringup(ovn, bringup_cfg):
                                            bringup_cfg.n_pods_per_node)
             worker.provision_load_balancers(ovn, ports)
             worker.ping_ports(ovn, ports)
+        ovn.provision_lb_group()
 
 
 if __name__ == '__main__':

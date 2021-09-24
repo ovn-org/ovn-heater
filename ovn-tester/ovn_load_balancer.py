@@ -91,3 +91,14 @@ class OvnLoadBalancer(object):
     def remove_from_switches(self, switches):
         for lb in self.lbs:
             self.nbctl.lb_remove_from_switches(lb.uuid, switches)
+
+
+class OvnLoadBalancerGroup(object):
+    def __init__(self, group_name, nbctl):
+        self.nbctl = nbctl
+        self.name = group_name
+        self.lbg = self.nbctl.create_lbg(self.name)
+
+    def add_lb(self, ovn_lb):
+        for lb in ovn_lb.lbs:
+            self.nbctl.lbg_add_lb(self.lbg.uuid, lb)

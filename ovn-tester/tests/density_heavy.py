@@ -66,13 +66,9 @@ class DensityHeavy(ExtCmd):
         with Context('density_heavy_startup', brief_report=True) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)
             ns.add_ports(ports)
-            backends = [
-                [ports[i]] for i in range(0, self.config.n_startup,
-                                          self.config.pods_vip_ratio)
-            ]
             for i in range(0, self.config.n_startup,
                            self.config.pods_vip_ratio):
-                self.create_lb(ovn, 'density_heavy_' + str(i), backends)
+                self.create_lb(ovn, 'density_heavy_' + str(i), [[ports[i]]])
 
         with Context('density_heavy',
                      (self.config.n_pods - self.config.n_startup) /

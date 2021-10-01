@@ -85,15 +85,21 @@ where TEST_CONF is the YAML file defining the test parameters.
 ''', file=sys.stderr)
 
 
+DEFAULT_CENTRAL_NODE_CONNECTIONS = 30
+DEFAULT_WORKER_NODE_CONNECTIONS = 5
+
+
 async def read_physical_deployment(deployment, global_cfg):
     with open(deployment, 'r') as yaml_file:
         dep = yaml.safe_load(yaml_file)
 
         central_dep = dep['central-node']
         central_node = await create_physical_node(
-            central_dep.get('name', 'localhost'), global_cfg.log_cmds)
+            central_dep.get('name', 'localhost'), global_cfg.log_cmds,
+            central_dep.get('n_connections', DEFAULT_CENTRAL_NODE_CONNECTIONS))
         worker_nodes = [
-            await create_physical_node(worker, global_cfg.log_cmds)
+            await create_physical_node(worker, global_cfg.log_cmds,
+                                       DEFAULT_WORKER_NODE_CONNECTIONS)
             for worker in dep['worker-nodes']
         ]
         return central_node, worker_nodes

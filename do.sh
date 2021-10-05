@@ -149,7 +149,7 @@ function clone_component() {
 ovs_repo="${OVS_REPO:-https://github.com/openvswitch/ovs.git}"
 ovs_branch="${OVS_BRANCH:-master}"
 ovn_repo="${OVN_REPO:-https://github.com/ovn-org/ovn.git}"
-ovn_branch="${OVN_BRANCH:-master}"
+ovn_branch="${OVN_BRANCH:-main}"
 
 # ovn-fake-multinode env vars
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"

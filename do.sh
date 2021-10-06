@@ -153,7 +153,7 @@ ovn_branch="${OVN_BRANCH:-main}"
 
 # ovn-fake-multinode env vars
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"
-ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-master}"
+ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-main}"
 
 OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
 

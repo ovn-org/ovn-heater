@@ -242,8 +242,10 @@ class BaseClusterProvisioner:
             await ovn.create_cluster_join_switch("ls-join")
             await ovn.create_cluster_load_balancer("lb-cluster")
             await ctx.qps_test(bringup_cfg.queries_per_second,
-                               self.provisioner, ovn, bringup_cfg)
+                               self.provisioner, ovn, bringup_cfg,
+                               end_iteration=False)
             await ovn.wait_for_ports_up(self.port_iters)
+            ctx.all_iterations_completed()
 
 
 async def main(global_cfg, cluster_cfg, brex_cfg, bringup_cfg):

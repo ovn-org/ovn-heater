@@ -58,8 +58,9 @@ class ClusterDensity(ExtCmd):
                      (self.config.n_runs - self.config.n_startup) //
                      self.batch_ratio, test=self) as ctx:
             await ctx.qps_test(self.config.queries_per_second,
-                               self.tester, ovn, all_ns)
+                               self.tester, ovn, all_ns, end_iteration=False)
             await ovn.wait_for_ports_up(self.test_port_iters)
+            ctx.all_iterations_completed()
 
         if not global_cfg.cleanup:
             return

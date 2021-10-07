@@ -80,8 +80,10 @@ class DensityHeavy(ExtCmd):
                      (self.config.n_pods - self.config.n_startup) //
                      self.config.batch, test=self) as ctx:
             await ctx.qps_test(self.config.queries_per_second,
-                               self.provisioner, ns, ovn)
+                               self.provisioner, ns, ovn,
+                               end_iteration=False)
             await ovn.wait_for_ports_up(self.test_port_iters)
+            ctx.all_iterations_completed()
 
         if not global_cfg.cleanup:
             return

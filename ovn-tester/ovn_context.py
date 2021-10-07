@@ -2,6 +2,7 @@ import logging
 import ovn_stats
 import time
 import asyncio
+from collections import Counter
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +50,8 @@ class Context(object):
         asynchronously since task starts and ends can overlap.'''
         iteration.end()
         duration = iteration.end_time - iteration.start_time
-        ovn_stats.add(ITERATION_STAT_NAME, duration, iteration.failed)
+        ovn_stats.add(ITERATION_STAT_NAME, duration, iteration.failed,
+                      iteration)
         self.iterations = {task_name: it for task_name, it in
                            self.iterations.items() if it != iteration}
         if self.test:
@@ -57,6 +59,18 @@ class Context(object):
         log.log(logging.WARNING if iteration.failed else logging.INFO,
                 f'Context {self.test_name}, Iteration {iteration.num}, '
                 f'Result: {"FAILURE" if iteration.failed else "SUCCESS"}')
+
+    def all_iterations_completed(self):
+        if self.iteration_singleton is not None:
+            # Weird, but you do you man.
+            self.iteration_completed(self.iteration_singleton)
+            return
+
+        # self.iterations may have the same iteration value for multiple
+        # keys. We need to first get the unique list of iterations.
+        iter_list = Counter(self.iterations.values())
+        for iteration in iter_list:
+            self.iteration_completed(iteration)
 
     def create_task(self, coro, iteration=None):
         '''Create a task to run in this context.'''
@@ -66,12 +80,12 @@ class Context(object):
         self.iterations[task.get_name()] = iteration
         return task
 
-    async def qps_test(self, qps, coro, *args):
+    async def qps_test(self, qps, coro, *args, **kwargs):
         tasks = []
         for i in range(self.max_iterations):
             iteration = ContextIteration(i, self)
             tasks.append(self.create_task(
-                self.qps_task(iteration, coro, *args), iteration)
+                self.qps_task(iteration, coro, *args, **kwargs), iteration)
             )
             # Use i+1 so that we don't sleep on task 0 and so that
             # we sleep after 20 iterations instead of 21.
@@ -79,10 +93,11 @@ class Context(object):
                 await asyncio.sleep(1)
         await asyncio.gather(*tasks)
 
-    async def qps_task(self, iteration, coro, *args):
+    async def qps_task(self, iteration, coro, *args, **kwargs):
         await self.iteration_started(iteration)
         await coro(*args)
-        self.iteration_completed(iteration)
+        if kwargs.get('end_iteration', True):
+            self.iteration_completed(iteration)
 
 
 def get_current_iteration():

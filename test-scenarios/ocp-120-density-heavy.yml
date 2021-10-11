@@ -10,5 +10,5 @@ base_cluster_bringup:
   n_pods_per_node: 10
 
 density_heavy:
-  n_startup: 30000
-  n_pods: 31250
+  n_startup: 10000
+  n_pods: 10250

@@ -6,6 +6,6 @@ class NetpolLarge(NetPol):
         super(NetpolLarge, self).__init__(
                 'netpol_large', config, central_node, worker_nodes)
 
-    def run(self, ovn, global_cfg):
-        self.init(ovn)
-        super(NetpolLarge, self).run(ovn, global_cfg)
+    async def run(self, ovn, global_cfg):
+        await self.init(ovn)
+        await super(NetpolLarge, self).run(ovn, global_cfg)

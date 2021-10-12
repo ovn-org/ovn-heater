@@ -10,17 +10,11 @@ cluster:
 ext_cmd:
   - c0:
     iteration: 1
+    duration: 8
     node: "ovn-scale-0"
     cmd: "perf record -g -e cpu-cycles -F 99 -o ovn-perf.data"
     pid_name: "ovn-controller"
     pid_opt: "-p"
-    background_opt: True
-    test: "density_light"
-  - c1:
-    iteration: 9
-    node: "ovn-scale-0"
-    cmd: "kill"
-    pid_name: "perf"
     test: "density_light"
 
 base_cluster_bringup:

@@ -1,13 +1,14 @@
 from collections import namedtuple
-from ovn_context import Context
-from ovn_workload import Namespace
+from ovn_context import Context, get_current_iteration
 from ovn_ext_cmd import ExtCmd
+from ovn_workload import create_namespace
 
 
 DensityCfg = namedtuple('DensityCfg',
                         ['n_pods',
                          'n_startup',
-                         'pods_vip_ratio'])
+                         'pods_vip_ratio',
+                         'queries_per_second'])
 
 
 class DensityLight(ExtCmd):
@@ -18,23 +19,33 @@ class DensityLight(ExtCmd):
         self.config = DensityCfg(
             n_pods=test_config.get('n_pods', 0),
             n_startup=test_config.get('n_startup', 0),
-            pods_vip_ratio=0
+            pods_vip_ratio=0,
+            queries_per_second=config.get('queries_per_second', 20),
         )
+        self.test_port_iters = []
 
-    def run(self, ovn, global_cfg):
-        ns = Namespace(ovn, 'ns_density_light')
-        with Context('density_light_startup', 1, brief_report=True) as ctx:
-            ports = ovn.provision_ports(self.config.n_startup, passive=True)
-            ns.add_ports(ports)
+    async def run(self, ovn, global_cfg):
+        ns = await create_namespace(ovn, 'ns_density_light')
+        with Context('density_light_startup', brief_report=True) as ctx:
+            ports = await ovn.provision_ports(self.config.n_startup,
+                                              passive=True)
+            await ns.add_ports(ports)
 
         n_iterations = self.config.n_pods - self.config.n_startup
         with Context('density_light', n_iterations, test=self) as ctx:
-            for i in ctx:
-                ports = ovn.provision_ports(1)
-                ns.add_ports(ports[0:1])
-                ovn.ping_ports(ports)
+            await ctx.qps_test(self.config.queries_per_second,
+                               self.provisioner, ns, ovn,
+                               end_iteration=False)
+            await ovn.wait_for_ports_up(self.test_port_iters)
+            ctx.all_iterations_completed()
 
         if not global_cfg.cleanup:
             return
         with Context('density_light_cleanup', brief_report=True) as ctx:
-            ns.unprovision()
+            await ns.unprovision()
+
+    async def provisioner(self, ns, ovn):
+        ports = await ovn.provision_ports(1)
+        await ns.add_ports(ports[0:1])
+        self.test_port_iters.extend([(port, get_current_iteration())
+                                    for port in ports])

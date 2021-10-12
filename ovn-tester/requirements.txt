@@ -1,7 +1,8 @@
 netaddr
 numpy
-paramiko
+asyncio
 pandas
 plotly
 pyyaml
 randmac
+asyncssh

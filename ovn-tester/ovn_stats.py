@@ -12,12 +12,12 @@ timed_functions = collections.defaultdict(list)
 
 def timeit(func):
     @functools.wraps(func)
-    def _timeit(*args, **kwargs):
+    async def _timeit(*args, **kwargs):
         start = time.perf_counter()
         failed = False
         value = None
         try:
-            value = func(*args, **kwargs)
+            value = await func(*args, **kwargs)
         except ovn_exceptions.OvnTestException:
             failed = True
         finally:
@@ -32,12 +32,13 @@ def clear():
     timed_functions.clear()
 
 
-def add(fname, duration, failed):
+def add(fname, duration, failed, iteration=None):
+    if iteration is None:
+        iteration = ovn_context.get_current_iteration()
     if failed:
-        ovn_context.active_context.fail()
-    iteration = ovn_context.active_context.iteration
+        iteration.fail()
     elem = (duration, failed)
-    timed_functions[(fname, iteration)].append(elem)
+    timed_functions[(fname, iteration.num)].append(elem)
 
 
 def report(test_name, brief=False):
@@ -48,7 +49,7 @@ def report(test_name, brief=False):
         'Min (s)', 'Median (s)', '90%ile (s)', 'Max (s)', 'Mean (s)',
         'Total (s)', 'Count', 'Failed'
     ]
-    for (f, i), measurements in timed_functions.items():
+    for (f, i), measurements in sorted(timed_functions.items()):
         for (d, r) in measurements:
             all_stats[f].append(d)
             chart_stats[f].append([f'{i}', f, d])
@@ -73,6 +74,9 @@ def report(test_name, brief=False):
     df = pd.DataFrame(all_avgs, index=all_f, columns=headings)
     stats_html = df.to_html()
 
+    # Creating report files happens at the end of a context, meaning that file
+    # I/O will not interfere with any running tests. As such, there's not a
+    # good reason to make the file I/O asynchronous.
     with open(f'{test_name}-report.html', 'w') as report_file:
         report_file.write('<html>')
         report_file.write(stats_html)

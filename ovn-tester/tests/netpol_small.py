@@ -6,6 +6,6 @@ class NetpolSmall(NetPol):
         super(NetpolSmall, self).__init__(
                 'netpol_small', config, central_node, worker_nodes)
 
-    def run(self, ovn, global_cfg):
-        self.init(ovn)
-        super(NetpolSmall, self).run(ovn, global_cfg, True)
+    async def run(self, ovn, global_cfg):
+        await self.init(ovn)
+        await super(NetpolSmall, self).run(ovn, global_cfg, True)

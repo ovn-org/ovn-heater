@@ -1,10 +1,10 @@
 from collections import namedtuple
-from ovn_context import Context
-from ovn_workload import Namespace
+from ovn_context import Context, get_current_iteration
 from ovn_ext_cmd import ExtCmd
-import ovn_load_balancer as lb
+from ovn_load_balancer import create_load_balancer
 import ovn_exceptions
 import netaddr
+from ovn_workload import create_namespace
 
 
 # By default simulate a deployment with 2 pods, one of which is the
@@ -16,7 +16,8 @@ DensityCfg = namedtuple('DensityCfg',
                         ['n_pods',
                          'n_startup',
                          'batch',
-                         'pods_vip_ratio'])
+                         'pods_vip_ratio',
+                         'queries_per_second'])
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('100.0.0.0/16')
 DEFAULT_VIP_PORT = 80
@@ -34,17 +35,19 @@ class DensityHeavy(ExtCmd):
             n_pods=test_config.get('n_pods', 0),
             n_startup=test_config.get('n_startup', 0),
             batch=test_config.get('batch', pods_vip_ratio),
-            pods_vip_ratio=pods_vip_ratio
+            pods_vip_ratio=pods_vip_ratio,
+            queries_per_second=test_config.get('queries_per_second', 20),
         )
+        self.test_port_iters = []
         if self.config.pods_vip_ratio > self.config.batch or \
            self.config.batch % self.config.pods_vip_ratio or \
            self.config.n_pods % self.config.batch:
             raise ovn_exceptions.OvnInvalidConfigException()
         self.lb_list = []
 
-    def create_lb(self, cluster, name, backend_lists):
-        load_balancer = lb.OvnLoadBalancer(f'lb_{name}', cluster.nbctl)
-        cluster.provision_lb(load_balancer)
+    async def create_lb(self, cluster, name, backend_lists):
+        load_balancer = await create_load_balancer(f'lb_{name}', cluster.nbctl)
+        await cluster.provision_lb(load_balancer)
 
         vip_net = DEFAULT_VIP_SUBNET.next(len(self.lb_list))
         vip_ip = vip_net.ip.__add__(1)
@@ -54,37 +57,49 @@ class DensityHeavy(ExtCmd):
                 [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
             for i, ports in enumerate(backend_lists)
         }
-        load_balancer.add_vips(vips)
+        await load_balancer.add_vips(vips)
         self.lb_list.append(load_balancer)
 
-    def run(self, ovn, global_cfg):
+    async def run(self, ovn, global_cfg):
         if self.config.pods_vip_ratio == 0:
             return
 
-        ns = Namespace(ovn, 'ns_density_heavy')
-
+        ns = await create_namespace(ovn, 'ns_density_heavy')
+        await ns.create_load_balancer()
+        await ovn.provision_lb(ns.load_balancer)
         with Context('density_heavy_startup', brief_report=True) as ctx:
-            ports = ovn.provision_ports(self.config.n_startup, passive=True)
-            ns.add_ports(ports)
+            ports = await ovn.provision_ports(self.config.n_startup,
+                                              passive=True)
+            await ns.add_ports(ports)
             for i in range(0, self.config.n_startup,
                            self.config.pods_vip_ratio):
-                self.create_lb(ovn, 'density_heavy_' + str(i), [[ports[i]]])
+                await self.create_lb(ovn, 'density_heavy_' + str(i),
+                                     [[ports[i]]])
 
         with Context('density_heavy',
-                     (self.config.n_pods - self.config.n_startup) /
+                     (self.config.n_pods - self.config.n_startup) //
                      self.config.batch, test=self) as ctx:
-            for i in ctx:
-                ports = ovn.provision_ports(self.config.batch)
-                ns.add_ports(ports)
-                for j in range(0, self.config.batch,
-                               self.config.pods_vip_ratio):
-                    name = 'density_heavy_' + \
-                        str(self.config.n_startup + i * self.config.batch + j)
-                    self.create_lb(ovn, name, [[ports[j]]])
-                ovn.ping_ports(ports)
+            await ctx.qps_test(self.config.queries_per_second,
+                               self.provisioner, ns, ovn,
+                               end_iteration=False)
+            await ovn.wait_for_ports_up(self.test_port_iters)
+            ctx.all_iterations_completed()
 
         if not global_cfg.cleanup:
             return
         with Context('density_heavy_cleanup', brief_report=True) as ctx:
-            ovn.unprovision_vips()
-            ns.unprovision()
+            await ovn.unprovision_vips()
+            await ns.unprovision()
+
+    async def provisioner(self, ns, ovn):
+        iteration = get_current_iteration()
+        iter_num = iteration.num
+        ports = await ovn.provision_ports(self.config.batch)
+        await ns.add_ports(ports)
+        for j in range(0, self.config.batch,
+                       self.config.pods_vip_ratio):
+            name = 'density_heavy_' + \
+                str(self.config.n_startup + iter_num * self.config.batch + j)
+            await self.create_lb(ovn, name, [[ports[j]]])
+        self.test_port_iters.extend([(port, iteration)
+                               for port in ports])

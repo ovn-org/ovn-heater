@@ -658,6 +658,11 @@ class Cluster(object):
         self.last_selected_worker %= len(self.worker_nodes)
         return self.worker_nodes[self.last_selected_worker]
 
+    def provision_lb_group(self):
+        self.lb_group = lb.OvnLoadBalancerGroup('cluster-lb-group', self.nbctl)
+        for w in self.worker_nodes:
+            self.nbctl.ls_add_lbg(w.switch.uuid, self.lb_group.lbg)
+            self.nbctl.lr_add_lbg(w.gw_router.uuid, self.lb_group.lbg)
+
     def provision_lb(self, lb):
-        lb.add_to_switches([w.switch.name for w in self.worker_nodes])
-        lb.add_to_routers([w.gw_router.name for w in self.worker_nodes])
+        self.lb_group.add_lb(lb)

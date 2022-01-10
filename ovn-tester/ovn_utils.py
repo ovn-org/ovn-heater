@@ -81,7 +81,7 @@ class OvnNbctl:
         return LRouter(name=name, uuid=stdout.getvalue().strip())
 
     def lr_port_add(self, router, name, mac, ip, plen):
-        self.run(cmd=f'lrp-add {router.name} {name} {mac} {ip}/{plen}')
+        self.run(cmd=f'lrp-add {router.uuid} {name} {mac} {ip}/{plen}')
         return LRPort(name=name)
 
     def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
@@ -99,7 +99,7 @@ class OvnNbctl:
     def ls_port_add(self, lswitch, name, router_port=None,
                     mac=None, ip=None, plen=None, gw=None, ext_gw=None,
                     metadata=None, passive=False, security=False):
-        cmd = f'lsp-add {lswitch.name} {name}'
+        cmd = f'lsp-add {lswitch.uuid} {name}'
         if router_port:
             cmd += \
                 f' -- lsp-set-type {name} router' \
@@ -180,13 +180,13 @@ class OvnNbctl:
     def route_add(self, router, network="0.0.0.0/0", gw="", policy=None):
         if policy:
             cmd = f'--policy={policy} lr-route-add ' \
-                f'{router.name} {network} {gw}'
+                f'{router.uuid} {network} {gw}'
         else:
-            cmd = f'lr-route-add {router.name} {network} {gw}'
+            cmd = f'lr-route-add {router.uuid} {network} {gw}'
         self.run(cmd=cmd)
 
     def nat_add(self, router, nat_type="snat", external_ip="", logical_ip=""):
-        self.run(cmd=f'lr-nat-add {router.name} '
+        self.run(cmd=f'lr-nat-add {router.uuid} '
                  f'{nat_type} {external_ip} {logical_ip}')
 
     def create_lb(self, name, protocol):

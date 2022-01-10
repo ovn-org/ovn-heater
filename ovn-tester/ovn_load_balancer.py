@@ -52,7 +52,7 @@ class OvnLoadBalancer(object):
                 updated_vips[vip] = cur_backends
 
             for lb in self.lbs:
-                self.nbctl.lb_set_vips(lb.uuid, updated_vips)
+                self.nbctl.lb_set_vips(lb, updated_vips)
 
     def clear_vips(self):
         '''
@@ -60,7 +60,7 @@ class OvnLoadBalancer(object):
         '''
         self.vips.clear()
         for lb in self.lbs:
-            self.nbctl.lb_clear_vips(lb.uuid)
+            self.nbctl.lb_clear_vips(lb)
 
     def add_backends_to_vip(self, backends, vips=None):
         '''
@@ -74,23 +74,23 @@ class OvnLoadBalancer(object):
                 cur_backends.extend(backends)
 
         for lb in self.lbs:
-            self.nbctl.lb_set_vips(lb.uuid, self.vips)
+            self.nbctl.lb_set_vips(lb, self.vips)
 
     def add_to_routers(self, routers):
         for lb in self.lbs:
-            self.nbctl.lb_add_to_routers(lb.uuid, routers)
+            self.nbctl.lb_add_to_routers(lb, routers)
 
     def add_to_switches(self, switches):
         for lb in self.lbs:
-            self.nbctl.lb_add_to_switches(lb.uuid, switches)
+            self.nbctl.lb_add_to_switches(lb, switches)
 
     def remove_from_routers(self, routers):
         for lb in self.lbs:
-            self.nbctl.lb_remove_from_routers(lb.uuid, routers)
+            self.nbctl.lb_remove_from_routers(lb, routers)
 
     def remove_from_switches(self, switches):
         for lb in self.lbs:
-            self.nbctl.lb_remove_from_switches(lb.uuid, switches)
+            self.nbctl.lb_remove_from_switches(lb, switches)
 
 
 class OvnLoadBalancerGroup(object):
@@ -101,4 +101,4 @@ class OvnLoadBalancerGroup(object):
 
     def add_lb(self, ovn_lb):
         for lb in ovn_lb.lbs:
-            self.nbctl.lbg_add_lb(self.lbg.uuid, lb)
+            self.nbctl.lbg_add_lb(self.lbg, lb)

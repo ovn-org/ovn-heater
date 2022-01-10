@@ -203,42 +203,42 @@ class OvnNbctl:
         self.run(cmd=cmd, stdout=stdout)
         return LoadBalancerGroup(name=name, uuid=stdout.getvalue().strip())
 
-    def lbg_add_lb(self, lbg_uuid, lb):
-        cmd = f'add Load_Balancer_Group {lbg_uuid} load_balancer {lb.uuid}'
+    def lbg_add_lb(self, lbg, lb):
+        cmd = f'add Load_Balancer_Group {lbg.uuid} load_balancer {lb.uuid}'
         self.run(cmd=cmd)
 
-    def ls_add_lbg(self, ls_uuid, lbg):
-        cmd = f'add Logical_Switch {ls_uuid} load_balancer_group {lbg.uuid}'
+    def ls_add_lbg(self, ls, lbg):
+        cmd = f'add Logical_Switch {ls.uuid} load_balancer_group {lbg.uuid}'
         self.run(cmd=cmd)
 
-    def lr_add_lbg(self, lr_uuid, lbg):
-        cmd = f'add Logical_Router {lr_uuid} load_balancer_group {lbg.uuid}'
+    def lr_add_lbg(self, lr, lbg):
+        cmd = f'add Logical_Router {lr.uuid} load_balancer_group {lbg.uuid}'
         self.run(cmd=cmd)
 
-    def lb_set_vips(self, lb_uuid, vips):
+    def lb_set_vips(self, lb, vips):
         vip_str = ''
         for vip, backends in vips.items():
             vip_str += f'vips:\\"{vip}\\"=\\"{",".join(backends)}\\" '
-        cmd = f"set Load_Balancer {lb_uuid} {vip_str}"
+        cmd = f"set Load_Balancer {lb.uuid} {vip_str}"
         self.run(cmd=cmd)
 
-    def lb_clear_vips(self, lb_uuid):
-        self.run(cmd=f'clear Load_Balancer {lb_uuid} vips')
+    def lb_clear_vips(self, lb):
+        self.run(cmd=f'clear Load_Balancer {lb.uuid} vips')
 
-    def lb_add_to_routers(self, lb_uuid, routers):
-        cmd = ' -- '.join([f'lr-lb-add {r} {lb_uuid}' for r in routers])
+    def lb_add_to_routers(self, lb, routers):
+        cmd = ' -- '.join([f'lr-lb-add {r} {lb.uuid}' for r in routers])
         self.run(cmd=cmd)
 
-    def lb_add_to_switches(self, lb_uuid, switches):
-        cmd = ' -- '.join([f'ls-lb-add {s} {lb_uuid}' for s in switches])
+    def lb_add_to_switches(self, lb, switches):
+        cmd = ' -- '.join([f'ls-lb-add {s} {lb.uuid}' for s in switches])
         self.run(cmd=cmd)
 
-    def lb_remove_from_routers(self, lb_uuid, routers):
-        cmd = ' -- '.join([f'lr-lb-del {r} {lb_uuid}' for r in routers])
+    def lb_remove_from_routers(self, lb, routers):
+        cmd = ' -- '.join([f'lr-lb-del {r} {lb.uuid}' for r in routers])
         self.run(cmd=cmd)
 
-    def lb_remove_from_switches(self, lb_uuid, switches):
-        cmd = ' -- '.join([f'ls-lb-del {s} {lb_uuid}' for s in switches])
+    def lb_remove_from_switches(self, lb, switches):
+        cmd = ' -- '.join([f'ls-lb-del {s} {lb.uuid}' for s in switches])
         self.run(cmd=cmd)
 
     def wait_until(self, cmd=""):

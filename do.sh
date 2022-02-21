@@ -51,7 +51,7 @@ function install_deps() {
     ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml -i ${hosts_file}
 
     echo "-- Installing local dependencies"
-    if yum install docker-ce --nobest -y || yum install -y docker
+    if yum install docker-ce --nobest -y
     then
         systemctl start docker
     else

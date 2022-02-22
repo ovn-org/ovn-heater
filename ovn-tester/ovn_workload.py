@@ -318,7 +318,13 @@ class WorkerNode(Node):
 
     def run_ping(self, cluster, src, dest):
         log.info(f'Pinging from {src} to {dest}')
-        cmd = f'ip netns exec {src} ping -q -c 1 -W 0.1 {dest}'
+
+        # FIXME
+        # iputils is inconsistent when working with sub-second timeouts.
+        # The behavior of ping's "-W" option changed a couple of times already.
+        # https://github.com/iputils/iputils/issues/290
+        # Until that's stable use "timeout 0.1s" instead.
+        cmd = f'ip netns exec {src} timeout 0.1s ping -q -c 1 {dest}'
         start_time = datetime.now()
         while True:
             try:

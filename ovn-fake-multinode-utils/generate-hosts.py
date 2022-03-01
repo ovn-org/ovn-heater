@@ -15,8 +15,8 @@ where DEPLOYMENT is the YAML file defining the deployment.
 def generate_nodes(nodes_config, user, prefix, internal_iface):
     for node_config in nodes_config:
         host, node_config = helpers.get_node_config(node_config)
-        internal_iface = node_config.get('internal-iface', internal_iface)
-        generate_worker(host, user, prefix, internal_iface)
+        iface = node_config.get('internal-iface', internal_iface)
+        generate_worker(host, user, prefix, iface)
 
 def generate_controller(config, user, prefix, internal_iface):
     host = config['name']

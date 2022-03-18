@@ -13,6 +13,7 @@
 
     - name: Clone ovn-fake-multinode
       shell: |
+              set -e
               cd {{ ovn_fake_multinode_target_path }}
               git clone {{ ovn_fake_multinode_repo }}
               cd ovn-fake-multinode

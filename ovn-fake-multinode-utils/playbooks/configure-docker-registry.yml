@@ -13,5 +13,6 @@
       dest: /etc/docker/daemon.json
 
   - name: Restart docker
-    shell: |
-      systemctl restart docker
+    systemd:
+      name: docker
+      state: restarted

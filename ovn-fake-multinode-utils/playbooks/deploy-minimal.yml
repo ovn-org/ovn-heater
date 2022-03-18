@@ -7,14 +7,18 @@
       name: openvswitch
       state: started
 
-  - name: Stop ovn nodes and prune ALL docker data
+  - name: Delete old docker volumes
+    shell: |
+      docker volume prune -f
+
+  - name: Delete old docker containers if any
     shell: |
       set -e
       cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
       export CHASSIS_PREFIX={{ node_name }}
       export CHASSIS_COUNT=100
       ./ovn_cluster.sh stop
-      docker system prune -a --volumes -f
+      docker system prune -f
 
   - name: Create ovs bridges for ovn fake multinode
     shell: |

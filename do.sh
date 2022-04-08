@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -o errexit
+set -o errexit -o pipefail
 
 topdir=$(pwd)
 rundir=${topdir}/runtime
@@ -290,7 +290,9 @@ function run_test() {
     source ${rundir}/${ovn_heater_venv}/bin/activate
     pushd ${out_dir}
 
-    python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}
+    if ! python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}; then
+        echo "-- Failed to run test! Check logs at: $PWD/${ovn_tester_log_file}"
+    fi
 
     echo "-- Collecting logs to: ${out_dir}"
     ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"

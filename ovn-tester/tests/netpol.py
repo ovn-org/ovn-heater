@@ -63,7 +63,8 @@ class NetPol(ExtCmd):
 
                     ns.allow_sub_namespace(sub_ns_src, sub_ns_dst)
                     worker = label[0].metadata
-                    worker.ping_port(ovn, label[0], nlabel[0].ip)
+                    if label[0].ip:
+                        worker.ping_port(ovn, label[0], nlabel[0].ip)
 
         if not global_cfg.cleanup:
             return

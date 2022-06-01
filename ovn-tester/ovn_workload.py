@@ -724,8 +724,12 @@ class Cluster(object):
         self.load_balancer.add_vips(vips)
 
     def unprovision_vips(self):
-        self.load_balancer.clear_vips()
-        self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+        if self.load_balancer:
+            self.load_balancer.clear_vips()
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+        if self.load_balancer6:
+            self.load_balancer6.clear_vips()
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
     def select_worker_for_port(self):
         self.last_selected_worker += 1

@@ -29,7 +29,10 @@ class NetpolCrossNs(ExtCmd):
                                global_cfg)
                 ns.add_ports(ports[i*self.config.pods_ns_ratio:
                                    (i + 1) * self.config.pods_ns_ratio])
-                ns.default_deny()
+                if global_cfg.run_ipv4:
+                    ns.default_deny()
+                if global_cfg.run_ipv6:
+                    ns.default_deny(6)
                 all_ns.append(ns)
 
         with Context(ovn, 'netpol_cross_ns',
@@ -37,7 +40,10 @@ class NetpolCrossNs(ExtCmd):
             for i in ctx:
                 ns = all_ns[i]
                 ext_ns = all_ns[(i+1) % self.config.n_ns]
-                ns.allow_cross_namespace(ext_ns)
+                if global_cfg.run_ipv4:
+                    ns.allow_cross_namespace(ext_ns, 4)
+                if global_cfg.run_ipv6:
+                    ns.allow_cross_namespace(ext_ns, 6)
                 ns.check_enforcing_cross_ns(ext_ns)
 
         if not global_cfg.cleanup:

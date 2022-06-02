@@ -13,6 +13,7 @@ def read_file(filename):
     with open(filename, "r") as file:
         return json.load(file)
 
+
 def resource_stats_generate(filename, data):
     rss = []
     cpu = []
@@ -27,21 +28,35 @@ def resource_stats_generate(filename, data):
     df_rss = pd.DataFrame(rss, columns=['Time', 'Process', 'RSS (MB)'])
     df_cpu = pd.DataFrame(cpu, columns=['Time', 'Process', 'CPU (%)'])
 
-    rss_chart = px.line(df_rss, x='Time', y='RSS (MB)', color='Process',
-                        title='Resident Set Size')
-    cpu_chart = px.line(df_cpu, x='Time', y='CPU (%)', color='Process',
-                        title='CPU usage')
+    rss_chart = px.line(
+        df_rss,
+        x='Time',
+        y='RSS (MB)',
+        color='Process',
+        title='Resident Set Size',
+    )
+    cpu_chart = px.line(
+        df_cpu, x='Time', y='CPU (%)', color='Process', title='CPU usage'
+    )
 
     with open(filename, 'w') as report_file:
         report_file.write('<html>')
-        report_file.write(rss_chart.to_html(full_html=False,
-                                            include_plotlyjs='cdn',
-                                            default_width='90%',
-                                            default_height='90%'))
-        report_file.write(cpu_chart.to_html(full_html=False,
-                                            include_plotlyjs='cdn',
-                                            default_width='90%',
-                                            default_height='90%'))
+        report_file.write(
+            rss_chart.to_html(
+                full_html=False,
+                include_plotlyjs='cdn',
+                default_width='90%',
+                default_height='90%',
+            )
+        )
+        report_file.write(
+            cpu_chart.to_html(
+                full_html=False,
+                include_plotlyjs='cdn',
+                default_width='90%',
+                default_height='90%',
+            )
+        )
         report_file.write('</html>')
 
 

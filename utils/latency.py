@@ -4,8 +4,10 @@ import numpy as np
 import sys
 
 if len(sys.argv) < 4:
-    print(f'Usage {sys.argv[0]} "$(date +%z)" '
-          f'ovn-binding.log ovn-installed.log')
+    print(
+        f'Usage {sys.argv[0]} "$(date +%z)" '
+        f'ovn-binding.log ovn-installed.log'
+    )
 
 tz = -int(sys.argv[1])
 delta = timedelta(hours=int(tz / 100), minutes=int(tz % 100))
@@ -52,7 +54,8 @@ for port, latency in latency_per_port.items():
     ms = int(latency.total_seconds() * 1000)
     latencies.append(ms)
 
-print('''
+print(
+    '''
 Latency between logical port binding, i.e. creation of the corresponding
 OVS port on the worker node, and ovn-controller setting up ovn-installed
 flag for that port according to test-log and ovn-controller logs.
@@ -65,7 +68,8 @@ also in bulk after all creations are done.
 
 Look for 'Not installed' below to find for which ports ovn-installed was
 never set (at least, there is no evidence in logs).
-''')
+'''
+)
 
 print('min     :', min(latencies), 'ms')
 print('max     :', max(latencies), 'ms')

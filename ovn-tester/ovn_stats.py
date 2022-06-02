@@ -24,6 +24,7 @@ def timeit(func):
             duration = time.perf_counter() - start
             add(func.__qualname__, duration, failed)
         return value
+
     return _timeit
 
 
@@ -45,8 +46,14 @@ def report(test_name, brief=False):
     fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
     headings = [
-        'Min (s)', 'Median (s)', '90%ile (s)', 'Max (s)', 'Mean (s)',
-        'Total (s)', 'Count', 'Failed'
+        'Min (s)',
+        'Median (s)',
+        '90%ile (s)',
+        'Max (s)',
+        'Mean (s)',
+        'Total (s)',
+        'Count',
+        'Failed',
     ]
     for (f, i), measurements in timed_functions.items():
         for (d, r) in measurements:
@@ -61,13 +68,18 @@ def report(test_name, brief=False):
     all_avgs = []
     all_f = []
     for f, measurements in sorted(all_stats.items()):
-        all_avgs.append([numpy.min(measurements), numpy.median(measurements),
-                         numpy.percentile(measurements, 90),
-                         numpy.max(measurements),
-                         numpy.mean(measurements),
-                         numpy.sum(measurements),
-                         len(measurements),
-                         len(fail_stats[f])])
+        all_avgs.append(
+            [
+                numpy.min(measurements),
+                numpy.median(measurements),
+                numpy.percentile(measurements, 90),
+                numpy.max(measurements),
+                numpy.mean(measurements),
+                numpy.sum(measurements),
+                len(measurements),
+                len(fail_stats[f]),
+            ]
+        )
         all_f.append(f)
 
     df = pd.DataFrame(all_avgs, index=all_f, columns=headings)
@@ -82,16 +94,25 @@ def report(test_name, brief=False):
             return
 
         for f, values in sorted(chart_stats.items()):
-            df = pd.DataFrame(values,
-                              columns=['Iteration', 'Counter', 'Value (s)'])
-            chart = px.bar(df, x='Iteration', y='Value (s)', color='Counter',
-                           title=f)
-            chart.update_traces(marker_color='#005cb8', opacity=1.0,
-                                marker_line_width=1.5,
-                                marker_line_color='#005cb8')
-            report_file.write(chart.to_html(full_html=False,
-                                            include_plotlyjs='cdn',
-                                            default_width='90%',
-                                            default_height='90%'))
+            df = pd.DataFrame(
+                values, columns=['Iteration', 'Counter', 'Value (s)']
+            )
+            chart = px.bar(
+                df, x='Iteration', y='Value (s)', color='Counter', title=f
+            )
+            chart.update_traces(
+                marker_color='#005cb8',
+                opacity=1.0,
+                marker_line_width=1.5,
+                marker_line_color='#005cb8',
+            )
+            report_file.write(
+                chart.to_html(
+                    full_html=False,
+                    include_plotlyjs='cdn',
+                    default_width='90%',
+                    default_height='90%',
+                )
+            )
 
         report_file.write('</html>')

@@ -44,8 +44,9 @@ class OvnLoadBalancer(object):
         MAX_VIPS_IN_BATCH = 500
         for i in range(0, len(vips), MAX_VIPS_IN_BATCH):
             updated_vips = {}
-            for vip, backends in itertools.islice(vips.items(),
-                                                  i, i + MAX_VIPS_IN_BATCH):
+            for vip, backends in itertools.islice(
+                vips.items(), i, i + MAX_VIPS_IN_BATCH
+            ):
                 cur_backends = self.vips.setdefault(vip, [])
                 if backends:
                     cur_backends.extend(backends)

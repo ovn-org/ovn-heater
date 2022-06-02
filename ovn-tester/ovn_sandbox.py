@@ -68,8 +68,9 @@ class Sandbox(object):
         if self.channel:
             return
 
-        self.channel = self.phys_node.ssh.ssh.invoke_shell(width=10000,
-                                                           height=10000)
+        self.channel = self.phys_node.ssh.ssh.invoke_shell(
+            width=10000, height=10000
+        )
         if self.container:
             dcmd = 'docker exec -it ' + self.container + ' bash'
             self.channel.sendall(f"{dcmd}\n".encode())
@@ -78,8 +79,13 @@ class Sandbox(object):
         # Checking + consuming all the unwanted output from the shell.
         self.run(cmd="echo Hello", stdout=stdout, raise_on_error=True)
 
-    def run(self, cmd="", stdout=None, raise_on_error=False,
-            timeout=DEFAULT_SANDBOX_TIMEOUT):
+    def run(
+        self,
+        cmd="",
+        stdout=None,
+        raise_on_error=False,
+        timeout=DEFAULT_SANDBOX_TIMEOUT,
+    ):
         if self.phys_node.ssh.cmd_log:
             log.info(f'Logging command: ssh {self.container} "{cmd}"')
 
@@ -91,9 +97,11 @@ class Sandbox(object):
         if not cmd.endswith('&'):
             cmd = cmd + ' ;'
 
-        self.channel.sendall(f"echo '++++start'; "
-                             f"{cmd} echo $? ; "
-                             f"echo '++++end' \n".encode())
+        self.channel.sendall(
+            f"echo '++++start'; "
+            f"{cmd} echo $? ; "
+            f"echo '++++end' \n".encode()
+        )
         timed_out = False
         out = ''
         try:

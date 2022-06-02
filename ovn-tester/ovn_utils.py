@@ -9,10 +9,24 @@ log = logging.getLogger(__name__)
 LRouter = namedtuple('LRouter', ['uuid', 'name'])
 LRPort = namedtuple('LRPort', ['name'])
 LSwitch = namedtuple('LSwitch', ['uuid', 'name', 'cidr', 'cidr6'])
-LSPort = namedtuple('LSPort',
-                    ['name', 'mac', 'ip', 'plen', 'gw', 'ext_gw',
-                     'ip6', 'plen6', 'gw6', 'ext_gw6',
-                     'metadata', 'passive', 'uuid'])
+LSPort = namedtuple(
+    'LSPort',
+    [
+        'name',
+        'mac',
+        'ip',
+        'plen',
+        'gw',
+        'ext_gw',
+        'ip6',
+        'plen6',
+        'gw6',
+        'ext_gw6',
+        'metadata',
+        'passive',
+        'uuid',
+    ],
+)
 PortGroup = namedtuple('PortGroup', ['name'])
 AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
@@ -33,25 +47,30 @@ class PhysCtl:
 
     def external_host_provision(self, ip, gw, netns='ext-ns'):
         log.info(f'Adding external host on {self.sb.container}')
-        cmd = f'ip link add veth0 type veth peer name veth1; ' \
-              f'ip netns add {netns}; ' \
-              f'ip link set netns {netns} dev veth0; ' \
-              f'ip netns exec {netns} ip link set dev veth0 up; '
+        cmd = (
+            f'ip link add veth0 type veth peer name veth1; '
+            f'ip netns add {netns}; '
+            f'ip link set netns {netns} dev veth0; '
+            f'ip netns exec {netns} ip link set dev veth0 up; '
+        )
 
         if ip.ip4:
-            cmd += f'ip netns exec ext-ns ip addr add {ip.ip4}/{ip.plen4}' \
-                   f' dev veth0; '
+            cmd += (
+                f'ip netns exec ext-ns ip addr add {ip.ip4}/{ip.plen4}'
+                f' dev veth0; '
+            )
         if gw.ip4:
             cmd += f'ip netns exec ext-ns ip route add default via {gw.ip4}; '
 
         if ip.ip6:
-            cmd += f'ip netns exec ext-ns ip addr add {ip.ip6}/{ip.plen6}' \
-                   f' dev veth0; '
+            cmd += (
+                f'ip netns exec ext-ns ip addr add {ip.ip6}/{ip.plen6}'
+                f' dev veth0; '
+            )
         if gw.ip6:
             cmd += f'ip netns exec ext-ns ip route add default via {gw.ip6}; '
 
-        cmd += 'ip link set dev veth1 up; ' \
-               'ovs-vsctl add-port br-ex veth1'
+        cmd += 'ip link set dev veth1 up; ' 'ovs-vsctl add-port br-ex veth1'
 
         # Run as a single invocation:
         cmd = f'bash -c \'{cmd}\''
@@ -72,49 +91,49 @@ class DualStackSubnet:
     def forward(self, index=0):
         if self.n4 and self.n6:
             return DualStackIP(
-                    netaddr.IPAddress(self.n4.first + index),
-                    self.n4.prefixlen,
-                    netaddr.IPAddress(self.n6.first + index),
-                    self.n6.prefixlen
-                )
+                netaddr.IPAddress(self.n4.first + index),
+                self.n4.prefixlen,
+                netaddr.IPAddress(self.n6.first + index),
+                self.n6.prefixlen,
+            )
         if self.n4 and not self.n6:
             return DualStackIP(
-                    netaddr.IPAddress(self.n4.first + index),
-                    self.n4.prefixlen,
-                    None,
-                    None
-                )
+                netaddr.IPAddress(self.n4.first + index),
+                self.n4.prefixlen,
+                None,
+                None,
+            )
         if not self.n4 and self.n6:
             return DualStackIP(
-                    None,
-                    None,
-                    netaddr.IPAddress(self.n6.first + index),
-                    self.n6.prefixlen
-                )
+                None,
+                None,
+                netaddr.IPAddress(self.n6.first + index),
+                self.n6.prefixlen,
+            )
         raise ovn_exceptions.OvnInvalidConfigException("invalid configuration")
 
     def reverse(self, index=1):
         if self.n4 and self.n6:
             return DualStackIP(
-                    netaddr.IPAddress(self.n4.last - index),
-                    self.n4.prefixlen,
-                    netaddr.IPAddress(self.n6.last - index),
-                    self.n6.prefixlen
-                )
+                netaddr.IPAddress(self.n4.last - index),
+                self.n4.prefixlen,
+                netaddr.IPAddress(self.n6.last - index),
+                self.n6.prefixlen,
+            )
         if self.n4 and not self.n6:
             return DualStackIP(
-                    netaddr.IPAddress(self.n4.last - index),
-                    self.n4.prefixlen,
-                    None,
-                    None
-                )
+                netaddr.IPAddress(self.n4.last - index),
+                self.n4.prefixlen,
+                None,
+                None,
+            )
         if not self.n4 and self.n6:
             return DualStackIP(
-                    None,
-                    None,
-                    netaddr.IPAddress(self.n6.last - index),
-                    self.n6.prefixlen
-                )
+                None,
+                None,
+                netaddr.IPAddress(self.n6.last - index),
+                self.n6.prefixlen,
+            )
         raise ovn_exceptions.OvnInvalidConfigException("invalid configuration")
 
 
@@ -122,8 +141,13 @@ class OvsVsctl:
     def __init__(self, sb):
         self.sb = sb
 
-    def run(self, cmd="", prefix="ovs-vsctl ", stdout=None,
-            timeout=DEFAULT_CTL_TIMEOUT):
+    def run(
+        self,
+        cmd="",
+        prefix="ovs-vsctl ",
+        stdout=None,
+        timeout=DEFAULT_CTL_TIMEOUT,
+    ):
         self.sb.run(cmd=prefix + cmd, stdout=stdout, timeout=timeout)
 
     def add_port(self, port, bridge, internal=True, ifaceid=None):
@@ -139,21 +163,31 @@ class OvsVsctl:
         self.run(f'del-port {port.name}')
 
     def bind_vm_port(self, lport):
-        cmd = f'ip netns add {lport.name}; ' \
-              f'ip link set {lport.name} netns {lport.name}; ' \
-              f'ip netns exec {lport.name} ip link set {lport.name} ' \
-              f'address {lport.mac}; ' \
-              f'ip netns exec {lport.name} ip link set {lport.name} up'
+        cmd = (
+            f'ip netns add {lport.name}; '
+            f'ip link set {lport.name} netns {lport.name}; '
+            f'ip netns exec {lport.name} ip link set {lport.name} '
+            f'address {lport.mac}; '
+            f'ip netns exec {lport.name} ip link set {lport.name} up'
+        )
         if lport.ip:
-            cmd += f'; ip netns exec {lport.name} ip addr add ' \
-                   f'{lport.ip}/{lport.plen} dev {lport.name}'
-            cmd += f'; ip netns exec {lport.name} ip route add ' \
-                   f'default via {lport.gw}'
+            cmd += (
+                f'; ip netns exec {lport.name} ip addr add '
+                f'{lport.ip}/{lport.plen} dev {lport.name}'
+            )
+            cmd += (
+                f'; ip netns exec {lport.name} ip route add '
+                f'default via {lport.gw}'
+            )
         if lport.ip6:
-            cmd += f'; ip netns exec {lport.name} ip addr add ' \
-                   f'{lport.ip6}/{lport.plen6} dev {lport.name} nodad'
-            cmd += f'; ip netns exec {lport.name} ip route add ' \
-                   f'default via {lport.gw6}'
+            cmd += (
+                f'; ip netns exec {lport.name} ip addr add '
+                f'{lport.ip6}/{lport.plen6} dev {lport.name} nodad'
+            )
+            cmd += (
+                f'; ip netns exec {lport.name} ip route add '
+                f'default via {lport.gw6}'
+            )
         self.run(cmd, prefix="")
 
     def unbind_vm_port(self, lport):
@@ -209,19 +243,34 @@ class OvnNbctl:
         cmd = f'create Logical_Switch name={name}'
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
-        return LSwitch(name=name, cidr=net_s.n4, cidr6=net_s.n6,
-                       uuid=stdout.getvalue().strip())
+        return LSwitch(
+            name=name,
+            cidr=net_s.n4,
+            cidr6=net_s.n6,
+            uuid=stdout.getvalue().strip(),
+        )
 
-    def ls_port_add(self, lswitch, name, router_port=None,
-                    mac=None, ip=None, gw=None, ext_gw=None,
-                    metadata=None, passive=False, security=False,
-                    localnet=False):
+    def ls_port_add(
+        self,
+        lswitch,
+        name,
+        router_port=None,
+        mac=None,
+        ip=None,
+        gw=None,
+        ext_gw=None,
+        metadata=None,
+        passive=False,
+        security=False,
+        localnet=False,
+    ):
         cmd = f'lsp-add {lswitch.uuid} {name}'
         if router_port:
-            cmd += \
-                f' -- lsp-set-type {name} router' \
-                f' -- lsp-set-addresses {name} router' \
+            cmd += (
+                f' -- lsp-set-type {name} router'
+                f' -- lsp-set-addresses {name} router'
                 f' -- lsp-set-options {name} router-port={router_port.name}'
+            )
         elif mac or ip or localnet:
             addresses = []
             if mac:
@@ -253,14 +302,20 @@ class OvnNbctl:
         ext_gw6 = ext_gw.ip6 if ext_gw else None
 
         return LSPort(
-                name=name, mac=mac,
-                ip=ip4, plen=plen4,
-                gw=gw4, ext_gw=ext_gw4,
-                ip6=ip6, plen6=plen6,
-                gw6=gw6, ext_gw6=ext_gw6,
-                metadata=metadata,
-                passive=passive, uuid=uuid
-            )
+            name=name,
+            mac=mac,
+            ip=ip4,
+            plen=plen4,
+            gw=gw4,
+            ext_gw=ext_gw4,
+            ip6=ip6,
+            plen6=plen6,
+            gw6=gw6,
+            ext_gw6=ext_gw6,
+            metadata=metadata,
+            passive=passive,
+            uuid=uuid,
+        )
 
     def ls_port_del(self, port):
         self.run(cmd=f'lsp-del {port.name}')
@@ -281,7 +336,7 @@ class OvnNbctl:
     def port_group_add_ports(self, pg, lports):
         MAX_PORTS_IN_BATCH = 500
         for i in range(0, len(lports), MAX_PORTS_IN_BATCH):
-            lports_slice = lports[i:i + MAX_PORTS_IN_BATCH]
+            lports_slice = lports[i : i + MAX_PORTS_IN_BATCH]
             port_uuids = " ".join(p.uuid for p in lports_slice)
             self.run(cmd=f'add port_group {pg.name} ports {port_uuids}')
 
@@ -299,7 +354,9 @@ class OvnNbctl:
     def address_set_add_addrs(self, addr_set, addrs):
         MAX_ADDRS_IN_BATCH = 500
         for i in range(0, len(addrs), MAX_ADDRS_IN_BATCH):
-            addrs_slice = [f'\"{a}\"' for a in addrs[i:i + MAX_ADDRS_IN_BATCH]]
+            addrs_slice = [
+                f'\"{a}\"' for a in addrs[i : i + MAX_ADDRS_IN_BATCH]
+            ]
             addrs_str = ','.join(addrs_slice)
             cmd = f'add Address_Set {addr_set.name} addresses \'{addrs_str}\''
             self.run(cmd=cmd)
@@ -311,29 +368,46 @@ class OvnNbctl:
     def address_set_del(self, addr_set):
         self.run(cmd=f'destroy Address_Set {addr_set.name}')
 
-    def acl_add(self, name="", direction="from-lport", priority=100,
-                entity="switch", match="", verdict="allow"):
-        self.run(cmd=f'--type={entity} acl-add {name} '
-                 f'{direction} {priority} "{match}" {verdict}')
+    def acl_add(
+        self,
+        name="",
+        direction="from-lport",
+        priority=100,
+        entity="switch",
+        match="",
+        verdict="allow",
+    ):
+        self.run(
+            cmd=f'--type={entity} acl-add {name} '
+            f'{direction} {priority} "{match}" {verdict}'
+        )
 
     def route_add(self, router, network, gw, policy=None):
         prefix = f'--policy={policy} ' if policy else ''
         if network.n4 and gw.ip4:
-            self.run(cmd=f'{prefix} lr-route-add {router.uuid} '
-                         f'{network.n4} {gw.ip4}')
+            self.run(
+                cmd=f'{prefix} lr-route-add {router.uuid} '
+                f'{network.n4} {gw.ip4}'
+            )
         if network.n6 and gw.ip6:
-            self.run(cmd=f'{prefix} lr-route-add {router.uuid} '
-                         f'{network.n6} {gw.ip6}')
+            self.run(
+                cmd=f'{prefix} lr-route-add {router.uuid} '
+                f'{network.n6} {gw.ip6}'
+            )
 
     def nat_add(self, router, external_ip, logical_net, nat_type="snat"):
         if external_ip.ip4 and logical_net.n4:
-            self.run(cmd=f'lr-nat-add {router.uuid} '
-                         f'{nat_type} {external_ip.ip4} '
-                         f'{logical_net.n4}')
+            self.run(
+                cmd=f'lr-nat-add {router.uuid} '
+                f'{nat_type} {external_ip.ip4} '
+                f'{logical_net.n4}'
+            )
         if external_ip.ip6 and logical_net.n6:
-            self.run(cmd=f'lr-nat-add {router.uuid} '
-                         f'{nat_type} {external_ip.ip6} '
-                         f'{logical_net.n6}')
+            self.run(
+                cmd=f'lr-nat-add {router.uuid} '
+                f'{nat_type} {external_ip.ip6} '
+                f'{logical_net.n6}'
+            )
 
     def create_lb(self, name, protocol):
         lb_name = f"{name}-{protocol}"
@@ -398,8 +472,9 @@ class OvnNbctl:
         self.run("wait-until " + cmd)
 
     def sync(self, wait="hv", timeout=DEFAULT_CTL_TIMEOUT):
-        self.run(f'--timeout={timeout} --wait={wait} sync',
-                 timeout=(timeout + 1))
+        self.run(
+            f'--timeout={timeout} --wait={wait} sync', timeout=(timeout + 1)
+        )
 
     def start_daemon(self, nb_cluster_ips, enable_ssl):
         if enable_ssl:
@@ -407,9 +482,11 @@ class OvnNbctl:
         else:
             remote = ','.join([f'tcp:{ip}:6641' for ip in nb_cluster_ips])
         # FIXME: hardcoded args, are these really an issue?
-        cmd = f'--detach --pidfile --log-file --db={remote} ' \
-            f'-p /opt/ovn/ovn-privkey.pem -c /opt/ovn/ovn-cert.pem ' \
+        cmd = (
+            f'--detach --pidfile --log-file --db={remote} '
+            f'-p /opt/ovn/ovn-privkey.pem -c /opt/ovn/ovn-cert.pem '
             f'-C /opt/ovn/pki/switchca/cacert.pem'
+        )
         stdout = StringIO()
         self.run(cmd=cmd, stdout=stdout)
         self.socket = stdout.getvalue().rstrip()
@@ -424,8 +501,11 @@ class OvnSbctl:
         self.sb = sb
 
     def run(self, cmd="", stdout=None, timeout=DEFAULT_CTL_TIMEOUT):
-        self.sb.run(cmd="ovn-sbctl --no-leader-only " + cmd,
-                    stdout=stdout, timeout=timeout)
+        self.sb.run(
+            cmd="ovn-sbctl --no-leader-only " + cmd,
+            stdout=stdout,
+            timeout=timeout,
+        )
 
     def set_inactivity_probe(self, value):
         self.run(f'set Connection . inactivity_probe={value}')

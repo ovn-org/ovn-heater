@@ -24,7 +24,7 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class DensityHeavy(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(DensityHeavy, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('density_heavy', dict())
@@ -61,7 +61,7 @@ class DensityHeavy(ExtCmd):
         if self.config.pods_vip_ratio == 0:
             return
 
-        ns = Namespace(ovn, 'ns_density_heavy')
+        ns = Namespace(ovn, 'ns_density_heavy', global_cfg)
 
         with Context(ovn, 'density_heavy_startup', brief_report=True) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)

@@ -9,7 +9,7 @@ NpCrossNsCfg = namedtuple('NpCrossNsCfg',
 
 
 class NetpolCrossNs(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(NetpolCrossNs, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('netpol_cross', dict())
@@ -25,7 +25,8 @@ class NetpolCrossNs(ExtCmd):
             ports = ovn.provision_ports(
                     self.config.pods_ns_ratio*self.config.n_ns)
             for i in range(self.config.n_ns):
-                ns = Namespace(ovn, f'NS_netpol_cross_ns_startup_{i}')
+                ns = Namespace(ovn, f'NS_netpol_cross_ns_startup_{i}',
+                               global_cfg)
                 ns.add_ports(ports[i*self.config.pods_ns_ratio:
                                    (i + 1) * self.config.pods_ns_ratio])
                 ns.default_deny()

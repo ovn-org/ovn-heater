@@ -17,7 +17,7 @@ ClusterDensityCfg = namedtuple('ClusterDensityCfg',
 
 
 class ClusterDensity(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(ClusterDensity, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('cluster_density', dict())
@@ -37,7 +37,7 @@ class ClusterDensity(ExtCmd):
             ports = ovn.provision_ports(DENSITY_N_PODS * self.config.n_startup,
                                         passive=True)
             for i in range(self.config.n_startup):
-                ns = Namespace(ovn, f'NS_density_{i}')
+                ns = Namespace(ovn, f'NS_density_{i}', global_cfg)
                 ns.add_ports(
                     ports[DENSITY_N_PODS * i:DENSITY_N_PODS * (i + 1)]
                 )
@@ -53,7 +53,8 @@ class ClusterDensity(ExtCmd):
                      (self.config.n_runs - self.config.n_startup) //
                      self.batch_ratio, test=self) as ctx:
             for i in ctx:
-                ns = Namespace(ovn, f'NS_density_{self.config.n_startup + i}')
+                ns = Namespace(ovn, f'NS_density_{self.config.n_startup + i}',
+                               global_cfg)
                 ns.create_load_balancer()
                 ovn.provision_lb(ns.load_balancer)
                 all_ns.append(ns)

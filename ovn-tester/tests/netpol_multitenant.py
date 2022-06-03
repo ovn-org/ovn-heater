@@ -17,7 +17,7 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
 
 
 class NetpolMultitenant(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(NetpolMultitenant, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('netpol_multitenant', dict())
@@ -79,7 +79,7 @@ class NetpolMultitenant(ExtCmd):
                 # includes i.
                 ranges = self.config.ranges
                 n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
-                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}')
+                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}', global_cfg)
                 for _ in range(n_ports):
                     worker = ovn.select_worker_for_port()
                     for p in worker.provision_ports(ovn, 1):

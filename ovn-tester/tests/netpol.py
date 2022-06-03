@@ -29,7 +29,7 @@ class NetPol(ExtCmd):
         self.all_ns = []
         self.ports = []
 
-    def init(self, ovn):
+    def init(self, ovn, global_cfg):
         with Context(ovn, f'{self.name}_startup', brief_report=True) as _:
             self.ports = ovn.provision_ports(
                     self.config.pods_ns_ratio*self.config.n_ns)
@@ -38,11 +38,11 @@ class NetPol(ExtCmd):
                         i % self.config.n_labels, []).append(self.ports[i])
 
             for i in range(self.config.n_ns):
-                ns = Namespace(ovn, f'NS_{self.name}_{i}')
+                ns = Namespace(ovn, f'NS_{self.name}_{i}', global_cfg)
                 ns.add_ports(
                         self.ports[i * self.config.pods_ns_ratio:
                                    (i + 1)*self.config.pods_ns_ratio])
-                ns.default_deny()
+                ns.default_deny(4)
                 self.all_ns.append(ns)
 
     def run(self, ovn, global_cfg, exclude=False):

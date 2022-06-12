@@ -23,6 +23,7 @@ docker_daemon_file=${rundir}/docker-daemon.json
 podman_registry_file=${rundir}/registries.conf
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
+process_monitor_file=${rundir}/process-monitor.py
 
 ovn_tester=${topdir}/ovn-tester
 ovn_tester_log_file=test-log
@@ -42,6 +43,7 @@ function generate() {
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
     PYTHONPATH=${topdir}/utils ${ovn_fmn_docker} ${phys_deployment} > ${docker_daemon_file}
     PYTHONPATH=${topdir}/utils ${ovn_fmn_podman} ${phys_deployment} > ${podman_registry_file}
+    cp ${ovn_fmn_utils}/process-monitor.py ${process_monitor_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
     cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
 }
@@ -309,6 +311,17 @@ function run_test() {
         logs=$(find ${out_dir}/logs -name ${p}.log)
         ${topdir}/utils/mine-db-poll-intervals.sh ${logs} > mined-data/${p}
     done
+
+    resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
+                            | grep -v ovn-scale)
+    python3 ${topdir}/utils/process-stats.py \
+        resource-usage-report-central.html ${resource_usage_logs}
+
+    # Collecting stats only for 3 workers to avoid bloating the report.
+    resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
+                            | grep ovn-scale | head -3)
+    python3 ${topdir}/utils/process-stats.py \
+        resource-usage-report-worker.html ${resource_usage_logs}
 
     deactivate
     popd

@@ -47,3 +47,9 @@
       src: "{{ rundir }}/perf.sh"
       dest: /tmp/perf.sh
       mode: '0744'
+
+  - name: Deploy process monitor script
+    copy:
+      src: "{{ rundir }}/process-monitor.py"
+      dest: /tmp/process-monitor.py
+      mode: '0744'

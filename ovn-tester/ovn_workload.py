@@ -66,6 +66,16 @@ class Node(ovn_sandbox.Sandbox):
             f'./ovn_cluster.sh {cmd}'
         return cmd + ' ' + ' '.join(args)
 
+    def start_process_monitor(self, target_container):
+        log.info(f'Starting process monitor for {target_container}')
+        self.phys_node.run(f'docker cp '
+                           f'/tmp/process-monitor.py {target_container}:/tmp/')
+        self.phys_node.run(f'docker exec {target_container} bash -c "'
+                           f'nohup python3 /tmp/process-monitor.py '
+                           f'-s {target_container} '
+                           f'-o /var/log/process-stats.json '
+                           f'-x /tmp/process-monitor.exit &"')
+
 
 class CentralNode(Node):
     def __init__(self, phys_node, db_containers, relay_containers, mgmt_net,
@@ -81,6 +91,8 @@ class CentralNode(Node):
         time.sleep(5)
         self.set_raft_election_timeout(cluster_cfg.raft_election_to)
         self.enable_trim_on_compaction()
+        for target in self.db_containers + self.relay_containers:
+            self.start_process_monitor(target)
 
     def set_raft_election_timeout(self, timeout_s):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
@@ -126,6 +138,7 @@ class WorkerNode(Node):
         log.info(f'Starting worker {self.container}')
         self.phys_node.run(self.build_cmd(cluster_cfg, 'add-chassis',
                                           self.container, 'tcp:0.0.0.1:6642'))
+        self.start_process_monitor(self.container)
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):

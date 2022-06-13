@@ -671,4 +671,5 @@ class Cluster(object):
             self.nbctl.lr_add_lbg(w.gw_router, self.lb_group.lbg)
 
     def provision_lb(self, lb):
+        log.info(f'Creating load balancer {lb.name}')
         self.lb_group.add_lb(lb)

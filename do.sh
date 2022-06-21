@@ -319,7 +319,7 @@ function run_test() {
 
     # Collecting stats only for 3 workers to avoid bloating the report.
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
-                            | (grep ovn-scale || true) | head -3)
+                            | grep ovn-scale | head -3 || true)
     python3 ${topdir}/utils/process-stats.py \
         resource-usage-report-worker.html ${resource_usage_logs}
 

@@ -4,11 +4,11 @@ global:
 cluster:
   clustered_db: true
   monitor_all: true
-  n_workers: 120
+  n_workers: 250
 
 base_cluster_bringup:
   n_pods_per_node: 10
 
-density_heavy:
-  n_startup: 5150
-  n_pods: 5400
+cluster_density:
+  n_startup: 3800
+  n_runs: 4000

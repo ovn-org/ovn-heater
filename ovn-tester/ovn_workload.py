@@ -527,7 +527,7 @@ class Namespace(object):
         # If requested, include the ext-gw of the first port in the namespace
         # so we can check that this rule is enforced.
         if include_ext_gw:
-            assert(len(self.ports) > 0)
+            assert (len(self.ports) > 0)
             external_ips.append(self.ports[0].ext_gw)
         ips = [str(ip) for ip in external_ips]
         self.nbctl.acl_add(

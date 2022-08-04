@@ -1,0 +1,23 @@
+global:
+  log_cmds: False
+
+cluster:
+  clustered_db: true
+  monitor_all: true
+  n_workers: 180
+
+base_cluster_bringup:
+  n_pods_per_node: 10
+
+netpol_multitenant:
+  n_namespaces: 500
+  ranges:
+    - r1:
+      start:   200
+      n_pods:  5
+    - r2:
+      start:   480
+      n_pods:  20
+    - r3:
+      start:   495
+      n_pods:  100

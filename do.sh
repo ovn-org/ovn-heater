@@ -289,7 +289,7 @@ function run_test() {
     source ${rundir}/${ovn_heater_venv}/bin/activate
     pushd ${out_dir}
 
-    if ! python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}; then
+    if ! python -u ${ovn_tester}/ovn_opstack_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}; then
         echo "-- Failed to run test! Check logs at: $PWD/${ovn_tester_log_file}"
     fi
 

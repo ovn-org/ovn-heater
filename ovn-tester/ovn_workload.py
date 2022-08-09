@@ -592,6 +592,8 @@ class Cluster(object):
         self.join_switch = None
         self.last_selected_worker = 0
         self.n_ns = 0
+        self.ls_list = []
+        self.lp_list = []
 
     def start(self):
         self.central_node.start(self.cluster_cfg)
@@ -686,3 +688,15 @@ class Cluster(object):
     def provision_lb(self, lb):
         log.info(f'Creating load balancer {lb.name}')
         self.lb_group.add_lb(lb)
+
+    def create_logical_switches(self, count, name='sw'):
+        for i in range(0, count):
+            new_switch = self.nbctl.ls_add(name+str(i), self.cluster_cfg.gw_net)
+            self.ls_list.append(new_switch)
+
+    def create_logical_ports(self, switch, count, name='p'):
+        if self.ls_list.index(switch) is None:
+            print('No logical switch present for: ' + switch.name)
+            return None
+        for i in range(0, count):
+            new_port = self.nbctl.ls_port_add(switch, switch.name+name+str(i))

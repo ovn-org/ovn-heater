@@ -1,0 +1,11 @@
+global:
+  log_cmds: True
+
+cluster:
+  clustered_db: true
+  monitor_all: true
+  n_workers: 4 
+
+osp_cfg:
+  n_switches: 5
+  n_ports: 10 

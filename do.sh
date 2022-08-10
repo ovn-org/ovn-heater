@@ -64,8 +64,8 @@ function install_deps() {
         --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
-    containers=$(docker ps --filter='name=(ovn|registry)' \
-                        | grep -v "CONTAINER ID" | awk '{print $1}')
+    containers=$(docker ps --all --filter='name=(ovn|registry)' \
+                        | grep -v "CONTAINER ID" | awk '{print $1}' || true)
     for container_name in $containers
     do
         docker stop $container_name
@@ -197,6 +197,8 @@ function install_ovn_fake_multinode() {
         [ -n "$RPM_OVN_CENTRAL" ] && wget $RPM_OVN_CENTRAL
         [ -n "$RPM_OVN_HOST" ] && wget $RPM_OVN_HOST
     fi
+
+    docker images | grep -q 'ovn/ovn-multi-node' || rebuild_needed=1
 
     if [ ${rebuild_needed} -eq 1 ]; then
         if [ -z "${OS_IMAGE_OVERRIDE}" ]; then

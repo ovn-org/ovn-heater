@@ -309,6 +309,7 @@ class WorkerNode(Node):
 
     @ovn_stats.timeit
     def bind_port(self, port):
+        log.info(f'Binding lport {port.name} on {self.container}')
         vsctl = ovn_utils.OvsVsctl(self)
         vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
         # Skip creating a netns for "passive" ports, we won't be sending

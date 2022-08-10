@@ -312,6 +312,19 @@ function run_test() {
         ${topdir}/utils/mine-db-poll-intervals.sh ${logs} > mined-data/${p}
     done
 
+    cat ${out_dir}/test-log | grep 'Binding lport' \
+        | cut -d ' ' -f 1,2,8 > mined-data/ovn-binding.log
+
+    logs=$(find ${out_dir}/logs -name ovn-controller.log)
+    grep ovn-installed ${logs} | cut -d ':' -f 2- | tr '|' ' ' \
+        | cut -d ' ' -f 1,7 | tr 'T' ' ' | sort > mined-data/ovn-installed.log
+
+    python3 ${topdir}/utils/latency.py "$(date +%z)" \
+        ./mined-data/ovn-binding.log ./mined-data/ovn-installed.log \
+        > mined-data/binding-to-ovn-installed-latency
+
+    rm -rf ./mined-data/ovn-binding.log ./mined-data/ovn-installed.log
+
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
                             | grep -v ovn-scale)
     python3 ${topdir}/utils/process-stats.py \

@@ -103,6 +103,7 @@ class CentralNode(Node):
             self.run(cmd=f'ovs-appctl -t '
                      f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
                      f'OVN_Southbound {timeout}')
+            time.sleep(1)
 
     def enable_trim_on_compaction(self):
         log.info('Setting DB trim-on-compaction')

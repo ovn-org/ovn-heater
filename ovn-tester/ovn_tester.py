@@ -208,14 +208,14 @@ def create_nodes(cluster_config, central, workers):
 
 def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
     ovn = Cluster(central_node, worker_nodes, cluster_cfg, brex_cfg)
-    with Context("prepare_test"):
+    with Context(ovn, "prepare_test"):
         ovn.start()
     return ovn
 
 
 def run_base_cluster_bringup(ovn, bringup_cfg):
     # create ovn topology
-    with Context("base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
+    with Context(ovn, "base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
         ovn.create_cluster_router("lr-cluster")
         ovn.create_cluster_join_switch("ls-join")
         ovn.create_cluster_load_balancer("lb-cluster")

@@ -63,14 +63,14 @@ class DensityHeavy(ExtCmd):
 
         ns = Namespace(ovn, 'ns_density_heavy')
 
-        with Context('density_heavy_startup', brief_report=True) as ctx:
+        with Context(ovn, 'density_heavy_startup', brief_report=True) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)
             ns.add_ports(ports)
             for i in range(0, self.config.n_startup,
                            self.config.pods_vip_ratio):
                 self.create_lb(ovn, 'density_heavy_' + str(i), [[ports[i]]])
 
-        with Context('density_heavy',
+        with Context(ovn, 'density_heavy',
                      (self.config.n_pods - self.config.n_startup) /
                      self.config.batch, test=self) as ctx:
             for i in ctx:
@@ -85,6 +85,6 @@ class DensityHeavy(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context('density_heavy_cleanup', brief_report=True) as ctx:
+        with Context(ovn, 'density_heavy_cleanup', brief_report=True) as ctx:
             ovn.unprovision_vips()
             ns.unprovision()

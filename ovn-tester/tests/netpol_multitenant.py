@@ -72,7 +72,7 @@ class NetpolMultitenant(ExtCmd):
         ]
 
         all_ns = []
-        with Context('netpol_multitenant', self.config.n_namespaces,
+        with Context(ovn, 'netpol_multitenant', self.config.n_namespaces,
                      test=self) as ctx:
             for i in ctx:
                 # Get the number of pods from the "highest" range that
@@ -94,6 +94,7 @@ class NetpolMultitenant(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context('netpol_multitenant_cleanup', brief_report=True) as ctx:
+        with Context(ovn, 'netpol_multitenant_cleanup',
+                     brief_report=True) as ctx:
             for ns in all_ns:
                 ns.unprovision()

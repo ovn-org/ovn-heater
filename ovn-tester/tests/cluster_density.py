@@ -32,7 +32,7 @@ class ClusterDensity(ExtCmd):
 
     def run(self, ovn, global_cfg):
         all_ns = []
-        with Context('cluster_density_startup', brief_report=True) as ctx:
+        with Context(ovn, 'cluster_density_startup', brief_report=True) as ctx:
             # create 4 legacy pods per iteration.
             ports = ovn.provision_ports(DENSITY_N_PODS * self.config.n_startup,
                                         passive=True)
@@ -49,7 +49,7 @@ class ClusterDensity(ExtCmd):
                              [ports[i * DENSITY_N_PODS + 3]]])
                 all_ns.append(ns)
 
-        with Context('cluster_density',
+        with Context(ovn, 'cluster_density',
                      (self.config.n_runs - self.config.n_startup) //
                      self.batch_ratio, test=self) as ctx:
             for i in ctx:
@@ -80,6 +80,6 @@ class ClusterDensity(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context('cluster_density_cleanup', brief_report=True) as ctx:
+        with Context(ovn, 'cluster_density_cleanup', brief_report=True) as ctx:
             for ns in all_ns:
                 ns.unprovision()

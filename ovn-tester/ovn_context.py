@@ -11,8 +11,8 @@ ITERATION_STAT_NAME = 'Iteration Total'
 
 
 class Context(object):
-    def __init__(self, test_name, max_iterations=1, brief_report=False,
-                 test=None):
+    def __init__(self, cluster, test_name, max_iterations=1,
+                 brief_report=False, test=None):
         self.iteration = -1
         self.test_name = test_name
         self.max_iterations = max_iterations
@@ -20,6 +20,7 @@ class Context(object):
         self.iteration_start = None
         self.failed = False
         self.test = test
+        self.cluster = cluster
 
     def __enter__(self):
         global active_context
@@ -29,6 +30,8 @@ class Context(object):
         return self
 
     def __exit__(self, type, value, traceback):
+        log.info('Waiting for the OVN state synchronization')
+        self.cluster.nbctl.run('--timeout=1800 --wait=hv sync')
         ovn_stats.report(self.test_name, brief=self.brief_report)
         log.info(f'Exiting context {self.test_name}')
 

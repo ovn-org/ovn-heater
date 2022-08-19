@@ -15,13 +15,16 @@ AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
 LoadBalancerGroup = namedtuple('LoadBalancerGroup', ['name', 'uuid'])
 
+DEFAULT_CTL_TIMEOUT = 60
+
 
 class OvsVsctl:
     def __init__(self, sb):
         self.sb = sb
 
-    def run(self, cmd="", prefix="ovs-vsctl ", stdout=None):
-        self.sb.run(cmd=prefix + cmd, stdout=stdout)
+    def run(self, cmd="", prefix="ovs-vsctl ", stdout=None,
+            timeout=DEFAULT_CTL_TIMEOUT):
+        self.sb.run(cmd=prefix + cmd, stdout=stdout, timeout=timeout)
 
     def add_port(self, port, bridge, internal=True, ifaceid=None):
         name = port.name
@@ -60,11 +63,11 @@ class OvnNbctl:
         # self.stop_daemon()
         pass
 
-    def run(self, cmd="", stdout=None):
+    def run(self, cmd="", stdout=None, timeout=DEFAULT_CTL_TIMEOUT):
         prefix = "ovn-nbctl "
         if len(self.socket):
             prefix = prefix + "-u " + self.socket + " "
-        self.sb.run(cmd=prefix + cmd, stdout=stdout)
+        self.sb.run(cmd=prefix + cmd, stdout=stdout, timeout=timeout)
 
     def set_global(self, option, value):
         self.run(f'set NB_Global . options:{option}={value}')
@@ -244,8 +247,9 @@ class OvnNbctl:
     def wait_until(self, cmd=""):
         self.run("wait-until " + cmd)
 
-    def sync(self, wait="hv"):
-        self.run(f'--wait={wait} sync')
+    def sync(self, wait="hv", timeout=DEFAULT_CTL_TIMEOUT):
+        self.run(f'--timeout={timeout} --wait={wait} sync',
+                 timeout=(timeout + 1))
 
     def start_daemon(self, nb_cluster_ips, enable_ssl):
         if enable_ssl:
@@ -269,8 +273,9 @@ class OvnSbctl:
     def __init__(self, sb):
         self.sb = sb
 
-    def run(self, cmd="", stdout=None):
-        self.sb.run(cmd="ovn-sbctl --no-leader-only " + cmd, stdout=stdout)
+    def run(self, cmd="", stdout=None, timeout=DEFAULT_CTL_TIMEOUT):
+        self.sb.run(cmd="ovn-sbctl --no-leader-only " + cmd,
+                    stdout=stdout, timeout=timeout)
 
     def set_inactivity_probe(self, value):
         self.run(f'set Connection . inactivity_probe={value}')

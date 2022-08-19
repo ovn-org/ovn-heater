@@ -31,7 +31,7 @@ class Context(object):
 
     def __exit__(self, type, value, traceback):
         log.info('Waiting for the OVN state synchronization')
-        self.cluster.nbctl.run('--timeout=1800 --wait=hv sync')
+        self.cluster.nbctl.sync(timeout=1800)
         ovn_stats.report(self.test_name, brief=self.brief_report)
         log.info(f'Exiting context {self.test_name}')
 

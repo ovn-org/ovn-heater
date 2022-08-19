@@ -30,7 +30,7 @@ class NetpolCrossNs(ExtCmd):
                 ns.add_ports(ports[i*self.config.pods_ns_ratio:
                                    (i + 1) * self.config.pods_ns_ratio])
                 if global_cfg.run_ipv4:
-                    ns.default_deny()
+                    ns.default_deny(4)
                 if global_cfg.run_ipv6:
                     ns.default_deny(6)
                 all_ns.append(ns)

@@ -7,6 +7,8 @@ from ovn_exceptions import SSHError
 
 log = logging.getLogger(__name__)
 
+DEFAULT_SANDBOX_TIMEOUT = 60
+
 
 class SSH:
     def __init__(self, hostname, cmd_log):
@@ -68,8 +70,6 @@ class Sandbox(object):
 
         self.channel = self.phys_node.ssh.ssh.invoke_shell(width=10000,
                                                            height=10000)
-        # Fail if command didn't finish after 1 minute.
-        self.channel.settimeout(60.0)
         if self.container:
             dcmd = 'docker exec -it ' + self.container + ' bash'
             self.channel.sendall(f"{dcmd}\n".encode())
@@ -78,11 +78,14 @@ class Sandbox(object):
         # Checking + consuming all the unwanted output from the shell.
         self.run(cmd="echo Hello", stdout=stdout, raise_on_error=True)
 
-    def run(self, cmd="", stdout=None, raise_on_error=False):
+    def run(self, cmd="", stdout=None, raise_on_error=False,
+            timeout=DEFAULT_SANDBOX_TIMEOUT):
         if self.phys_node.ssh.cmd_log:
             log.info(f'Logging command: ssh {self.container} "{cmd}"')
 
         self.ensure_channel()
+        # Fail if command didn't finish after 'timeout' seconds.
+        self.channel.settimeout(timeout)
 
         # Can't have ';' right after '&'.
         if not cmd.endswith('&'):

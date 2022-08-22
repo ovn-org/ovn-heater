@@ -20,6 +20,16 @@
       ./ovn_cluster.sh stop
       docker system prune -f
 
+  - name: Ensure number of inotify instances for containers
+    shell: |
+      sysctl -w fs.inotify.max_user_instances=2048
+
+  - name: Ensure the number of allowed SSH sessions
+    shell: |
+      sed -i '/^MaxSessions /d' /etc/ssh/sshd_config
+      echo "MaxSessions 1024" >> /etc/ssh/sshd_config
+      systemctl reload sshd.service
+
   - name: Create ovs bridges for ovn fake multinode
     shell: |
       set -e

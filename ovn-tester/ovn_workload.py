@@ -21,6 +21,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'datapath_type',
                             'raft_election_to',
                             'northd_probe_interval',
+                            'northd_threads',
                             'db_inactivity_probe',
                             'node_net',
                             'enable_ssl',
@@ -93,8 +94,16 @@ class CentralNode(Node):
         time.sleep(5)
         self.set_raft_election_timeout(cluster_cfg.raft_election_to)
         self.enable_trim_on_compaction()
+        self.set_northd_threads(cluster_cfg.northd_threads)
         for target in self.db_containers + self.relay_containers:
             self.start_process_monitor(target)
+
+    def set_northd_threads(self, n_threads):
+        log.info(f'Configuring northd to use {n_threads} threads')
+        for container in self.db_containers:
+            self.phys_node.run(f'docker exec {container} ovn-appctl -t '
+                               f'ovn-northd parallel-build/set-n-threads '
+                               f'{n_threads}')
 
     def set_raft_election_timeout(self, timeout_s):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):

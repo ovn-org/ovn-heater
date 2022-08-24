@@ -13,9 +13,8 @@ from ovn_sandbox import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
 from ovn_utils import DualStackSubnet
+from ovs.stream import Stream
 
-FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
-logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
 DEFAULT_VIP_SUBNET6 = netaddr.IPNetwork('4::/32')
@@ -117,6 +116,12 @@ def read_physical_deployment(deployment, global_cfg):
             for worker in dep['worker-nodes']
         ]
         return central_node, worker_nodes
+
+
+# SSL files are installed by ovn-fake-multinode in these locations.
+SSL_KEY_FILE = "/opt/ovn/ovn-privkey.pem"
+SSL_CERT_FILE = "/opt/ovn/ovn-cert.pem"
+SSL_CACERT_FILE = "/opt/ovn/pki/switchca/cacert.pem"
 
 
 def read_config(config):
@@ -224,6 +229,9 @@ def read_config(config):
         static_vips6=static_vips6,
         use_ovsdb_etcd=cluster_args.get('use_ovsdb_etcd', False),
         northd_threads=cluster_args.get('northd_threads', 4),
+        ssl_private_key=SSL_KEY_FILE,
+        ssl_cert=SSL_CERT_FILE,
+        ssl_cacert=SSL_CACERT_FILE,
     )
     brex_cfg = BrExConfig(
         physical_net=cluster_args.get('physical_net', 'providernet'),
@@ -234,6 +242,20 @@ def read_config(config):
         n_pods_per_node=bringup_args.get('n_pods_per_node', 10)
     )
     return global_cfg, cluster_cfg, brex_cfg, bringup_cfg
+
+
+def setup_logging(global_cfg):
+    FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
+
+    if not global_cfg.log_cmds:
+        return
+
+    modules = [
+        "ovsdbapp.backend.ovs_idl.transaction",
+    ]
+    for module_name in modules:
+        logging.getLogger(module_name).setLevel(logging.DEBUG)
 
 
 RESERVED = [
@@ -290,7 +312,15 @@ def create_nodes(cluster_config, central, workers):
     return central_node, worker_nodes
 
 
+def set_ssl_keys(cluster_cfg):
+    Stream.ssl_set_private_key_file(cluster_cfg.ssl_private_key)
+    Stream.ssl_set_certificate_file(cluster_cfg.ssl_cert)
+    Stream.ssl_set_ca_cert_file(cluster_cfg.ssl_cacert)
+
+
 def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
+    if cluster_cfg.enable_ssl:
+        set_ssl_keys(cluster_cfg)
     ovn = Cluster(central_node, worker_nodes, cluster_cfg, brex_cfg)
     with Context(ovn, "prepare_test"):
         ovn.start()
@@ -321,6 +351,8 @@ if __name__ == '__main__':
         config = yaml.safe_load(yaml_file)
 
     global_cfg, cluster_cfg, brex_cfg, bringup_cfg = read_config(config)
+
+    setup_logging(global_cfg)
 
     if not global_cfg.run_ipv4 and not global_cfg.run_ipv6:
         raise ovn_exceptions.OvnInvalidConfigException()

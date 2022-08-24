@@ -39,14 +39,14 @@ class OvsVsctl:
         self.run(f'del-port {port.name}')
 
     def bind_vm_port(self, lport):
-        cmd = f'bash -c \'ip netns add {lport.name} ; ' \
+        cmd = f'ip netns add {lport.name} ; ' \
               f'ip link set {lport.name} netns {lport.name} ; ' \
               f'ip -n {lport.name} link set {lport.name} ' \
               f'address {lport.mac} ; ' \
               f'ip -n {lport.name} addr add {lport.ip}/{lport.plen} ' \
               f'dev {lport.name} ; ' \
               f'ip -n {lport.name} link set {lport.name} up ; ' \
-              f'ip -n {lport.name} route add default via {lport.gw}\''
+              f'ip -n {lport.name} route add default via {lport.gw}'
         self.run(cmd, prefix="")
 
     def unbind_vm_port(self, lport):

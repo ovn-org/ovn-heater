@@ -13,6 +13,7 @@ from datetime import datetime
 
 log = logging.getLogger(__name__)
 
+
 ClusterConfig = namedtuple(
     'ClusterConfig',
     [
@@ -41,6 +42,9 @@ ClusterConfig = namedtuple(
         'static_vips',
         'static_vips6',
         'use_ovsdb_etcd',
+        'ssl_private_key',
+        'ssl_cert',
+        'ssl_cacert',
     ],
 )
 
@@ -177,6 +181,7 @@ class WorkerNode(Node):
         self.ext_switch = None
         self.lports = []
         self.next_lport_index = 0
+        self.vsctl = None
 
     def start(self, cluster_cfg):
         log.info(f'Starting worker {self.container}')
@@ -186,6 +191,28 @@ class WorkerNode(Node):
             )
         )
         self.start_process_monitor(self.container)
+        pctl = ovn_utils.PhysCtl(self)
+        prot = "ptcp"
+        if cluster_cfg.enable_ssl:
+            prot = "pssl"
+            # It's lame that we have to use ovs-vsctl to set up the SSL
+            # connection. The alternative would be changing ovn-fake-multinode
+            # to set these values when it starts ovsdb-server.
+            pctl.run(
+                f"ovs-vsctl --id=@foo create SSL "
+                f"private_key={cluster_cfg.ssl_private_key} "
+                f"certificate={cluster_cfg.ssl_cert} "
+                f"ca_cert={cluster_cfg.ssl_cacert} "
+                f"-- set open_vswitch . ssl=@foo"
+            )
+        pctl.run(
+            f"ovs-appctl -t ovsdb-server ovsdb-server/add-remote {prot}:6640"
+        )
+        self.vsctl = ovn_utils.OvsVsctl(
+            self,
+            self.get_connection_string(cluster_cfg, 6640),
+            cluster_cfg.db_inactivity_probe // 1000,
+        )
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
@@ -384,19 +411,17 @@ class WorkerNode(Node):
     @ovn_stats.timeit
     def bind_port(self, port):
         log.info(f'Binding lport {port.name} on {self.container}')
-        vsctl = ovn_utils.OvsVsctl(self)
-        vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
+        self.vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
         # Skip creating a netns for "passive" ports, we won't be sending
         # traffic on those.
         if not port.passive:
-            vsctl.bind_vm_port(port)
+            self.vsctl.bind_vm_port(port)
 
     @ovn_stats.timeit
     def unbind_port(self, port):
-        vsctl = ovn_utils.OvsVsctl(self)
         if not port.passive:
-            vsctl.unbind_vm_port(port)
-        vsctl.del_port(port)
+            self.vsctl.unbind_vm_port(port)
+        self.vsctl.del_port(port)
 
     def provision_ports(self, cluster, n_ports, passive=False):
         ports = [self.provision_port(cluster, passive) for i in range(n_ports)]
@@ -445,6 +470,13 @@ class WorkerNode(Node):
                 self.ping_port(cluster, port, dest=port.ext_gw)
             if port.ip6:
                 self.ping_port(cluster, port, dest=port.ext_gw6)
+
+    def get_connection_string(self, cluster_cfg, port):
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        offset = 0
+        offset += 3 if cluster_cfg.clustered_db else 1
+        offset += cluster_cfg.n_relays
+        return f"{protocol}:{self.mgmt_ip + offset}:{port}"
 
 
 ACL_DEFAULT_DENY_PRIO = 1

@@ -3,6 +3,10 @@ import netaddr
 import ovn_exceptions
 from collections import namedtuple
 from io import StringIO
+import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
+from ovsdbapp.backend import ovs_idl
+from ovsdbapp.backend.ovs_idl import connection
+
 
 log = logging.getLogger(__name__)
 
@@ -137,9 +141,32 @@ class DualStackSubnet:
         raise ovn_exceptions.OvnInvalidConfigException("invalid configuration")
 
 
+# This override allows for us to connect to multiple DBs
+class Backend(ovs_idl.Backend):
+    def __init__(self, connection):
+        super(Backend, self).__init__(connection)
+
+    @property
+    def ovsdb_connection(self):
+        return self._ovsdb_connection
+
+    @ovsdb_connection.setter
+    def ovsdb_connection(self, connection):
+        if self._ovsdb_connection is None:
+            self._ovsdb_connection = connection
+
+
+class VSIdl(ovs_impl_idl.OvsdbIdl, Backend):
+    def __init__(self, connection):
+        super(VSIdl, self).__init__(connection)
+
+
 class OvsVsctl:
-    def __init__(self, sb):
+    def __init__(self, sb, connection_string, inactivity_probe):
         self.sb = sb
+        i = connection.OvsdbIdl.from_server(connection_string, "Open_vSwitch")
+        c = connection.Connection(i, inactivity_probe)
+        self.idl = VSIdl(c)
 
     def run(
         self,
@@ -152,15 +179,19 @@ class OvsVsctl:
 
     def add_port(self, port, bridge, internal=True, ifaceid=None):
         name = port.name
-        cmd = f'add-port {bridge} {name}'
-        if internal:
-            cmd += f' -- set interface {name} type=internal'
-        if ifaceid:
-            cmd += f' -- set Interface {name} external_ids:iface-id={ifaceid}'
-        self.run(cmd=cmd)
+        with self.idl.transaction(check_error=True) as txn:
+            txn.add(self.idl.add_port(bridge, name))
+            if internal:
+                txn.add(
+                    self.idl.db_set("Interface", name, ("type", "internal"))
+                )
+            if ifaceid:
+                txn.add(
+                    self.idl.iface_set_external_id(name, "iface-id", ifaceid)
+                )
 
     def del_port(self, port):
-        self.run(f'del-port {port.name}')
+        self.idl.del_port(port.name).execute(check_error=True)
 
     def bind_vm_port(self, lport):
         cmd = (

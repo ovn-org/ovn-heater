@@ -361,12 +361,12 @@ class OvnNbctl:
         cmd = f'add Logical_Router {lr.uuid} load_balancer_group {lbg.uuid}'
         self.run(cmd=cmd)
 
-    def lr_set_lb_force_snat_ip(self, router, ip):
-        # Build lb_force_snat_ip of the form: '"v4-ip v6-ip"'
-        snat_ips = [str(val) for val in filter(lambda v: v, [ip.ip4, ip.ip6])]
-        snat_ip_str = f'\"{" ".join(snat_ips)}\"'
-        self.run(f'set Logical_Router {router.name} '
-                 f'options:lb_force_snat_ip={snat_ip_str}')
+    def lr_set_options(self, router, options):
+        opt = ''
+        for key, value in options.items():
+            opt = opt + f' options:{key}={value}'
+
+        self.run(f'set Logical_Router {router.name} {opt}')
 
     def lb_set_vips(self, lb, vips):
         vip_str = ''

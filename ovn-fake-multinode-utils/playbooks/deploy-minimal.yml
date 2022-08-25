@@ -30,6 +30,13 @@
       echo "MaxSessions 1024" >> /etc/ssh/sshd_config
       systemctl reload sshd.service
 
+  - name: Ensure the neighbor cache size on central nodes
+    when: ovn_central is defined
+    shell: |
+      sysctl -w net.ipv4.neigh.default.gc_thresh1=8192
+      sysctl -w net.ipv4.neigh.default.gc_thresh2=32768
+      sysctl -w net.ipv4.neigh.default.gc_thresh3=65536
+
   - name: Create ovs bridges for ovn fake multinode
     shell: |
       set -e

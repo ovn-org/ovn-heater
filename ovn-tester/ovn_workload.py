@@ -202,8 +202,13 @@ class WorkerNode(Node):
 
         # Create a gw router and connect it to the cluster join switch.
         self.gw_router = cluster.nbctl.lr_add(f'gwrouter-{self.container}')
-        cluster.nbctl.run(f'set Logical_Router {self.gw_router.name} '
-                          f'options:chassis={self.container}')
+        cluster.nbctl.lr_set_options(self.gw_router, {
+            'always_learn_from_arp_request': 'false',
+            'dynamic_neigh_routers': 'true',
+            'chassis': self.container,
+            'lb_force_snat_ip': 'router_ip',
+            'snat-ct-zone': 0,
+        })
         join_grp_name = f'gw-to-join-{self.container}'
         join_ls_grp_name = f'join-to-gw-{self.container}'
 
@@ -256,8 +261,6 @@ class WorkerNode(Node):
                 self.ext_net.reverse(2)
         )
 
-        # Force return traffic to return on the same node.
-        cluster.nbctl.lr_set_lb_force_snat_ip(cluster.router, gr_gw)
         # Route for traffic that needs to exit the cluster
         # (via gw router).
         cluster.nbctl.route_add(
@@ -678,6 +681,9 @@ class Cluster(object):
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)
+        self.nbctl.lr_set_options(self.router, {
+            'always_learn_from_arp_request': 'false',
+        })
 
     def create_cluster_load_balancer(self, lb_name, global_cfg):
         if global_cfg.run_ipv4:

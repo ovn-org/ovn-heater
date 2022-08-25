@@ -209,6 +209,7 @@ def read_config(config):
         static_vips=static_vips,
         static_vips6=static_vips6,
         use_ovsdb_etcd=cluster_args.get('use_ovsdb_etcd', False),
+        northd_threads=cluster_args.get('northd_threads', 4),
     )
     brex_cfg = BrExConfig(
         physical_net=cluster_args.get('physical_net', 'providernet'),

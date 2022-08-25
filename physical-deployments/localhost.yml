@@ -1,0 +1,8 @@
+registry-node: localhost
+internal-iface: lo
+
+central-node:
+  name: localhost
+
+worker-nodes:
+  - localhost

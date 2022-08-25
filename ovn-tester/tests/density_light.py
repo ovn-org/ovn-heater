@@ -11,7 +11,7 @@ DensityCfg = namedtuple('DensityCfg',
 
 
 class DensityLight(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(DensityLight, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('density_light', dict())
@@ -22,7 +22,7 @@ class DensityLight(ExtCmd):
         )
 
     def run(self, ovn, global_cfg):
-        ns = Namespace(ovn, 'ns_density_light')
+        ns = Namespace(ovn, 'ns_density_light', global_cfg)
         with Context(ovn, 'density_light_startup', 1,
                      brief_report=True) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)

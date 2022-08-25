@@ -5,55 +5,72 @@ import sys
 import netaddr
 import yaml
 import importlib
+import ovn_exceptions
 
 from collections import namedtuple
 from ovn_context import Context
 from ovn_sandbox import PhysicalNode
 from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
+from ovn_utils import DualStackSubnet
 
 FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
+DEFAULT_VIP_SUBNET6 = netaddr.IPNetwork('4::/32')
 DEFAULT_N_VIPS = 2
 DEFAULT_VIP_PORT = 80
 DEFAULT_BACKEND_PORT = 8080
 
 
-def calculate_default_vips():
-    vip_gen = DEFAULT_VIP_SUBNET.iter_hosts()
+def calculate_default_vips(vip_subnet=DEFAULT_VIP_SUBNET):
+    vip_gen = vip_subnet.iter_hosts()
     vip_range = range(0, DEFAULT_N_VIPS)
-    return {f'{next(vip_gen)}:{DEFAULT_VIP_PORT}': None for _ in vip_range}
+    prefix = '[' if vip_subnet.version == 6 else ''
+    suffix = ']' if vip_subnet.version == 6 else ''
+    return {f'{prefix}{next(vip_gen)}{suffix}:{DEFAULT_VIP_PORT}': None
+            for _ in vip_range}
 
 
 DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
+DEFAULT_STATIC_VIP_SUBNET6 = netaddr.IPNetwork('5::/32')
 DEFAULT_N_STATIC_VIPS = 65
 DEFAULT_STATIC_BACKEND_SUBNET = netaddr.IPNetwork('6.0.0.0/8')
+DEFAULT_STATIC_BACKEND_SUBNET6 = netaddr.IPNetwork('6::/32')
 DEFAULT_N_STATIC_BACKENDS = 2
 
 
-def calculate_default_static_vips():
-    vip_gen = DEFAULT_STATIC_VIP_SUBNET.iter_hosts()
+def calculate_default_static_vips(
+        vip_subnet=DEFAULT_STATIC_VIP_SUBNET,
+        backend_subnet=DEFAULT_STATIC_BACKEND_SUBNET):
+    vip_gen = vip_subnet.iter_hosts()
     vip_range = range(0, DEFAULT_N_STATIC_VIPS)
 
-    backend_gen = DEFAULT_STATIC_BACKEND_SUBNET.iter_hosts()
+    backend_gen = backend_subnet.iter_hosts()
     backend_range = range(0, DEFAULT_N_STATIC_BACKENDS)
+
+    prefix = '[' if vip_subnet.version == 6 else ''
+    suffix = ']' if vip_subnet.version == 6 else ''
+
     # This assumes it's OK to use the same backend list for each
     # VIP. If we need to use different backends for each VIP,
     # then this will need to be updated
     backend_list = [
-        f'{next(backend_gen)}:{DEFAULT_BACKEND_PORT}'
+        f'{prefix}{next(backend_gen)}{suffix}:{DEFAULT_BACKEND_PORT}'
         for _ in backend_range
     ]
 
     return {
-        f'{next(vip_gen)}:{DEFAULT_VIP_PORT}': backend_list
+        f'{prefix}{next(vip_gen)}{suffix}:{DEFAULT_VIP_PORT}': backend_list
         for _ in vip_range
     }
 
 
-GlobalCfg = namedtuple('GlobalCfg', ['log_cmds', 'cleanup'])
+GlobalCfg = namedtuple('GlobalCfg', ['log_cmds',
+                                     'cleanup',
+                                     'run_ipv4',
+                                     'run_ipv6'])
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg',
                                ['n_pods_per_node'])
@@ -101,7 +118,9 @@ def read_config(config):
     global_args = config.get('global', dict())
     global_cfg = GlobalCfg(
         log_cmds=global_args.get('log_cmds', False),
-        cleanup=global_args.get('cleanup', False)
+        cleanup=global_args.get('cleanup', False),
+        run_ipv4=global_args.get('run_ipv4', True),
+        run_ipv6=global_args.get('run_ipv6', False)
     )
 
     cluster_args = config.get('cluster', dict())
@@ -110,6 +129,26 @@ def read_config(config):
         cluster_args.get('node_net', '192.16.0.0/16'))
     enable_ssl = cluster_args.get('enable_ssl', True)
     n_relays = cluster_args.get('n_relays', 0)
+    vips = cluster_args.get(
+            'vips',
+            calculate_default_vips(DEFAULT_VIP_SUBNET)
+            ) if global_cfg.run_ipv4 else None
+    vips6 = cluster_args.get(
+            'vips6',
+            calculate_default_vips(DEFAULT_VIP_SUBNET6)
+            ) if global_cfg.run_ipv6 else None
+    static_vips = cluster_args.get(
+            'static_vips',
+            calculate_default_static_vips(
+                DEFAULT_STATIC_VIP_SUBNET,
+                DEFAULT_STATIC_BACKEND_SUBNET)
+            ) if global_cfg.run_ipv4 else None
+    static_vips6 = cluster_args.get(
+            'static_vips6',
+            calculate_default_static_vips(
+                DEFAULT_STATIC_VIP_SUBNET6,
+                DEFAULT_STATIC_BACKEND_SUBNET6)
+            ) if global_cfg.run_ipv6 else None
     cluster_cfg = ClusterConfig(
         cluster_cmd_path=cluster_args.get(
             'cluster_cmd_path',
@@ -131,23 +170,44 @@ def read_config(config):
         northd_probe_interval=cluster_args.get('northd_probe_interval', 5000),
         db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
         node_timeout_s=cluster_args.get('node_timeout_s', 20),
-        internal_net=netaddr.IPNetwork(
-            cluster_args.get('internal_net', '16.0.0.0/16')
+        internal_net=DualStackSubnet(
+            netaddr.IPNetwork(
+                cluster_args.get('internal_net', '16.0.0.0/16')
+            ) if global_cfg.run_ipv4 else None,
+            netaddr.IPNetwork(
+                cluster_args.get('internal_net6', '16::/64')
+            ) if global_cfg.run_ipv6 else None,
         ),
-        external_net=netaddr.IPNetwork(
-            cluster_args.get('external_net', '3.0.0.0/16')
+        external_net=DualStackSubnet(
+            netaddr.IPNetwork(
+                cluster_args.get('external_net', '3.0.0.0/16')
+            ) if global_cfg.run_ipv4 else None,
+            netaddr.IPNetwork(
+                cluster_args.get('external_net6', '3::/64')
+            ) if global_cfg.run_ipv6 else None,
         ),
-        gw_net=netaddr.IPNetwork(
-            cluster_args.get('gw_net', '2.0.0.0/16')
+        gw_net=DualStackSubnet(
+            netaddr.IPNetwork(
+                cluster_args.get('gw_net', '2.0.0.0/16')
+            ) if global_cfg.run_ipv4 else None,
+            netaddr.IPNetwork(
+                cluster_args.get('gw_net6', '2::/64')
+            ) if global_cfg.run_ipv6 else None,
         ),
-        cluster_net=netaddr.IPNetwork(
-            cluster_args.get('cluster_net', '16.0.0.0/4')
+        cluster_net=DualStackSubnet(
+            netaddr.IPNetwork(
+                cluster_args.get('cluster_net', '16.0.0.0/4')
+            ) if global_cfg.run_ipv4 else None,
+            netaddr.IPNetwork(
+                cluster_args.get('cluster_net6', '16::/32')
+            ) if global_cfg.run_ipv6 else None
         ),
         n_workers=cluster_args.get('n_workers', 2),
-        vips=cluster_args.get('vips', calculate_default_vips()),
+        vips=vips,
+        vips6=vips6,
         vip_subnet=DEFAULT_VIP_SUBNET,
-        static_vips=cluster_args.get('static_vips',
-                                     calculate_default_static_vips()),
+        static_vips=static_vips,
+        static_vips6=static_vips6,
         use_ovsdb_etcd=cluster_args.get('use_ovsdb_etcd', False),
     )
     brex_cfg = BrExConfig(
@@ -169,7 +229,7 @@ RESERVED = [
 ]
 
 
-def configure_tests(yaml, central_node, worker_nodes):
+def configure_tests(yaml, central_node, worker_nodes, global_cfg):
     tests = []
     for section, cfg in yaml.items():
         if section in RESERVED:
@@ -178,7 +238,7 @@ def configure_tests(yaml, central_node, worker_nodes):
         mod = importlib.import_module(f'tests.{section}')
         class_name = ''.join(s.title() for s in section.split('_'))
         cls = getattr(mod, class_name)
-        tests.append(cls(yaml, central_node, worker_nodes))
+        tests.append(cls(yaml, central_node, worker_nodes, global_cfg))
     return tests
 
 
@@ -199,8 +259,9 @@ def create_nodes(cluster_config, central, workers):
                                mgmt_net, mgmt_ip)
     worker_nodes = [
         WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
-                   mgmt_net, mgmt_ip + i + 1, internal_net.next(i),
-                   external_net.next(i), gw_net, i)
+                   mgmt_net, mgmt_ip + i + 1,
+                   DualStackSubnet.next(internal_net, i),
+                   DualStackSubnet.next(external_net, i), gw_net, i)
         for i in range(cluster_config.n_workers)
     ]
     return central_node, worker_nodes
@@ -213,18 +274,18 @@ def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
     return ovn
 
 
-def run_base_cluster_bringup(ovn, bringup_cfg):
+def run_base_cluster_bringup(ovn, bringup_cfg, global_cfg):
     # create ovn topology
     with Context(ovn, "base_cluster_bringup", len(ovn.worker_nodes)) as ctx:
         ovn.create_cluster_router("lr-cluster")
         ovn.create_cluster_join_switch("ls-join")
-        ovn.create_cluster_load_balancer("lb-cluster")
+        ovn.create_cluster_load_balancer("lb-cluster", global_cfg)
         for i in ctx:
             worker = ovn.worker_nodes[i]
             worker.provision(ovn)
             ports = worker.provision_ports(ovn,
                                            bringup_cfg.n_pods_per_node)
-            worker.provision_load_balancers(ovn, ports)
+            worker.provision_load_balancers(ovn, ports, global_cfg)
             worker.ping_ports(ovn, ports)
         ovn.provision_lb_group()
 
@@ -239,12 +300,15 @@ if __name__ == '__main__':
 
     global_cfg, cluster_cfg, brex_cfg, bringup_cfg = read_config(config)
 
+    if not global_cfg.run_ipv4 and not global_cfg.run_ipv6:
+        raise ovn_exceptions.OvnInvalidConfigException()
+
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
-    tests = configure_tests(config, central_node, worker_nodes)
+    tests = configure_tests(config, central_node, worker_nodes, global_cfg)
 
     ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
-    run_base_cluster_bringup(ovn, bringup_cfg)
+    run_base_cluster_bringup(ovn, bringup_cfg, global_cfg)
     for test in tests:
         test.run(ovn, global_cfg)
     sys.exit(0)

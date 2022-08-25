@@ -17,7 +17,7 @@ NsMultitenantCfg = namedtuple('NsMultitenantCfg',
 
 
 class NetpolMultitenant(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(NetpolMultitenant, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('netpol_multitenant', dict())
@@ -62,14 +62,24 @@ class NetpolMultitenant(ExtCmd):
         to-lport, ip.src == {ip1, ..., ip20} && outport == @PG_ns_i,
                   allow-related
         """
-        external_ips1 = [
-            netaddr.IPAddress('42.42.42.1') + i
-            for i in range(self.config.n_external_ips1)
-        ]
-        external_ips2 = [
-            netaddr.IPAddress('43.43.43.1') + i
-            for i in range(self.config.n_external_ips2)
-        ]
+        if global_cfg.run_ipv4:
+            external_ips1 = [
+                netaddr.IPAddress('42.42.42.1') + i
+                for i in range(self.config.n_external_ips1)
+            ]
+            external_ips2 = [
+                netaddr.IPAddress('43.43.43.1') + i
+                for i in range(self.config.n_external_ips2)
+            ]
+        if global_cfg.run_ipv6:
+            external6_ips1 = [
+                netaddr.IPAddress('42:42:42::1') + i
+                for i in range(self.config.n_external_ips1)
+            ]
+            external6_ips2 = [
+                netaddr.IPAddress('43:43:43::1') + i
+                for i in range(self.config.n_external_ips2)
+            ]
 
         all_ns = []
         with Context(ovn, 'netpol_multitenant', self.config.n_namespaces,
@@ -79,16 +89,24 @@ class NetpolMultitenant(ExtCmd):
                 # includes i.
                 ranges = self.config.ranges
                 n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
-                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}')
+                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}', global_cfg)
                 for _ in range(n_ports):
                     worker = ovn.select_worker_for_port()
                     for p in worker.provision_ports(ovn, 1):
                         ns.add_ports([p])
-                ns.default_deny()
-                ns.allow_within_namespace()
+                ns.default_deny(4)
+                if global_cfg.run_ipv4:
+                    ns.allow_within_namespace(4)
+                if global_cfg.run_ipv6:
+                    ns.allow_within_namespace(6)
                 ns.check_enforcing_internal()
-                ns.allow_from_external(external_ips1)
-                ns.allow_from_external(external_ips2, include_ext_gw=True)
+                if global_cfg.run_ipv4:
+                    ns.allow_from_external(external_ips1)
+                    ns.allow_from_external(external_ips2, include_ext_gw=True)
+                if global_cfg.run_ipv6:
+                    ns.allow_from_external(external6_ips1, family=6)
+                    ns.allow_from_external(external6_ips2, include_ext_gw=True,
+                                           family=6)
                 ns.check_enforcing_external()
                 all_ns.append(ns)
 

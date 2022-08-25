@@ -33,8 +33,10 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'n_workers',
                             'n_relays',
                             'vips',
+                            'vips6',
                             'vip_subnet',
                             'static_vips',
+                            'static_vips6',
                             'use_ovsdb_etcd'])
 
 
@@ -154,25 +156,11 @@ class WorkerNode(Node):
         self.run(cmd=f'ovs-vsctl -- set open_vswitch . '
                  f'external-ids:ovn-bridge-mappings={physical_net}:br-ex')
 
-    def configure_external_host(self):
-        log.info(f'Adding external host on {self.container}')
-        gw_ip = netaddr.IPAddress(self.ext_net.last - 1)
-        host_ip = netaddr.IPAddress(self.ext_net.last - 2)
-
-        self.run(cmd='ip link add veth0 type veth peer name veth1')
-        self.run(cmd='ip netns add ext-ns')
-        self.run(cmd='ip link set netns ext-ns dev veth0')
-        self.run(cmd='ip netns exec ext-ns ip link set dev veth0 up')
-        self.run(cmd=f'ip netns exec ext-ns '
-                 f'ip addr add {host_ip}/{self.ext_net.prefixlen} '
-                 f'dev veth0')
-        self.run(cmd=f'ip netns exec ext-ns ip route add default via {gw_ip}')
-        self.run(cmd='ip link set dev veth1 up')
-        self.run(cmd='ovs-vsctl add-port br-ex veth1')
-
     def configure(self, physical_net):
         self.configure_localnet(physical_net)
-        self.configure_external_host()
+        phys_ctl = ovn_utils.PhysCtl(self)
+        phys_ctl.external_host_provision(ip=self.ext_net.reverse(2),
+                                         gw=self.ext_net.reverse())
 
     @ovn_stats.timeit
     def wait(self, sbctl, timeout_s):
@@ -189,13 +177,12 @@ class WorkerNode(Node):
 
         # Create a node switch and connect it to the cluster router.
         self.switch = cluster.nbctl.ls_add(f'lswitch-{self.container}',
-                                           cidr=self.int_net)
+                                           net_s=self.int_net)
         lrp_name = f'rtr-to-node-{self.container}'
         ls_rp_name = f'node-to-rtr-{self.container}'
-        lrp_ip = netaddr.IPAddress(self.int_net.last - 1)
         self.rp = cluster.nbctl.lr_port_add(
-            cluster.router, lrp_name, RandMac(), lrp_ip,
-            self.int_net.prefixlen
+            cluster.router, lrp_name, RandMac(),
+            self.int_net.reverse()
         )
         self.ls_rp = cluster.nbctl.ls_port_add(
             self.switch, ls_rp_name, self.rp
@@ -210,10 +197,11 @@ class WorkerNode(Node):
                           f'options:chassis={self.container}')
         join_grp_name = f'gw-to-join-{self.container}'
         join_ls_grp_name = f'join-to-gw-{self.container}'
-        gr_gw = netaddr.IPAddress(self.gw_net.last - 2 - self.id)
+
+        gr_gw = self.gw_net.reverse(self.id + 2)
         self.gw_rp = cluster.nbctl.lr_port_add(
-            self.gw_router, join_grp_name, RandMac(), gr_gw,
-            self.gw_net.prefixlen
+            self.gw_router, join_grp_name,
+            RandMac(), gr_gw
         )
         self.join_gw_rp = cluster.nbctl.ls_port_add(
             cluster.join_switch, join_ls_grp_name, self.gw_rp
@@ -222,13 +210,12 @@ class WorkerNode(Node):
         # Create an external switch connecting the gateway router to the
         # physnet.
         self.ext_switch = cluster.nbctl.ls_add(f'ext-{self.container}',
-                                               cidr=self.ext_net)
+                                               net_s=self.ext_net)
         ext_lrp_name = f'gw-to-ext-{self.container}'
         ext_ls_rp_name = f'ext-to-gw-{self.container}'
-        lrp_ip = netaddr.IPAddress(self.ext_net.last - 1)
         self.ext_rp = cluster.nbctl.lr_port_add(
-            self.gw_router, ext_lrp_name, RandMac(), lrp_ip,
-            self.ext_net.prefixlen
+            self.gw_router, ext_lrp_name, RandMac(),
+            self.ext_net.reverse()
         )
         self.ext_gw_rp = cluster.nbctl.ls_port_add(
             self.ext_switch, ext_ls_rp_name, self.ext_rp
@@ -236,7 +223,7 @@ class WorkerNode(Node):
 
         # Configure physnet.
         self.physnet_port = cluster.nbctl.ls_port_add(
-            self.ext_switch, f'provnet-{self.container}', ip="unknown"
+            self.ext_switch, f'provnet-{self.container}', localnet=True,
         )
         cluster.nbctl.ls_port_set_set_type(self.physnet_port, 'localnet')
         cluster.nbctl.ls_port_set_set_options(
@@ -245,39 +232,47 @@ class WorkerNode(Node):
         )
 
         # Route for traffic entering the cluster.
-        rp_gw = netaddr.IPAddress(self.gw_net.last - 1)
-        cluster.nbctl.route_add(self.gw_router, cluster.net, str(rp_gw))
+        cluster.nbctl.route_add(
+                self.gw_router, cluster.net,
+                self.gw_net.reverse()
+        )
 
         # Default route to get out of cluster via physnet.
-        gr_def_gw = netaddr.IPAddress(self.ext_net.last - 2)
-        cluster.nbctl.route_add(self.gw_router, gw=str(gr_def_gw))
+        cluster.nbctl.route_add(
+                self.gw_router,
+                ovn_utils.DualStackSubnet(
+                    netaddr.IPNetwork("0.0.0.0/0"),
+                    netaddr.IPNetwork("::/0")
+                ),
+                self.ext_net.reverse(2)
+        )
 
         # Force return traffic to return on the same node.
-        cluster.nbctl.run(f'set Logical_Router {self.gw_router.name} '
-                          f'options:lb_force_snat_ip={gr_gw}')
-
+        cluster.nbctl.lr_set_lb_force_snat_ip(cluster.router, gr_gw)
         # Route for traffic that needs to exit the cluster
         # (via gw router).
-        cluster.nbctl.route_add(cluster.router, str(self.int_net),
-                                str(gr_gw), policy="src-ip")
+        cluster.nbctl.route_add(
+                cluster.router, self.int_net, gr_gw,
+                policy="src-ip"
+        )
 
         # SNAT traffic leaving the cluster.
-        cluster.nbctl.nat_add(self.gw_router, external_ip=str(gr_gw),
-                              logical_ip=cluster.net)
+        cluster.nbctl.nat_add(self.gw_router, gr_gw, cluster.net)
 
     @ovn_stats.timeit
     def provision_port(self, cluster, passive=False):
         name = f'lp-{self.id}-{self.next_lport_index}'
-        ip = netaddr.IPAddress(self.int_net.first + self.next_lport_index + 1)
-        plen = self.int_net.prefixlen
-        gw = netaddr.IPAddress(self.int_net.last - 1)
-        ext_gw = netaddr.IPAddress(self.ext_net.last - 2)
 
         log.info(f'Creating lport {name}')
-        lport = cluster.nbctl.ls_port_add(self.switch, name,
-                                          mac=str(RandMac()), ip=ip, plen=plen,
-                                          gw=gw, ext_gw=ext_gw, metadata=self,
-                                          passive=passive, security=True)
+        lport = cluster.nbctl.ls_port_add(
+                self.switch, name, mac=str(RandMac()),
+                ip=self.int_net.forward(self.next_lport_index + 1),
+                gw=self.int_net.reverse(),
+                ext_gw=self.ext_net.reverse(2),
+                metadata=self, passive=passive,
+                security=True
+            )
+
         self.lports.append(lport)
         self.next_lport_index += 1
         return lport
@@ -289,24 +284,41 @@ class WorkerNode(Node):
         self.lports.remove(port)
 
     @ovn_stats.timeit
-    def provision_load_balancers(self, cluster, ports):
+    def provision_load_balancers(self, cluster, ports, global_cfg):
         # Add one port IP as a backend to the cluster load balancer.
-        port_ips = (
-            f'{port.ip}:{DEFAULT_BACKEND_PORT}'
-            for port in ports if port.ip is not None
-        )
-        cluster_vips = cluster.cluster_cfg.vips.keys()
-        cluster.load_balancer.add_backends_to_vip(port_ips,
-                                                  cluster_vips)
-        cluster.load_balancer.add_to_switches([self.switch.name])
-        cluster.load_balancer.add_to_routers([self.gw_router.name])
+        if global_cfg.run_ipv4:
+            port_ips = (
+                f'{port.ip}:{DEFAULT_BACKEND_PORT}'
+                for port in ports if port.ip is not None
+            )
+            cluster_vips = cluster.cluster_cfg.vips.keys()
+            cluster.load_balancer.add_backends_to_vip(port_ips,
+                                                      cluster_vips)
+            cluster.load_balancer.add_to_switches([self.switch.name])
+            cluster.load_balancer.add_to_routers([self.gw_router.name])
+
+        if global_cfg.run_ipv6:
+            port_ips6 = (
+                f'{port.ip6}:{DEFAULT_BACKEND_PORT}'
+                for port in ports if port.ip6 is not None
+            )
+            cluster_vips6 = cluster.cluster_cfg.vips6.keys()
+            cluster.load_balancer6.add_backends_to_vip(port_ips6,
+                                                       cluster_vips6)
+            cluster.load_balancer6.add_to_switches([self.switch.name])
+            cluster.load_balancer6.add_to_routers([self.gw_router.name])
 
         # GW Load balancer has no VIPs/backends configured on it, since
         # this load balancer is used for hostnetwork services. We're not
         # using those right now so the load blaancer is empty.
-        self.gw_load_balancer = lb.OvnLoadBalancer(
-            f'lb-{self.gw_router.name}', cluster.nbctl)
-        self.gw_load_balancer.add_to_routers([self.gw_router.name])
+        if global_cfg.run_ipv4:
+            self.gw_load_balancer = lb.OvnLoadBalancer(
+                f'lb-{self.gw_router.name}', cluster.nbctl)
+            self.gw_load_balancer.add_to_routers([self.gw_router.name])
+        if global_cfg.run_ipv6:
+            self.gw_load_balancer6 = lb.OvnLoadBalancer(
+                f'lb-{self.gw_router.name}6', cluster.nbctl)
+            self.gw_load_balancer6.add_to_routers([self.gw_router.name])
 
     @ovn_stats.timeit
     def bind_port(self, port):
@@ -355,18 +367,22 @@ class WorkerNode(Node):
                 raise ovn_exceptions.OvnPingTimeoutException()
 
     @ovn_stats.timeit
-    def ping_port(self, cluster, port, dest=None):
-        if not dest:
-            dest = port.ext_gw
+    def ping_port(self, cluster, port, dest):
         self.run_ping(cluster, port.name, dest)
 
     @ovn_stats.timeit
     def ping_external(self, cluster, port):
-        self.run_ping(cluster, 'ext-ns', port.ip)
+        if port.ip:
+            self.run_ping(cluster, 'ext-ns', port.ip)
+        if port.ip6:
+            self.run_ping(cluster, 'ext-ns', port.ip6)
 
     def ping_ports(self, cluster, ports):
         for port in ports:
-            self.ping_port(cluster, port)
+            if port.ip:
+                self.ping_port(cluster, port, dest=port.ext_gw)
+            if port.ip6:
+                self.ping_port(cluster, port, dest=port.ext_gw6)
 
 
 ACL_DEFAULT_DENY_PRIO = 1
@@ -378,7 +394,7 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class Namespace(object):
-    def __init__(self, cluster, name):
+    def __init__(self, cluster, name, global_cfg):
         self.cluster = cluster
         self.nbctl = cluster.nbctl
         self.ports = []
@@ -388,7 +404,12 @@ class Namespace(object):
         self.pg_def_deny_egr = \
             self.nbctl.port_group_create(f'pg_deny_egr_{name}')
         self.pg = self.nbctl.port_group_create(f'pg_{name}')
-        self.addr_set = self.nbctl.address_set_create(f'as_{name}')
+        self.addr_set4 = \
+            self.nbctl.address_set_create(f'as_{name}') \
+            if global_cfg.run_ipv4 else None
+        self.addr_set6 = \
+            self.nbctl.address_set_create(f'as6_{name}') \
+            if global_cfg.run_ipv6 else None
         self.sub_as = []
         self.sub_pg = []
         self.load_balancer = None
@@ -401,8 +422,12 @@ class Namespace(object):
         # Always add port IPs to the address set but not to the PGs.
         # Simulate what OpenShift does, which is: create the port groups
         # when the first network policy is applied.
-        self.nbctl.address_set_add_addrs(self.addr_set,
-                                         [str(p.ip) for p in ports])
+        if self.addr_set4:
+            self.nbctl.address_set_add_addrs(self.addr_set4,
+                                             [str(p.ip) for p in ports])
+        if self.addr_set6:
+            self.nbctl.address_set_add_addrs(self.addr_set6,
+                                             [str(p.ip6) for p in ports])
         if self.enforcing:
             self.nbctl.port_group_add_ports(self.pg_def_deny_igr, ports)
             self.nbctl.port_group_add_ports(self.pg_def_deny_egr, ports)
@@ -415,7 +440,10 @@ class Namespace(object):
         self.nbctl.port_group_del(self.pg_def_deny_igr)
         self.nbctl.port_group_del(self.pg_def_deny_egr)
         self.nbctl.port_group_del(self.pg)
-        self.nbctl.address_set_del(self.addr_set)
+        if self.addr_set4:
+            self.nbctl.address_set_del(self.addr_set4)
+        if self.addr_set6:
+            self.nbctl.address_set_del(self.addr_set6)
         for pg in self.sub_pg:
             self.nbctl.port_group_del(pg)
         for addr_set in self.sub_as:
@@ -438,31 +466,39 @@ class Namespace(object):
         self.nbctl.port_group_add_ports(self.pg_def_deny_egr, self.ports)
         self.nbctl.port_group_add_ports(self.pg, self.ports)
 
-    def create_sub_ns(self, ports):
+    def create_sub_ns(self, ports, global_cfg):
         n_sub_pgs = len(self.sub_pg)
         suffix = f'{self.name}_{n_sub_pgs}'
         pg = self.nbctl.port_group_create(f'sub_pg_{suffix}')
         self.nbctl.port_group_add_ports(pg, ports)
         self.sub_pg.append(pg)
-        addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}')
-        self.nbctl.address_set_add_addrs(addr_set,
-                                         [str(p.ip) for p in ports])
-        self.sub_as.append(addr_set)
+        if global_cfg.run_ipv4:
+            addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}')
+            self.nbctl.address_set_add_addrs(addr_set,
+                                             [str(p.ip) for p in ports])
+            self.sub_as.append(addr_set)
+        if global_cfg.run_ipv6:
+            addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}6')
+            self.nbctl.address_set_add_addrs(addr_set,
+                                             [str(p.ip6) for p in ports])
+            self.sub_as.append(addr_set)
         return n_sub_pgs
 
     @ovn_stats.timeit
-    def default_deny(self):
+    def default_deny(self, family):
         self.enforce()
+
+        addr_set = f'self.addr_set{family}.name'
         self.nbctl.acl_add(
             self.pg_def_deny_igr.name,
             'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
-            f'ip4.src == \\${self.addr_set.name} && '
+            f'ip4.src == \\${addr_set} && '
             f'outport == @{self.pg_def_deny_igr.name}',
             'drop')
         self.nbctl.acl_add(
             self.pg_def_deny_egr.name,
             'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
-            f'ip4.dst == \\${self.addr_set.name} && '
+            f'ip4.dst == \\${addr_set} && '
             f'inport == @{self.pg_def_deny_egr.name}',
             'drop')
         self.nbctl.acl_add(
@@ -477,65 +513,70 @@ class Namespace(object):
             'allow')
 
     @ovn_stats.timeit
-    def allow_within_namespace(self):
+    def allow_within_namespace(self, family):
         self.enforce()
+
+        addr_set = f'self.addr_set{family}.name'
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.src == \\${self.addr_set.name} && '
-            f'outport == @{self.pg.name}',
+            f'ip4.src == \\${addr_set} && outport == @{self.pg.name}',
             'allow-related'
         )
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.dst == \\${self.addr_set.name} && '
-            f'inport == @{self.pg.name}',
+            f'ip4.dst == \\${addr_set} && inport == @{self.pg.name}',
             'allow-related'
         )
 
     @ovn_stats.timeit
-    def allow_cross_namespace(self, ns):
+    def allow_cross_namespace(self, ns, family):
         self.enforce()
+
+        addr_set = f'self.addr_set{family}.name'
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.src == \\${self.addr_set.name} && '
-            f'outport == @{ns.pg.name}',
+            f'ip4.src == \\${addr_set} && outport == @{ns.pg.name}',
             'allow-related'
         )
+        ns_addr_set = f'ns.addr_set{family}.name'
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.dst == \\${ns.addr_set.name} && '
-            f'inport == @{self.pg.name}',
+            f'ip4.dst == \\${ns_addr_set} && inport == @{self.pg.name}',
             'allow-related'
         )
 
     @ovn_stats.timeit
-    def allow_sub_namespace(self, src, dst):
+    def allow_sub_namespace(self, src, dst, family):
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.src == \\${self.sub_as[src].name} && '
+            f'ip{family}.src == \\${self.sub_as[src].name} && '
             f'outport == @{self.sub_pg[dst].name}',
             'allow-related'
         )
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.dst == \\${self.sub_as[dst].name} && '
+            f'ip{family}.dst == \\${self.sub_as[dst].name} && '
             f'inport == @{self.sub_pg[src].name}',
             'allow-related'
         )
 
     @ovn_stats.timeit
-    def allow_from_external(self, external_ips, include_ext_gw=False):
+    def allow_from_external(self, external_ips, include_ext_gw=False,
+                            family=4):
         self.enforce()
         # If requested, include the ext-gw of the first port in the namespace
         # so we can check that this rule is enforced.
         if include_ext_gw:
             assert (len(self.ports) > 0)
-            external_ips.append(self.ports[0].ext_gw)
+            if family == 4 and self.ports[0].ext_gw:
+                external_ips.append(self.ports[0].ext_gw)
+            elif family == 6 and self.ports[0].ext_gw6:
+                external_ips.append(self.ports[0].ext_gw6)
         ips = [str(ip) for ip in external_ips]
         self.nbctl.acl_add(
             self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
-            f'ip4.src == {{{",".join(ips)}}} && outport == @{self.pg.name}',
-            'allow-related'
+            f'ip.{family} == {{{",".join(ips)}}} && '
+            f'outport == @{self.pg.name}', 'allow-related'
         )
 
     @ovn_stats.timeit
@@ -545,7 +586,10 @@ class Namespace(object):
             src = self.ports[0]
             dst = self.ports[-1]
             worker = src.metadata
-            worker.ping_port(self.cluster, src, dst.ip)
+            if src.ip:
+                worker.ping_port(self.cluster, src, dst.ip)
+            if src.ip6:
+                worker.ping_port(self.cluster, src, dst.ip6)
 
     @ovn_stats.timeit
     def check_enforcing_external(self):
@@ -560,7 +604,10 @@ class Namespace(object):
             dst = ns.ports[0]
             src = self.ports[0]
             worker = src.metadata
-            worker.ping_port(self.cluster, src, dst.ip)
+            if src.ip and dst.ip:
+                worker.ping_port(self.cluster, src, dst.ip)
+            if src.ip6 and dst.ip6:
+                worker.ping_port(self.cluster, src, dst.ip6)
 
     def create_load_balancer(self):
         self.load_balancer = lb.OvnLoadBalancer(f'lb_{self.name}', self.nbctl)
@@ -591,6 +638,7 @@ class Cluster(object):
         self.net = cluster_cfg.cluster_net
         self.router = None
         self.load_balancer = None
+        self.load_balancer6 = None
         self.join_switch = None
         self.last_selected_worker = 0
         self.n_ns = 0
@@ -622,19 +670,24 @@ class Cluster(object):
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)
 
-    def create_cluster_load_balancer(self, lb_name):
-        self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl,
-                                                self.cluster_cfg.vips)
-        self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+    def create_cluster_load_balancer(self, lb_name, global_cfg):
+        if global_cfg.run_ipv4:
+            self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl,
+                                                    self.cluster_cfg.vips)
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+
+        if global_cfg.run_ipv6:
+            self.load_balancer6 = lb.OvnLoadBalancer(f'{lb_name}6', self.nbctl,
+                                                     self.cluster_cfg.vips6)
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
     def create_cluster_join_switch(self, sw_name):
         self.join_switch = self.nbctl.ls_add(sw_name,
-                                             self.cluster_cfg.gw_net)
+                                             net_s=self.cluster_cfg.gw_net)
 
-        lrp_ip = netaddr.IPAddress(self.cluster_cfg.gw_net.last - 1)
         self.join_rp = self.nbctl.lr_port_add(
-            self.router, 'rtr-to-join', RandMac(), lrp_ip,
-            self.cluster_cfg.gw_net.prefixlen
+            self.router, 'rtr-to-join', RandMac(),
+            self.cluster_cfg.gw_net.reverse()
         )
         self.join_ls_rp = self.nbctl.ls_port_add(
             self.join_switch, 'join-to-rtr', self.join_rp
@@ -671,8 +724,12 @@ class Cluster(object):
         self.load_balancer.add_vips(vips)
 
     def unprovision_vips(self):
-        self.load_balancer.clear_vips()
-        self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+        if self.load_balancer:
+            self.load_balancer.clear_vips()
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+        if self.load_balancer6:
+            self.load_balancer6.clear_vips()
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
     def select_worker_for_port(self):
         self.last_selected_worker += 1

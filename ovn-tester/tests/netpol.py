@@ -29,7 +29,7 @@ class NetPol(ExtCmd):
         self.all_ns = []
         self.ports = []
 
-    def init(self, ovn):
+    def init(self, ovn, global_cfg):
         with Context(ovn, f'{self.name}_startup', brief_report=True) as _:
             self.ports = ovn.provision_ports(
                     self.config.pods_ns_ratio*self.config.n_ns)
@@ -38,11 +38,11 @@ class NetPol(ExtCmd):
                         i % self.config.n_labels, []).append(self.ports[i])
 
             for i in range(self.config.n_ns):
-                ns = Namespace(ovn, f'NS_{self.name}_{i}')
+                ns = Namespace(ovn, f'NS_{self.name}_{i}', global_cfg)
                 ns.add_ports(
                         self.ports[i * self.config.pods_ns_ratio:
                                    (i + 1)*self.config.pods_ns_ratio])
-                ns.default_deny()
+                ns.default_deny(4)
                 self.all_ns.append(ns)
 
     def run(self, ovn, global_cfg, exclude=False):
@@ -51,7 +51,7 @@ class NetPol(ExtCmd):
                 ns = self.all_ns[i]
                 for lbl in range(self.config.n_labels):
                     label = self.all_labels[lbl]
-                    sub_ns_src = ns.create_sub_ns(label)
+                    sub_ns_src = ns.create_sub_ns(label, global_cfg)
 
                     n = (lbl + 1) % self.config.n_labels
                     if exclude:
@@ -59,11 +59,17 @@ class NetPol(ExtCmd):
                         nlabel = [p for p in self.ports if p not in ex_label]
                     else:
                         nlabel = self.all_labels[n]
-                    sub_ns_dst = ns.create_sub_ns(nlabel)
+                    sub_ns_dst = ns.create_sub_ns(nlabel, global_cfg)
 
-                    ns.allow_sub_namespace(sub_ns_src, sub_ns_dst)
+                    if global_cfg.run_ipv4:
+                        ns.allow_sub_namespace(sub_ns_src, sub_ns_dst, 4)
+                    if global_cfg.run_ipv6:
+                        ns.allow_sub_namespace(sub_ns_src, sub_ns_dst, 6)
                     worker = label[0].metadata
-                    worker.ping_port(ovn, label[0], nlabel[0].ip)
+                    if label[0].ip and nlabel[0].ip:
+                        worker.ping_port(ovn, label[0], nlabel[0].ip)
+                    if label[0].ip6 and nlabel[0].ip6:
+                        worker.ping_port(ovn, label[0], nlabel[0].ip6)
 
         if not global_cfg.cleanup:
             return

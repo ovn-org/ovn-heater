@@ -19,12 +19,13 @@ DensityCfg = namedtuple('DensityCfg',
                          'pods_vip_ratio'])
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('100.0.0.0/16')
+DEFAULT_VIP_SUBNET6 = netaddr.IPNetwork('100::/32')
 DEFAULT_VIP_PORT = 80
 DEFAULT_BACKEND_PORT = 8080
 
 
 class DensityHeavy(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, central_node, worker_nodes, global_cfg):
         super(DensityHeavy, self).__init__(
                 config, central_node, worker_nodes)
         test_config = config.get('density_heavy', dict())
@@ -42,16 +43,20 @@ class DensityHeavy(ExtCmd):
             raise ovn_exceptions.OvnInvalidConfigException()
         self.lb_list = []
 
-    def create_lb(self, cluster, name, backend_lists):
+    def create_lb(self, cluster, name, vip_subnet, backend_lists):
         load_balancer = lb.OvnLoadBalancer(f'lb_{name}', cluster.nbctl)
         cluster.provision_lb(load_balancer)
 
         vip_net = DEFAULT_VIP_SUBNET.next(len(self.lb_list))
         vip_ip = vip_net.ip.__add__(1)
 
+        prefix = '[' if vip_subnet.version == 6 else ''
+        suffix = ']' if vip_subnet.version == 6 else ''
+
         vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
-                [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
+            f'{prefix}{vip_ip + i}{suffix}:{DEFAULT_VIP_PORT}':
+                [f'{prefix}{p.ip}{suffix}:{DEFAULT_BACKEND_PORT}'
+                    for p in ports]
             for i, ports in enumerate(backend_lists)
         }
         load_balancer.add_vips(vips)
@@ -61,14 +66,19 @@ class DensityHeavy(ExtCmd):
         if self.config.pods_vip_ratio == 0:
             return
 
-        ns = Namespace(ovn, 'ns_density_heavy')
+        ns = Namespace(ovn, 'ns_density_heavy', global_cfg)
 
         with Context(ovn, 'density_heavy_startup', brief_report=True) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)
             ns.add_ports(ports)
             for i in range(0, self.config.n_startup,
                            self.config.pods_vip_ratio):
-                self.create_lb(ovn, 'density_heavy_' + str(i), [[ports[i]]])
+                if global_cfg.run_ipv4:
+                    self.create_lb(ovn, 'density_heavy_' + str(i),
+                                   DEFAULT_VIP_SUBNET, [[ports[i]]])
+                if global_cfg.run_ipv6:
+                    self.create_lb(ovn, 'density_heavy6_' + str(i),
+                                   DEFAULT_VIP_SUBNET6, [[ports[i]]])
 
         with Context(ovn, 'density_heavy',
                      (self.config.n_pods - self.config.n_startup) /
@@ -78,9 +88,18 @@ class DensityHeavy(ExtCmd):
                 ns.add_ports(ports)
                 for j in range(0, self.config.batch,
                                self.config.pods_vip_ratio):
-                    name = 'density_heavy_' + \
-                        str(self.config.n_startup + i * self.config.batch + j)
-                    self.create_lb(ovn, name, [[ports[j]]])
+                    if global_cfg.run_ipv4:
+                        name = 'density_heavy_' + \
+                               str(self.config.n_startup +
+                                   i * self.config.batch + j)
+                        self.create_lb(ovn, name, DEFAULT_VIP_SUBNET,
+                                       [[ports[j]]])
+                    if global_cfg.run_ipv6:
+                        name = 'density_heavy6_' + \
+                               str(self.config.n_startup +
+                                   i * self.config.batch + j)
+                        self.create_lb(ovn, name, DEFAULT_VIP_SUBNET6,
+                                       [[ports[j]]])
                 ovn.ping_ports(ports)
 
         if not global_cfg.cleanup:

@@ -63,3 +63,7 @@ netpol_large:
   n_ns: 2
   pods_ns_ratio: 16
   n_labels: 4
+
+service_route:
+  n_lb: 16
+  n_backends: 4

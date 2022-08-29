@@ -1,0 +1,57 @@
+low_scale_task:
+
+  compute_engine_instance:
+    image_project: fedora-cloud
+    image: family/fedora-cloud-35
+    platform: linux
+    memory: 8G
+
+  env:
+    DEPENDENCIES: git ansible podman podman-docker
+    PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/localhost.yml
+
+  runtime_cache:
+    folder: runtime-cache
+
+  configure_ssh_script:
+    - mkdir -p /root/.ssh/
+    - ssh-keygen -t rsa -N '' -q -f /root/.ssh/id_rsa
+    - ssh-keyscan localhost >> /root/.ssh/known_hosts
+    - cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
+    - chmod og-wx /root/.ssh/authorized_keys
+    - ssh root@localhost -v echo Hello
+
+  install_dependencies_script:
+    - dnf install -y ${DEPENDENCIES}
+
+  unpack_caches_script:
+    - mkdir -p runtime runtime-cache
+    - docker load -i runtime-cache/ovn-multi-node.tar || true
+    - tar -xzf runtime-cache/runtime.tar.gz || true
+
+  install_script:
+    - ./do.sh install
+
+  pack_caches_script:
+    - rm -rf runtime-cache/*
+    - docker save -o runtime-cache/ovn-multi-node.tar ovn/ovn-multi-node:latest
+    - tar -czf runtime-cache/runtime.tar.gz runtime
+
+  upload_caches:
+    - runtime
+
+  test_script:
+    - 'sed -i "s/^  log_cmds\: False/  log_cmds\: True/"
+        test-scenarios/ovn-low-scale.yml'
+    - 'sed -i
+        "/^cluster:/a \ \ cluster_cmd_path: $(pwd)/runtime/ovn-fake-multinode"
+        test-scenarios/ovn-low-scale.yml'
+    - ./do.sh run test-scenarios/ovn-low-scale.yml low-scale
+
+  check_logs_script:
+    - '! grep -B 30 -A 30 "Result: FAIL" ./test_results/*/test-log'
+    - grep "Result: SUCCESS" ./test_results/*/test-log
+
+  always:
+    test_logs_artifacts:
+      path: test_results/**

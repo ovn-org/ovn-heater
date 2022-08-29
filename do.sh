@@ -87,7 +87,10 @@ EOF
 
 function install_venv() {
     pushd ${rundir}
-    python3 -m virtualenv ${ovn_heater_venv}
+    if [ ! -f ${ovn_heater_venv}/bin/activate ]; then
+        rm -rf ${ovn_heater_venv}
+        python3 -m virtualenv ${ovn_heater_venv}
+    fi
     source ${ovn_heater_venv}/bin/activate
     pip install -r ${ovn_tester}/requirements.txt
     deactivate

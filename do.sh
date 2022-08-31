@@ -277,36 +277,13 @@ function record_test_config() {
     done
 }
 
-function run_test() {
-    local test_file=$1
-    local out_dir=$2
-    shift; shift
+function mine_data() {
+    out_dir=$1
 
-    # Make sure results dir exists.
-    mkdir -p ${out_dir}/logs
+    echo "-- Mining data from logs in: ${out_dir}"
 
-    # Record SHAs of all components.
-    record_test_config ${out_dir}
 
-    # Perform a fast cleanup by doing a minimal redeploy.
-    init_ovn_fake_multinode
-
-    source ${rundir}/${ovn_heater_venv}/bin/activate
     pushd ${out_dir}
-
-    if ! python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}; then
-        echo "-- Failed to run test! Check logs at: $PWD/${ovn_tester_log_file}"
-    fi
-
-    echo "-- Collecting logs to: ${out_dir}"
-    ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"
-
-    pushd ${out_dir}/logs
-    for f in *.tgz; do
-       tar xvfz $f
-    done
-    popd
-
     mkdir -p mined-data
     for p in ovn-northd ovn-controller ovn-nbctl; do
         logs=$(find ${out_dir}/logs -name ${p}.log)
@@ -337,12 +314,53 @@ function run_test() {
 
     # Collecting stats only for 3 workers to avoid bloating the report.
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
-                            | grep ovn-scale | head -3 || true)
+                            | grep ovn-scale | head -3)
     python3 ${topdir}/utils/process-stats.py \
         resource-usage-report-worker.html ${resource_usage_logs}
-
-    deactivate
     popd
+}
+
+function run_test() {
+    local test_file=$1
+    local out_dir=$2
+    shift; shift
+
+    # Make sure results dir exists.
+    mkdir -p ${out_dir}/logs
+
+    # Record SHAs of all components.
+    record_test_config ${out_dir}
+
+    # Perform a fast cleanup by doing a minimal redeploy.
+    init_ovn_fake_multinode
+
+    source ${rundir}/${ovn_heater_venv}/bin/activate
+    pushd ${out_dir}
+
+    if ! python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}; then
+        echo "-- Failed to run test! Check logs at: $PWD/${ovn_tester_log_file}"
+    fi
+
+    echo "-- Collecting logs to: ${out_dir}"
+    ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"
+
+    pushd ${out_dir}/logs
+    for f in *.tgz; do
+       tar xvfz $f
+    done
+    popd
+
+    # Once we successfully ran the test and collected its logs, the post
+    # processing (e.g., data mining) can run in a subshell with errexit
+    # disabled.  We don't want the whole thing to error out if the post
+    # processing fails.
+    (
+        set +o errexit
+        mine_data ${out_dir}
+    )
+
+    popd
+    deactivate
 }
 
 function usage() {

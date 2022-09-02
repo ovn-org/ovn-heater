@@ -156,6 +156,13 @@ class CentralNode(Node):
                 f'ovsdb-server/memory-trim-on-compaction on'
             )
 
+    def get_connection_string(self, cluster_cfg, port):
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        ip = self.mgmt_ip
+        num_conns = 3 if cluster_cfg.clustered_db else 1
+        conns = [f"{protocol}:{ip + idx}:{port}" for idx in range(num_conns)]
+        return ",".join(conns)
+
 
 class WorkerNode(Node):
     def __init__(
@@ -773,7 +780,7 @@ class Cluster(object):
         self.worker_nodes = worker_nodes
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
-        self.nbctl = ovn_utils.OvnNbctl(self.central_node)
+        self.nbctl = None
         self.sbctl = ovn_utils.OvnSbctl(self.central_node)
         self.net = cluster_cfg.cluster_net
         self.router = None
@@ -785,19 +792,18 @@ class Cluster(object):
 
     def start(self):
         self.central_node.start(self.cluster_cfg)
+        nb_conn = self.central_node.get_connection_string(
+            self.cluster_cfg, 6641
+        )
+        inactivity_probe = self.cluster_cfg.db_inactivity_probe // 1000
+        self.nbctl = ovn_utils.OvnNbctl(
+            self.central_node, nb_conn, inactivity_probe
+        )
+
         for w in self.worker_nodes:
             w.start(self.cluster_cfg)
             w.configure(self.brex_cfg.physical_net)
 
-        if self.cluster_cfg.clustered_db:
-            nb_cluster_ips = [
-                str(self.central_node.mgmt_ip),
-                str(self.central_node.mgmt_ip + 1),
-                str(self.central_node.mgmt_ip + 2),
-            ]
-        else:
-            nb_cluster_ips = [str(self.central_node.mgmt_ip)]
-        self.nbctl.start_daemon(nb_cluster_ips, self.cluster_cfg.enable_ssl)
         self.nbctl.set_global(
             'use_logical_dp_groups', self.cluster_cfg.logical_dp_groups
         )

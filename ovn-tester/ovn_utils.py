@@ -4,9 +4,12 @@ import ovn_exceptions
 from collections import namedtuple
 from io import StringIO
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
+import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 from ovsdbapp.backend import ovs_idl
 from ovsdbapp.backend.ovs_idl import connection
+from ovsdbapp.backend.ovs_idl import transaction
 from ovsdbapp.backend.ovs_idl import vlog
+from ovsdbapp import exceptions as ovsdbapp_exceptions
 
 
 log = logging.getLogger(__name__)
@@ -229,60 +232,164 @@ class OvsVsctl:
         self.run(f'ip netns del {lport.name}', prefix='')
 
 
+# We have to subclass the base Transaction for NB in order to facilitate the
+# "sync" command. This is heavily based on ovsdbapp's OvsVsctlTransaction class
+# but with some NB-specific modifications, and removal of some OVS-specific
+# assumptions.
+class NBTransaction(transaction.Transaction):
+    def __init__(
+        self,
+        api,
+        ovsdb_connection,
+        timeout=None,
+        check_error=False,
+        log_errors=True,
+        wait_type=None,
+        **kwargs,
+    ):
+        super(NBTransaction, self).__init__(
+            api,
+            ovsdb_connection,
+            timeout=timeout,
+            check_error=check_error,
+            log_errors=log_errors,
+            **kwargs,
+        )
+        self.wait_type = wait_type.lower() if wait_type else None
+        if (
+            self.wait_type
+            and self.wait_type != "sb"
+            and self.wait_type != "hv"
+        ):
+            log.warning(f"Unrecognized wait type {self.wait_type}. Ignoring")
+            self.wait_type = None
+
+    def pre_commit(self, txn):
+        if self.wait_type:
+            self.api._nb.increment('nb_cfg')
+
+    def post_commit(self, txn):
+        super().post_commit(txn)
+        try:
+            self.do_post_commit(txn)
+        except ovsdbapp_exceptions.TimeoutException:
+            log.exception("Transaction timed out")
+
+    def do_post_commit(self, txn):
+        if not self.wait_type:
+            return
+
+        next_cfg = txn.get_increment_new_value()
+        while not self.timeout_exceeded():
+            self.api.idl.run()
+            if self.nb_has_completed(next_cfg):
+                break
+            self.ovsdb_connection.poller.timer_wait(
+                self.time_remaining() * 1000
+            )
+            self.api.idl.wait(self.ovsdb_connection.poller)
+            self.ovsdb_connection.poller.block()
+        else:
+            raise ovsdbapp_exceptions.TimeoutException(
+                commands=self.commands,
+                timeout=self.timeout,
+                cause='nbctl transaction did not end',
+            )
+
+    def nb_has_completed(self, next_cfg):
+        if not self.wait_type:
+            return True
+        elif self.wait_type == "sb":
+            cur_cfg = self.api._nb.sb_cfg
+        else:  # self.wait_type == "hv":
+            cur_cfg = min(self.api._nb.sb_cfg, self.api._nb.hv_cfg)
+
+        return cur_cfg >= next_cfg
+
+
+class NBIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
+    def __init__(self, connection):
+        super(NBIdl, self).__init__(connection)
+
+    def create_transaction(
+        self,
+        check_error=False,
+        log_errors=True,
+        timeout=None,
+        wait_type=None,
+        **kwargs,
+    ):
+        # Override of Base API method so we create NBTransactions.
+        return NBTransaction(
+            self,
+            self.ovsdb_connection,
+            timeout=timeout,
+            check_error=check_error,
+            log_errors=log_errors,
+            wait_type=wait_type,
+            **kwargs,
+        )
+
+    @property
+    def _nb(self):
+        return next(iter(self.db_list_rows('NB_Global').execute()))
+
+    @property
+    def _connection(self):
+        return next(iter(self.db_list_rows('Connection').execute()))
+
+
 class OvnNbctl:
-    def __init__(self, sb):
-        self.sb = sb
-        self.socket = ""
-
-    def __del__(self):
-        # FIXME: the SSH connection might have already been closed here..
-        # self.stop_daemon()
-        pass
-
-    def run(self, cmd="", stdout=None, timeout=DEFAULT_CTL_TIMEOUT):
-        prefix = "ovn-nbctl "
-        if len(self.socket):
-            prefix = prefix + "-u " + self.socket + " "
-        self.sb.run(cmd=prefix + cmd, stdout=stdout, timeout=timeout)
+    def __init__(self, sb, connection_string, inactivity_probe):
+        i = connection.OvsdbIdl.from_server(
+            connection_string, "OVN_Northbound"
+        )
+        c = connection.Connection(i, inactivity_probe)
+        self.idl = NBIdl(c)
 
     def set_global(self, option, value):
-        self.run(f'set NB_Global . options:{option}={value}')
+        self.idl.db_set(
+            "NB_Global", self.idl._nb.uuid, ("options", {option: str(value)})
+        ).execute()
 
     def set_inactivity_probe(self, value):
-        self.run(f'set Connection . inactivity_probe={value}')
+        self.idl.db_set(
+            "Connection",
+            self.idl._connection.uuid,
+            ("inactivity_probe", str(value)),
+        ).execute()
 
     def lr_add(self, name):
         log.info(f'Creating lrouter {name}')
 
-        cmd = f'create Logical_Router name={name}'
-        stdout = StringIO()
-        self.run(cmd=cmd, stdout=stdout)
-        return LRouter(name=name, uuid=stdout.getvalue().strip())
+        add_cmd = self.idl.lr_add(name)
+        add_cmd.execute()
+        return LRouter(name=name, uuid=add_cmd.result.uuid)
 
     def lr_port_add(self, router, name, mac, dual_ip=None):
-        cmd = f'lrp-add {router.uuid} {name} {mac}'
+        networks = []
         if dual_ip.ip4 and dual_ip.plen4:
-            cmd += f' {dual_ip.ip4}/{dual_ip.plen4} '
+            networks.append(f'{dual_ip.ip4}/{dual_ip.plen4}')
         if dual_ip.ip6 and dual_ip.plen6:
-            cmd += f' {dual_ip.ip6}/{dual_ip.plen6} '
-        self.run(cmd=cmd)
+            networks.append(f'{dual_ip.ip6}/{dual_ip.plen6}')
+
+        self.idl.lrp_add(router.uuid, name, str(mac), networks).execute()
         return LRPort(name=name, mac=mac, ip=dual_ip)
 
     def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
         log.info(f'Setting gw chassis {chassis} for router port {rp.name}')
-        self.run(cmd=f'lrp-set-gateway-chassis {rp.name} {chassis} {priority}')
+        self.idl.lrp_set_gateway_chassis(rp.name, chassis, priority).execute()
 
     def ls_add(self, name, net_s):
         log.info(f'Creating lswitch {name}')
 
-        cmd = f'create Logical_Switch name={name}'
-        stdout = StringIO()
-        self.run(cmd=cmd, stdout=stdout)
+        cmd = self.idl.ls_add(name)
+        cmd.execute()
         return LSwitch(
             name=name,
             cidr=net_s.n4,
             cidr6=net_s.n6,
-            uuid=stdout.getvalue().strip(),
+            uuid=cmd.result.uuid,
         )
 
     def ls_port_add(
@@ -299,13 +406,11 @@ class OvnNbctl:
         security=False,
         localnet=False,
     ):
-        cmd = f'lsp-add {lswitch.uuid} {name}'
+        columns = dict()
         if router_port:
-            cmd += (
-                f' -- lsp-set-type {name} router'
-                f' -- lsp-set-addresses {name} router'
-                f' -- lsp-set-options {name} router-port={router_port.name}'
-            )
+            columns["type"] = "router"
+            columns["addresses"] = "router"
+            columns["options"] = {"router-port": router_port.name}
         elif mac or ip or localnet:
             addresses = []
             if mac:
@@ -318,13 +423,14 @@ class OvnNbctl:
                 addresses.append(str(ip.ip6))
 
             addresses = " ".join(addresses)
-            cmd += f' -- lsp-set-addresses {name} \"{addresses}\"'
+
+            columns["addresses"] = addresses
             if security:
-                cmd += f' -- lsp-set-port-security {name} \"{addresses}\"'
-        self.run(cmd=cmd)
-        stdout = StringIO()
-        self.run(cmd=f'get logical_switch_port {name} _uuid', stdout=stdout)
-        uuid = stdout.getvalue().strip()
+                columns["port_security"] = addresses
+
+        add_cmd = self.idl.lsp_add(lswitch.uuid, name, **columns)
+        add_cmd.execute()
+        uuid = add_cmd.result.uuid
 
         ip4 = "unknown" if localnet else ip.ip4 if ip else None
         plen4 = ip.plen4 if ip else None
@@ -353,55 +459,55 @@ class OvnNbctl:
         )
 
     def ls_port_del(self, port):
-        self.run(cmd=f'lsp-del {port.name}')
+        self.idl.lsp_del(port.name).execute()
 
     def ls_port_set_set_options(self, port, options):
-        self.run(cmd=f'lsp-set-options {port.name} {options}')
+        opts = dict(
+            (k, v)
+            for k, v in (element.split("=") for element in options.split())
+        )
+        self.idl.lsp_set_options(port.name, **opts).execute()
 
     def ls_port_set_set_type(self, port, lsp_type):
-        self.run(cmd=f'lsp-set-type {port.name} {lsp_type}')
+        self.idl.lsp_set_type(port.name, lsp_type).execute()
 
     def port_group_create(self, name):
-        self.run(cmd=f'create port_group name={name}')
+        self.idl.pg_add(name).execute()
         return PortGroup(name=name)
 
     def port_group_add(self, pg, lport):
-        self.run(cmd=f'add port_group {pg.name} ports {lport.uuid}')
+        self.idl.pg_add_ports(pg.name, lport.uuid).execute()
 
     def port_group_add_ports(self, pg, lports):
         MAX_PORTS_IN_BATCH = 500
         for i in range(0, len(lports), MAX_PORTS_IN_BATCH):
             lports_slice = lports[i : i + MAX_PORTS_IN_BATCH]
-            port_uuids = " ".join(p.uuid for p in lports_slice)
-            self.run(cmd=f'add port_group {pg.name} ports {port_uuids}')
+            port_uuids = [p.uuid for p in lports_slice]
+            self.idl.pg_add_ports(pg.name, port_uuids).execute()
 
     def port_group_del(self, pg):
-        self.run(cmd=f'destroy port_group {pg.name}')
+        self.idl.pg_del(pg.name).execute()
 
     def address_set_create(self, name):
-        self.run(cmd=f'create address_set name={name}')
+        self.idl.address_set_add(name).execute()
         return AddressSet(name=name)
 
     def address_set_add(self, addr_set, addr):
-        cmd = f'add Address_Set {addr_set.name} addresses \'\"{addr}\"\''
-        self.run(cmd=cmd)
+        self.idl.address_set_add_addresses(addr_set.name, addr)
 
     def address_set_add_addrs(self, addr_set, addrs):
         MAX_ADDRS_IN_BATCH = 500
         for i in range(0, len(addrs), MAX_ADDRS_IN_BATCH):
-            addrs_slice = [
-                f'\"{a}\"' for a in addrs[i : i + MAX_ADDRS_IN_BATCH]
-            ]
-            addrs_str = ','.join(addrs_slice)
-            cmd = f'add Address_Set {addr_set.name} addresses \'{addrs_str}\''
-            self.run(cmd=cmd)
+            addrs_slice = [str(a) for a in addrs[i : i + MAX_ADDRS_IN_BATCH]]
+            self.idl.address_set_add_addresses(
+                addr_set.name, addrs_slice
+            ).execute()
 
     def address_set_remove(self, addr_set, addr):
-        cmd = f'remove Address_Set {addr_set.name} addresses \'\"{addr}\"\''
-        self.run(cmd=cmd)
+        self.idl.address_set_remove_addresses(addr_set.name, addr)
 
     def address_set_del(self, addr_set):
-        self.run(cmd=f'destroy Address_Set {addr_set.name}')
+        self.idl.address_set_del(addr_set.name)
 
     def acl_add(
         self,
@@ -412,123 +518,99 @@ class OvnNbctl:
         match="",
         verdict="allow",
     ):
-        self.run(
-            cmd=f'--type={entity} acl-add {name} '
-            f'{direction} {priority} "{match}" {verdict}'
-        )
+        if entity == "switch":
+            self.idl.acl_add(name, direction, priority, match, verdict)
+        else:  # "port-group"
+            self.idl.pg_acl_add(name, direction, priority, match, verdict)
 
-    def route_add(self, router, network, gw, policy=None):
-        prefix = f'--policy={policy} ' if policy else ''
+    def route_add(self, router, network, gw, policy="dst-ip"):
         if network.n4 and gw.ip4:
-            self.run(
-                cmd=f'{prefix} lr-route-add {router.uuid} '
-                f'{network.n4} {gw.ip4}'
-            )
+            self.idl.lr_route_add(
+                router.uuid, network.n4, gw.ip4, policy=policy
+            ).execute()
         if network.n6 and gw.ip6:
-            self.run(
-                cmd=f'{prefix} lr-route-add {router.uuid} '
-                f'{network.n6} {gw.ip6}'
-            )
+            self.idl.lr_route_add(
+                router.uuid, network.n6, gw.ip6, policy=policy
+            ).execute()
 
     def nat_add(self, router, external_ip, logical_net, nat_type="snat"):
         if external_ip.ip4 and logical_net.n4:
-            self.run(
-                cmd=f'lr-nat-add {router.uuid} '
-                f'{nat_type} {external_ip.ip4} '
-                f'{logical_net.n4}'
-            )
+            self.idl.lr_nat_add(
+                router.uuid, nat_type, external_ip.ip4, logical_net.n4
+            ).execute()
         if external_ip.ip6 and logical_net.n6:
-            self.run(
-                cmd=f'lr-nat-add {router.uuid} '
-                f'{nat_type} {external_ip.ip6} '
-                f'{logical_net.n6}'
-            )
+            self.idl.lr_nat_add(
+                router.uuid, nat_type, external_ip.ip6, logical_net.n6
+            ).execute()
 
     def create_lb(self, name, protocol):
         lb_name = f"{name}-{protocol}"
-        cmd = f"create Load_Balancer name={lb_name} protocol={protocol}"
-
-        stdout = StringIO()
-        self.run(cmd=cmd, stdout=stdout)
-        return LoadBalancer(name=lb_name, uuid=stdout.getvalue().strip())
+        # We can't use ovsdbapp's lb_add here because it is not possible to
+        # create a load balancer with no VIPs.
+        cmd = self.idl.db_create(
+            "Load_Balancer", name=lb_name, protocol=protocol
+        )
+        cmd.execute()
+        return LoadBalancer(name=lb_name, uuid=cmd.result)
 
     def create_lbg(self, name):
-        cmd = f'create Load_Balancer_Group name={name}'
-        stdout = StringIO()
-        self.run(cmd=cmd, stdout=stdout)
-        return LoadBalancerGroup(name=name, uuid=stdout.getvalue().strip())
+        cmd = self.idl.db_create("Load_Balancer_Group", name=name)
+        cmd.execute()
+        return LoadBalancerGroup(name=name, uuid=cmd.result)
 
     def lbg_add_lb(self, lbg, lb):
-        cmd = f'add Load_Balancer_Group {lbg.uuid} load_balancer {lb.uuid}'
-        self.run(cmd=cmd)
+        self.idl.db_add(
+            "Load_Balancer_Group", lbg.uuid, "load_balancer", lb.uuid
+        ).execute()
 
     def ls_add_lbg(self, ls, lbg):
-        cmd = f'add Logical_Switch {ls.uuid} load_balancer_group {lbg.uuid}'
-        self.run(cmd=cmd)
+        self.idl.db_add(
+            "Logical_Switch", ls.uuid, "load_balancer_group", lbg.uuid
+        ).execute()
 
     def lr_add_lbg(self, lr, lbg):
-        cmd = f'add Logical_Router {lr.uuid} load_balancer_group {lbg.uuid}'
-        self.run(cmd=cmd)
+        self.idl.db_add(
+            "Logical_Router", lr.uuid, "load_balancer_group", lbg.uuid
+        ).execute()
 
     def lr_set_options(self, router, options):
-        opt = ''
-        for key, value in options.items():
-            opt = opt + f' options:{key}={value}'
-
-        self.run(f'set Logical_Router {router.name} {opt}')
+        str_options = dict((k, str(v)) for k, v in options.items())
+        self.idl.db_set(
+            "Logical_Router", router.uuid, ("options", str_options)
+        ).execute()
 
     def lb_set_vips(self, lb, vips):
-        vip_str = ''
-        for vip, backends in vips.items():
-            vip_str += f'vips:\\"{vip}\\"=\\"{",".join(backends)}\\" '
-        cmd = f"set Load_Balancer {lb.uuid} {vip_str}"
-        self.run(cmd=cmd)
+        vips = dict((k, ",".join(str(v))) for k, v in vips.items())
+        self.idl.db_set("Load_Balancer", lb.uuid, ("vips", vips)).execute()
 
     def lb_clear_vips(self, lb):
-        self.run(cmd=f'clear Load_Balancer {lb.uuid} vips')
+        self.idl.db_clear("Load_Balancer", lb.uuid, "vips").execute()
 
     def lb_add_to_routers(self, lb, routers):
-        cmd = ' -- '.join([f'lr-lb-add {r} {lb.uuid}' for r in routers])
-        self.run(cmd=cmd)
+        with self.idl.transaction(check_error=True) as txn:
+            for r in routers:
+                txn.add(self.idl.lr_lb_add(r, lb.uuid))
 
     def lb_add_to_switches(self, lb, switches):
-        cmd = ' -- '.join([f'ls-lb-add {s} {lb.uuid}' for s in switches])
-        self.run(cmd=cmd)
+        with self.idl.transaction(check_error=True) as txn:
+            for s in switches:
+                txn.add(self.idl.ls_lb_add(s, lb.uuid))
 
     def lb_remove_from_routers(self, lb, routers):
-        cmd = ' -- '.join([f'lr-lb-del {r} {lb.uuid}' for r in routers])
-        self.run(cmd=cmd)
+        with self.idl.transaction(check_error=True) as txn:
+            for r in routers:
+                txn.add(self.idl.lr_lb_del(r, lb.uuid))
 
     def lb_remove_from_switches(self, lb, switches):
-        cmd = ' -- '.join([f'ls-lb-del {s} {lb.uuid}' for s in switches])
-        self.run(cmd=cmd)
-
-    def wait_until(self, cmd=""):
-        self.run("wait-until " + cmd)
+        with self.idl.transaction(check_error=True) as txn:
+            for s in switches:
+                txn.add(self.idl.ls_lb_del(s, lb.uuid))
 
     def sync(self, wait="hv", timeout=DEFAULT_CTL_TIMEOUT):
-        self.run(
-            f'--timeout={timeout} --wait={wait} sync', timeout=(timeout + 1)
-        )
-
-    def start_daemon(self, nb_cluster_ips, enable_ssl):
-        if enable_ssl:
-            remote = ','.join([f'ssl:{ip}:6641' for ip in nb_cluster_ips])
-        else:
-            remote = ','.join([f'tcp:{ip}:6641' for ip in nb_cluster_ips])
-        # FIXME: hardcoded args, are these really an issue?
-        cmd = (
-            f'--detach --pidfile --log-file --db={remote} '
-            f'-p /opt/ovn/ovn-privkey.pem -c /opt/ovn/ovn-cert.pem '
-            f'-C /opt/ovn/pki/switchca/cacert.pem'
-        )
-        stdout = StringIO()
-        self.run(cmd=cmd, stdout=stdout)
-        self.socket = stdout.getvalue().rstrip()
-
-    def stop_daemon(self):
-        if len(self.socket):
-            self.sb.run(cmd=f'ovs-appctl -t {self.socket} exit')
+        with self.idl.transaction(
+            check_error=True, timeout=timeout, wait_type=wait
+        ):
+            pass
 
 
 class OvnSbctl:

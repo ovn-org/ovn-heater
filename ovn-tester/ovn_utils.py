@@ -2,9 +2,9 @@ import logging
 import netaddr
 import ovn_exceptions
 from collections import namedtuple
-from io import StringIO
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
 import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
+import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
 from ovsdbapp.backend import ovs_idl
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import transaction
@@ -613,22 +613,33 @@ class OvnNbctl:
             pass
 
 
-class OvnSbctl:
-    def __init__(self, sb):
-        self.sb = sb
+class SBIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
+    def __init__(self, connection):
+        super(SBIdl, self).__init__(connection)
 
-    def run(self, cmd="", stdout=None, timeout=DEFAULT_CTL_TIMEOUT):
-        self.sb.run(
-            cmd="ovn-sbctl --no-leader-only " + cmd,
-            stdout=stdout,
-            timeout=timeout,
+    @property
+    def _connection(self):
+        # Shortcut to retrieve the lone Connection record. This is used by
+        # NBTransaction for synchronization purposes.
+        return next(iter(self.db_list_rows('Connection').execute()))
+
+
+class OvnSbctl:
+    def __init__(self, sb, connection_string, inactivity_probe):
+        i = connection.OvsdbIdl.from_server(
+            connection_string, "OVN_Southbound"
         )
+        c = connection.Connection(i, inactivity_probe)
+        self.idl = SBIdl(c)
 
     def set_inactivity_probe(self, value):
-        self.run(f'set Connection . inactivity_probe={value}')
+        self.idl.db_set(
+            "Connection",
+            self.idl._connection.uuid,
+            ("inactivity_probe", value),
+        ).execute()
 
     def chassis_bound(self, chassis=""):
-        cmd = f'--bare --columns _uuid find chassis name={chassis}'
-        stdout = StringIO()
-        self.run(cmd=cmd, stdout=stdout)
-        return len(stdout.getvalue().splitlines()) == 1
+        cmd = self.idl.db_find_rows("Chassis", ("name", "=", chassis))
+        cmd.execute()
+        return len(cmd.result) == 1

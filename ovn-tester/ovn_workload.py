@@ -781,7 +781,7 @@ class Cluster(object):
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
         self.nbctl = None
-        self.sbctl = ovn_utils.OvnSbctl(self.central_node)
+        self.sbctl = None
         self.net = cluster_cfg.cluster_net
         self.router = None
         self.load_balancer = None
@@ -800,6 +800,12 @@ class Cluster(object):
             self.central_node, nb_conn, inactivity_probe
         )
 
+        sb_conn = self.central_node.get_connection_string(
+            self.cluster_cfg, 6642
+        )
+        self.sbctl = ovn_utils.OvnSbctl(
+            self.central_node, sb_conn, inactivity_probe
+        )
         for w in self.worker_nodes:
             w.start(self.cluster_cfg)
             w.configure(self.brex_cfg.physical_net)

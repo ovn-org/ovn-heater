@@ -29,8 +29,10 @@ def calculate_default_vips(vip_subnet=DEFAULT_VIP_SUBNET):
     vip_range = range(0, DEFAULT_N_VIPS)
     prefix = '[' if vip_subnet.version == 6 else ''
     suffix = ']' if vip_subnet.version == 6 else ''
-    return {f'{prefix}{next(vip_gen)}{suffix}:{DEFAULT_VIP_PORT}': None
-            for _ in vip_range}
+    return {
+        f'{prefix}{next(vip_gen)}{suffix}:{DEFAULT_VIP_PORT}': None
+        for _ in vip_range
+    }
 
 
 DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
@@ -42,8 +44,9 @@ DEFAULT_N_STATIC_BACKENDS = 2
 
 
 def calculate_default_static_vips(
-        vip_subnet=DEFAULT_STATIC_VIP_SUBNET,
-        backend_subnet=DEFAULT_STATIC_BACKEND_SUBNET):
+    vip_subnet=DEFAULT_STATIC_VIP_SUBNET,
+    backend_subnet=DEFAULT_STATIC_BACKEND_SUBNET,
+):
     vip_gen = vip_subnet.iter_hosts()
     vip_range = range(0, DEFAULT_N_STATIC_VIPS)
 
@@ -67,13 +70,11 @@ def calculate_default_static_vips(
     }
 
 
-GlobalCfg = namedtuple('GlobalCfg', ['log_cmds',
-                                     'cleanup',
-                                     'run_ipv4',
-                                     'run_ipv6'])
+GlobalCfg = namedtuple(
+    'GlobalCfg', ['log_cmds', 'cleanup', 'run_ipv4', 'run_ipv6']
+)
 
-ClusterBringupCfg = namedtuple('ClusterBringupCfg',
-                               ['n_pods_per_node'])
+ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
 
 
 def calculate_default_node_remotes(net, clustered, n_relays, enable_ssl):
@@ -93,11 +94,14 @@ def calculate_default_node_remotes(net, clustered, n_relays, enable_ssl):
 
 
 def usage(name):
-    print(f'''
+    print(
+        f'''
 {name} PHYSICAL_DEPLOYMENT TEST_CONF
 where PHYSICAL_DEPLOYMENT is the YAML file defining the deployment.
 where TEST_CONF is the YAML file defining the test parameters.
-''', file=sys.stderr)
+''',
+        file=sys.stderr,
+    )
 
 
 def read_physical_deployment(deployment, global_cfg):
@@ -106,7 +110,8 @@ def read_physical_deployment(deployment, global_cfg):
 
         central_dep = dep['central-node']
         central_node = PhysicalNode(
-            central_dep.get('name', 'localhost'), global_cfg.log_cmds)
+            central_dep.get('name', 'localhost'), global_cfg.log_cmds
+        )
         worker_nodes = [
             PhysicalNode(worker, global_cfg.log_cmds)
             for worker in dep['worker-nodes']
@@ -120,39 +125,47 @@ def read_config(config):
         log_cmds=global_args.get('log_cmds', False),
         cleanup=global_args.get('cleanup', False),
         run_ipv4=global_args.get('run_ipv4', True),
-        run_ipv6=global_args.get('run_ipv6', False)
+        run_ipv6=global_args.get('run_ipv6', False),
     )
 
     cluster_args = config.get('cluster', dict())
     clustered_db = cluster_args.get('clustered_db', True)
-    node_net = netaddr.IPNetwork(
-        cluster_args.get('node_net', '192.16.0.0/16'))
+    node_net = netaddr.IPNetwork(cluster_args.get('node_net', '192.16.0.0/16'))
     enable_ssl = cluster_args.get('enable_ssl', True)
     n_relays = cluster_args.get('n_relays', 0)
-    vips = cluster_args.get(
-            'vips',
-            calculate_default_vips(DEFAULT_VIP_SUBNET)
-            ) if global_cfg.run_ipv4 else None
-    vips6 = cluster_args.get(
-            'vips6',
-            calculate_default_vips(DEFAULT_VIP_SUBNET6)
-            ) if global_cfg.run_ipv6 else None
-    static_vips = cluster_args.get(
+    vips = (
+        cluster_args.get('vips', calculate_default_vips(DEFAULT_VIP_SUBNET))
+        if global_cfg.run_ipv4
+        else None
+    )
+    vips6 = (
+        cluster_args.get('vips6', calculate_default_vips(DEFAULT_VIP_SUBNET6))
+        if global_cfg.run_ipv6
+        else None
+    )
+    static_vips = (
+        cluster_args.get(
             'static_vips',
             calculate_default_static_vips(
-                DEFAULT_STATIC_VIP_SUBNET,
-                DEFAULT_STATIC_BACKEND_SUBNET)
-            ) if global_cfg.run_ipv4 else None
-    static_vips6 = cluster_args.get(
+                DEFAULT_STATIC_VIP_SUBNET, DEFAULT_STATIC_BACKEND_SUBNET
+            ),
+        )
+        if global_cfg.run_ipv4
+        else None
+    )
+    static_vips6 = (
+        cluster_args.get(
             'static_vips6',
             calculate_default_static_vips(
-                DEFAULT_STATIC_VIP_SUBNET6,
-                DEFAULT_STATIC_BACKEND_SUBNET6)
-            ) if global_cfg.run_ipv6 else None
+                DEFAULT_STATIC_VIP_SUBNET6, DEFAULT_STATIC_BACKEND_SUBNET6
+            ),
+        )
+        if global_cfg.run_ipv6
+        else None
+    )
     cluster_cfg = ClusterConfig(
         cluster_cmd_path=cluster_args.get(
-            'cluster_cmd_path',
-            '/root/ovn-heater/runtime/ovn-fake-multinode'
+            'cluster_cmd_path', '/root/ovn-heater/runtime/ovn-fake-multinode'
         ),
         monitor_all=cluster_args.get('monitor_all', True),
         logical_dp_groups=cluster_args.get('logical_dp_groups', True),
@@ -164,43 +177,44 @@ def read_config(config):
         enable_ssl=enable_ssl,
         node_remote=cluster_args.get(
             'node_remote',
-            calculate_default_node_remotes(node_net, clustered_db,
-                                           n_relays, enable_ssl)
+            calculate_default_node_remotes(
+                node_net, clustered_db, n_relays, enable_ssl
+            ),
         ),
         northd_probe_interval=cluster_args.get('northd_probe_interval', 5000),
         db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
         node_timeout_s=cluster_args.get('node_timeout_s', 20),
         internal_net=DualStackSubnet(
-            netaddr.IPNetwork(
-                cluster_args.get('internal_net', '16.0.0.0/16')
-            ) if global_cfg.run_ipv4 else None,
-            netaddr.IPNetwork(
-                cluster_args.get('internal_net6', '16::/64')
-            ) if global_cfg.run_ipv6 else None,
+            netaddr.IPNetwork(cluster_args.get('internal_net', '16.0.0.0/16'))
+            if global_cfg.run_ipv4
+            else None,
+            netaddr.IPNetwork(cluster_args.get('internal_net6', '16::/64'))
+            if global_cfg.run_ipv6
+            else None,
         ),
         external_net=DualStackSubnet(
-            netaddr.IPNetwork(
-                cluster_args.get('external_net', '3.0.0.0/16')
-            ) if global_cfg.run_ipv4 else None,
-            netaddr.IPNetwork(
-                cluster_args.get('external_net6', '3::/64')
-            ) if global_cfg.run_ipv6 else None,
+            netaddr.IPNetwork(cluster_args.get('external_net', '3.0.0.0/16'))
+            if global_cfg.run_ipv4
+            else None,
+            netaddr.IPNetwork(cluster_args.get('external_net6', '3::/64'))
+            if global_cfg.run_ipv6
+            else None,
         ),
         gw_net=DualStackSubnet(
-            netaddr.IPNetwork(
-                cluster_args.get('gw_net', '2.0.0.0/16')
-            ) if global_cfg.run_ipv4 else None,
-            netaddr.IPNetwork(
-                cluster_args.get('gw_net6', '2::/64')
-            ) if global_cfg.run_ipv6 else None,
+            netaddr.IPNetwork(cluster_args.get('gw_net', '2.0.0.0/16'))
+            if global_cfg.run_ipv4
+            else None,
+            netaddr.IPNetwork(cluster_args.get('gw_net6', '2::/64'))
+            if global_cfg.run_ipv6
+            else None,
         ),
         cluster_net=DualStackSubnet(
-            netaddr.IPNetwork(
-                cluster_args.get('cluster_net', '16.0.0.0/4')
-            ) if global_cfg.run_ipv4 else None,
-            netaddr.IPNetwork(
-                cluster_args.get('cluster_net6', '16::/32')
-            ) if global_cfg.run_ipv6 else None
+            netaddr.IPNetwork(cluster_args.get('cluster_net', '16.0.0.0/4'))
+            if global_cfg.run_ipv4
+            else None,
+            netaddr.IPNetwork(cluster_args.get('cluster_net6', '16::/32'))
+            if global_cfg.run_ipv6
+            else None,
         ),
         n_workers=cluster_args.get('n_workers', 2),
         vips=vips,
@@ -249,20 +263,28 @@ def create_nodes(cluster_config, central, workers):
     internal_net = cluster_config.internal_net
     external_net = cluster_config.external_net
     gw_net = cluster_config.gw_net
-    db_containers = [
-        'ovn-central-1', 'ovn-central-2', 'ovn-central-3'
-    ] if cluster_config.clustered_db else [
-        'ovn-central'
+    db_containers = (
+        ['ovn-central-1', 'ovn-central-2', 'ovn-central-3']
+        if cluster_config.clustered_db
+        else ['ovn-central']
+    )
+    relay_containers = [
+        f'ovn-relay-{i + 1}' for i in range(cluster_config.n_relays)
     ]
-    relay_containers = [f'ovn-relay-{i + 1}' for i in
-                        range(cluster_config.n_relays)]
-    central_node = CentralNode(central, db_containers, relay_containers,
-                               mgmt_net, mgmt_ip)
+    central_node = CentralNode(
+        central, db_containers, relay_containers, mgmt_net, mgmt_ip
+    )
     worker_nodes = [
-        WorkerNode(workers[i % len(workers)], f'ovn-scale-{i}',
-                   mgmt_net, mgmt_ip + i + 1,
-                   DualStackSubnet.next(internal_net, i),
-                   DualStackSubnet.next(external_net, i), gw_net, i)
+        WorkerNode(
+            workers[i % len(workers)],
+            f'ovn-scale-{i}',
+            mgmt_net,
+            mgmt_ip + i + 1,
+            DualStackSubnet.next(internal_net, i),
+            DualStackSubnet.next(external_net, i),
+            gw_net,
+            i,
+        )
         for i in range(cluster_config.n_workers)
     ]
     return central_node, worker_nodes
@@ -284,8 +306,7 @@ def run_base_cluster_bringup(ovn, bringup_cfg, global_cfg):
         for i in ctx:
             worker = ovn.worker_nodes[i]
             worker.provision(ovn)
-            ports = worker.provision_ports(ovn,
-                                           bringup_cfg.n_pods_per_node)
+            ports = worker.provision_ports(ovn, bringup_cfg.n_pods_per_node)
             worker.provision_load_balancers(ovn, ports, global_cfg)
             worker.ping_ports(ovn, ports)
         ovn.provision_lb_group()

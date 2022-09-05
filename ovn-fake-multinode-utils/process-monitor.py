@@ -9,6 +9,7 @@ import time
 
 process_names = ['ovn-', 'ovs-', 'ovsdb-', 'etcd']
 
+
 def monitor(suffix, out_file, exit_file):
     data = {}
     while True:
@@ -47,19 +48,25 @@ def monitor(suffix, out_file, exit_file):
                 json.dump(data, f, indent=4, sort_keys=True)
             break
 
-        except:
+        except Exception:
             # Ignoring all unexpected exceptions to avoid loosing data.
             continue
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='OVS/OVN process monitor')
-    parser.add_argument('-s', '--suffix',
-                        help='Process name suffix to add', default='')
-    parser.add_argument('-o', '--output', help='Output file name',
-                        default='process-stats.json')
-    parser.add_argument('-x', '--exit-file', help='File that signals to exit',
-                        default='process-monitor.exit')
+    parser.add_argument(
+        '-s', '--suffix', help='Process name suffix to add', default=''
+    )
+    parser.add_argument(
+        '-o', '--output', help='Output file name', default='process-stats.json'
+    )
+    parser.add_argument(
+        '-x',
+        '--exit-file',
+        help='File that signals to exit',
+        default='process-monitor.exit',
+    )
 
     args = parser.parse_args()
     monitor(args.suffix, args.output, args.exit_file)

@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  lint:
 
     runs-on: ubuntu-latest
     strategy:
@@ -23,7 +23,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install flake8
+        python -m pip install flake8 black==22.3.0
+    # Ignore E203, W503 and W504 which is against PEP 8 style
     - name: flake8
       run: |
-        flake8 ovn-tester
+        flake8 --ignore=E203,W504,W503 .
+    - name: Black
+      run: |
+        black -l 79 -S --check --diff . 

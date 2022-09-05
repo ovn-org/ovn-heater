@@ -11,8 +11,14 @@ ITERATION_STAT_NAME = 'Iteration Total'
 
 
 class Context(object):
-    def __init__(self, cluster, test_name, max_iterations=1,
-                 brief_report=False, test=None):
+    def __init__(
+        self,
+        cluster,
+        test_name,
+        max_iterations=1,
+        brief_report=False,
+        test=None,
+    ):
         self.iteration = -1
         self.test_name = test_name
         self.max_iterations = max_iterations
@@ -43,9 +49,11 @@ class Context(object):
         if self.iteration_start:
             duration = now - self.iteration_start
             ovn_stats.add(ITERATION_STAT_NAME, duration, failed=self.failed)
-            log.log(logging.WARNING if self.failed else logging.INFO,
-                    f'Context {self.test_name}, Iteration {self.iteration}, '
-                    f'Result: {"FAILURE" if self.failed else "SUCCESS"}')
+            log.log(
+                logging.WARNING if self.failed else logging.INFO,
+                f'Context {self.test_name}, Iteration {self.iteration}, '
+                f'Result: {"FAILURE" if self.failed else "SUCCESS"}',
+            )
         self.failed = False
         if self.test:
             # exec external cmd

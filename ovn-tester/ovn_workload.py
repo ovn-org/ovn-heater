@@ -13,32 +13,36 @@ from datetime import datetime
 
 log = logging.getLogger(__name__)
 
-ClusterConfig = namedtuple('ClusterConfig',
-                           ['cluster_cmd_path',
-                            'monitor_all',
-                            'logical_dp_groups',
-                            'clustered_db',
-                            'datapath_type',
-                            'raft_election_to',
-                            'northd_probe_interval',
-                            'northd_threads',
-                            'db_inactivity_probe',
-                            'node_net',
-                            'enable_ssl',
-                            'node_remote',
-                            'node_timeout_s',
-                            'internal_net',
-                            'external_net',
-                            'gw_net',
-                            'cluster_net',
-                            'n_workers',
-                            'n_relays',
-                            'vips',
-                            'vips6',
-                            'vip_subnet',
-                            'static_vips',
-                            'static_vips6',
-                            'use_ovsdb_etcd'])
+ClusterConfig = namedtuple(
+    'ClusterConfig',
+    [
+        'cluster_cmd_path',
+        'monitor_all',
+        'logical_dp_groups',
+        'clustered_db',
+        'datapath_type',
+        'raft_election_to',
+        'northd_probe_interval',
+        'northd_threads',
+        'db_inactivity_probe',
+        'node_net',
+        'enable_ssl',
+        'node_remote',
+        'node_timeout_s',
+        'internal_net',
+        'external_net',
+        'gw_net',
+        'cluster_net',
+        'n_workers',
+        'n_relays',
+        'vips',
+        'vips6',
+        'vip_subnet',
+        'static_vips',
+        'static_vips6',
+        'use_ovsdb_etcd',
+    ],
+)
 
 
 BrExConfig = namedtuple('BrExConfig', ['physical_net'])
@@ -56,35 +60,41 @@ class Node(ovn_sandbox.Sandbox):
         etcd_cmd = 'yes' if cluster_cfg.use_ovsdb_etcd else 'no'
         clustered_db = 'yes' if cluster_cfg.clustered_db else 'no'
         enable_ssl = 'yes' if cluster_cfg.enable_ssl else 'no'
-        cmd = \
-            f'cd {cluster_cfg.cluster_cmd_path} && ' \
-            f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} '\
-            f'ENABLE_SSL={enable_ssl} ENABLE_ETCD={etcd_cmd} '\
-            f'OVN_DP_TYPE={cluster_cfg.datapath_type} ' \
-            f'CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 '\
-            f'RELAY_COUNT={cluster_cfg.n_relays} '\
-            f'IP_HOST={self.mgmt_net.ip} ' \
-            f'IP_CIDR={self.mgmt_net.prefixlen} ' \
-            f'IP_START={self.mgmt_ip} ' \
+        cmd = (
+            f'cd {cluster_cfg.cluster_cmd_path} && '
+            f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} '
+            f'ENABLE_SSL={enable_ssl} ENABLE_ETCD={etcd_cmd} '
+            f'OVN_DP_TYPE={cluster_cfg.datapath_type} '
+            f'CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 '
+            f'RELAY_COUNT={cluster_cfg.n_relays} '
+            f'IP_HOST={self.mgmt_net.ip} '
+            f'IP_CIDR={self.mgmt_net.prefixlen} '
+            f'IP_START={self.mgmt_ip} '
             f'./ovn_cluster.sh {cmd}'
+        )
         return cmd + ' ' + ' '.join(args)
 
     def start_process_monitor(self, target_container):
         log.info(f'Starting process monitor for {target_container}')
-        self.phys_node.run(f'docker cp '
-                           f'/tmp/process-monitor.py {target_container}:/tmp/')
-        self.phys_node.run(f'docker exec {target_container} bash -c "'
-                           f'nohup python3 /tmp/process-monitor.py '
-                           f'-s {target_container} '
-                           f'-o /var/log/process-stats.json '
-                           f'-x /tmp/process-monitor.exit &"')
+        self.phys_node.run(
+            f'docker cp ' f'/tmp/process-monitor.py {target_container}:/tmp/'
+        )
+        self.phys_node.run(
+            f'docker exec {target_container} bash -c "'
+            f'nohup python3 /tmp/process-monitor.py '
+            f'-s {target_container} '
+            f'-o /var/log/process-stats.json '
+            f'-x /tmp/process-monitor.exit &"'
+        )
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, db_containers, relay_containers, mgmt_net,
-                 mgmt_ip):
-        super(CentralNode, self).__init__(phys_node, db_containers[0],
-                                          mgmt_net, mgmt_ip)
+    def __init__(
+        self, phys_node, db_containers, relay_containers, mgmt_net, mgmt_ip
+    ):
+        super(CentralNode, self).__init__(
+            phys_node, db_containers[0], mgmt_net, mgmt_ip
+        )
         self.db_containers = db_containers
         self.relay_containers = relay_containers
 
@@ -101,41 +111,63 @@ class CentralNode(Node):
     def set_northd_threads(self, n_threads):
         log.info(f'Configuring northd to use {n_threads} threads')
         for container in self.db_containers:
-            self.phys_node.run(f'docker exec {container} ovn-appctl -t '
-                               f'ovn-northd parallel-build/set-n-threads '
-                               f'{n_threads}')
+            self.phys_node.run(
+                f'docker exec {container} ovn-appctl -t '
+                f'ovn-northd parallel-build/set-n-threads '
+                f'{n_threads}'
+            )
 
     def set_raft_election_timeout(self, timeout_s):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
             log.info(f'Setting RAFT election timeout to {timeout}ms')
-            self.run(cmd=f'ovs-appctl -t '
-                     f'/run/ovn/ovnnb_db.ctl cluster/change-election-timer '
-                     f'OVN_Northbound {timeout}')
-            self.run(cmd=f'ovs-appctl -t '
-                     f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
-                     f'OVN_Southbound {timeout}')
+            self.run(
+                cmd=f'ovs-appctl -t '
+                f'/run/ovn/ovnnb_db.ctl cluster/change-election-timer '
+                f'OVN_Northbound {timeout}'
+            )
+            self.run(
+                cmd=f'ovs-appctl -t '
+                f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
+                f'OVN_Southbound {timeout}'
+            )
             time.sleep(1)
 
     def enable_trim_on_compaction(self):
         log.info('Setting DB trim-on-compaction')
         for db_container in self.db_containers:
-            self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
-                               f'/run/ovn/ovnnb_db.ctl '
-                               f'ovsdb-server/memory-trim-on-compaction on')
-            self.phys_node.run(f'docker exec {db_container} ovs-appctl -t '
-                               f'/run/ovn/ovnsb_db.ctl '
-                               f'ovsdb-server/memory-trim-on-compaction on')
+            self.phys_node.run(
+                f'docker exec {db_container} ovs-appctl -t '
+                f'/run/ovn/ovnnb_db.ctl '
+                f'ovsdb-server/memory-trim-on-compaction on'
+            )
+            self.phys_node.run(
+                f'docker exec {db_container} ovs-appctl -t '
+                f'/run/ovn/ovnsb_db.ctl '
+                f'ovsdb-server/memory-trim-on-compaction on'
+            )
         for relay_container in self.relay_containers:
-            self.phys_node.run(f'docker exec {relay_container} ovs-appctl -t '
-                               f'/run/ovn/ovnsb_db.ctl '
-                               f'ovsdb-server/memory-trim-on-compaction on')
+            self.phys_node.run(
+                f'docker exec {relay_container} ovs-appctl -t '
+                f'/run/ovn/ovnsb_db.ctl '
+                f'ovsdb-server/memory-trim-on-compaction on'
+            )
 
 
 class WorkerNode(Node):
-    def __init__(self, phys_node, container, mgmt_net, mgmt_ip,
-                 int_net, ext_net, gw_net, unique_id):
-        super(WorkerNode, self).__init__(phys_node, container,
-                                         mgmt_net, mgmt_ip)
+    def __init__(
+        self,
+        phys_node,
+        container,
+        mgmt_net,
+        mgmt_ip,
+        int_net,
+        ext_net,
+        gw_net,
+        unique_id,
+    ):
+        super(WorkerNode, self).__init__(
+            phys_node, container, mgmt_net, mgmt_ip
+        )
         self.int_net = int_net
         self.ext_net = ext_net
         self.gw_net = gw_net
@@ -148,28 +180,38 @@ class WorkerNode(Node):
 
     def start(self, cluster_cfg):
         log.info(f'Starting worker {self.container}')
-        self.phys_node.run(self.build_cmd(cluster_cfg, 'add-chassis',
-                                          self.container, 'tcp:0.0.0.1:6642'))
+        self.phys_node.run(
+            self.build_cmd(
+                cluster_cfg, 'add-chassis', self.container, 'tcp:0.0.0.1:6642'
+            )
+        )
         self.start_process_monitor(self.container)
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
         log.info(f'Connecting worker {self.container}')
-        self.phys_node.run(self.build_cmd(cluster_cfg,
-                                          'set-chassis-ovn-remote',
-                                          self.container,
-                                          cluster_cfg.node_remote))
+        self.phys_node.run(
+            self.build_cmd(
+                cluster_cfg,
+                'set-chassis-ovn-remote',
+                self.container,
+                cluster_cfg.node_remote,
+            )
+        )
 
     def configure_localnet(self, physical_net):
         log.info(f'Creating localnet on {self.container}')
-        self.run(cmd=f'ovs-vsctl -- set open_vswitch . '
-                 f'external-ids:ovn-bridge-mappings={physical_net}:br-ex')
+        self.run(
+            cmd=f'ovs-vsctl -- set open_vswitch . '
+            f'external-ids:ovn-bridge-mappings={physical_net}:br-ex'
+        )
 
     def configure(self, physical_net):
         self.configure_localnet(physical_net)
         phys_ctl = ovn_utils.PhysCtl(self)
-        phys_ctl.external_host_provision(ip=self.ext_net.reverse(2),
-                                         gw=self.ext_net.reverse())
+        phys_ctl.external_host_provision(
+            ip=self.ext_net.reverse(2), gw=self.ext_net.reverse()
+        )
 
     @ovn_stats.timeit
     def wait(self, sbctl, timeout_s):
@@ -185,13 +227,13 @@ class WorkerNode(Node):
         self.wait(cluster.sbctl, cluster.cluster_cfg.node_timeout_s)
 
         # Create a node switch and connect it to the cluster router.
-        self.switch = cluster.nbctl.ls_add(f'lswitch-{self.container}',
-                                           net_s=self.int_net)
+        self.switch = cluster.nbctl.ls_add(
+            f'lswitch-{self.container}', net_s=self.int_net
+        )
         lrp_name = f'rtr-to-node-{self.container}'
         ls_rp_name = f'node-to-rtr-{self.container}'
         self.rp = cluster.nbctl.lr_port_add(
-            cluster.router, lrp_name, RandMac(),
-            self.int_net.reverse()
+            cluster.router, lrp_name, RandMac(), self.int_net.reverse()
         )
         self.ls_rp = cluster.nbctl.ls_port_add(
             self.switch, ls_rp_name, self.rp
@@ -202,20 +244,22 @@ class WorkerNode(Node):
 
         # Create a gw router and connect it to the cluster join switch.
         self.gw_router = cluster.nbctl.lr_add(f'gwrouter-{self.container}')
-        cluster.nbctl.lr_set_options(self.gw_router, {
-            'always_learn_from_arp_request': 'false',
-            'dynamic_neigh_routers': 'true',
-            'chassis': self.container,
-            'lb_force_snat_ip': 'router_ip',
-            'snat-ct-zone': 0,
-        })
+        cluster.nbctl.lr_set_options(
+            self.gw_router,
+            {
+                'always_learn_from_arp_request': 'false',
+                'dynamic_neigh_routers': 'true',
+                'chassis': self.container,
+                'lb_force_snat_ip': 'router_ip',
+                'snat-ct-zone': 0,
+            },
+        )
         join_grp_name = f'gw-to-join-{self.container}'
         join_ls_grp_name = f'join-to-gw-{self.container}'
 
         gr_gw = self.gw_net.reverse(self.id + 2)
         self.gw_rp = cluster.nbctl.lr_port_add(
-            self.gw_router, join_grp_name,
-            RandMac(), gr_gw
+            self.gw_router, join_grp_name, RandMac(), gr_gw
         )
         self.join_gw_rp = cluster.nbctl.ls_port_add(
             cluster.join_switch, join_ls_grp_name, self.gw_rp
@@ -223,13 +267,13 @@ class WorkerNode(Node):
 
         # Create an external switch connecting the gateway router to the
         # physnet.
-        self.ext_switch = cluster.nbctl.ls_add(f'ext-{self.container}',
-                                               net_s=self.ext_net)
+        self.ext_switch = cluster.nbctl.ls_add(
+            f'ext-{self.container}', net_s=self.ext_net
+        )
         ext_lrp_name = f'gw-to-ext-{self.container}'
         ext_ls_rp_name = f'ext-to-gw-{self.container}'
         self.ext_rp = cluster.nbctl.lr_port_add(
-            self.gw_router, ext_lrp_name, RandMac(),
-            self.ext_net.reverse()
+            self.gw_router, ext_lrp_name, RandMac(), self.ext_net.reverse()
         )
         self.ext_gw_rp = cluster.nbctl.ls_port_add(
             self.ext_switch, ext_ls_rp_name, self.ext_rp
@@ -237,35 +281,33 @@ class WorkerNode(Node):
 
         # Configure physnet.
         self.physnet_port = cluster.nbctl.ls_port_add(
-            self.ext_switch, f'provnet-{self.container}', localnet=True,
+            self.ext_switch,
+            f'provnet-{self.container}',
+            localnet=True,
         )
         cluster.nbctl.ls_port_set_set_type(self.physnet_port, 'localnet')
         cluster.nbctl.ls_port_set_set_options(
-            self.physnet_port,
-            f'network_name={cluster.brex_cfg.physical_net}'
+            self.physnet_port, f'network_name={cluster.brex_cfg.physical_net}'
         )
 
         # Route for traffic entering the cluster.
         cluster.nbctl.route_add(
-                self.gw_router, cluster.net,
-                self.gw_net.reverse()
+            self.gw_router, cluster.net, self.gw_net.reverse()
         )
 
         # Default route to get out of cluster via physnet.
         cluster.nbctl.route_add(
-                self.gw_router,
-                ovn_utils.DualStackSubnet(
-                    netaddr.IPNetwork("0.0.0.0/0"),
-                    netaddr.IPNetwork("::/0")
-                ),
-                self.ext_net.reverse(2)
+            self.gw_router,
+            ovn_utils.DualStackSubnet(
+                netaddr.IPNetwork("0.0.0.0/0"), netaddr.IPNetwork("::/0")
+            ),
+            self.ext_net.reverse(2),
         )
 
         # Route for traffic that needs to exit the cluster
         # (via gw router).
         cluster.nbctl.route_add(
-                cluster.router, self.int_net, gr_gw,
-                policy="src-ip"
+            cluster.router, self.int_net, gr_gw, policy="src-ip"
         )
 
         # SNAT traffic leaving the cluster.
@@ -277,13 +319,16 @@ class WorkerNode(Node):
 
         log.info(f'Creating lport {name}')
         lport = cluster.nbctl.ls_port_add(
-                self.switch, name, mac=str(RandMac()),
-                ip=self.int_net.forward(self.next_lport_index + 1),
-                gw=self.int_net.reverse(),
-                ext_gw=self.ext_net.reverse(2),
-                metadata=self, passive=passive,
-                security=True
-            )
+            self.switch,
+            name,
+            mac=str(RandMac()),
+            ip=self.int_net.forward(self.next_lport_index + 1),
+            gw=self.int_net.reverse(),
+            ext_gw=self.ext_net.reverse(2),
+            metadata=self,
+            passive=passive,
+            security=True,
+        )
 
         self.lports.append(lport)
         self.next_lport_index += 1
@@ -301,22 +346,24 @@ class WorkerNode(Node):
         if global_cfg.run_ipv4:
             port_ips = (
                 f'{port.ip}:{DEFAULT_BACKEND_PORT}'
-                for port in ports if port.ip is not None
+                for port in ports
+                if port.ip is not None
             )
             cluster_vips = cluster.cluster_cfg.vips.keys()
-            cluster.load_balancer.add_backends_to_vip(port_ips,
-                                                      cluster_vips)
+            cluster.load_balancer.add_backends_to_vip(port_ips, cluster_vips)
             cluster.load_balancer.add_to_switches([self.switch.name])
             cluster.load_balancer.add_to_routers([self.gw_router.name])
 
         if global_cfg.run_ipv6:
             port_ips6 = (
                 f'{port.ip6}:{DEFAULT_BACKEND_PORT}'
-                for port in ports if port.ip6 is not None
+                for port in ports
+                if port.ip6 is not None
             )
             cluster_vips6 = cluster.cluster_cfg.vips6.keys()
-            cluster.load_balancer6.add_backends_to_vip(port_ips6,
-                                                       cluster_vips6)
+            cluster.load_balancer6.add_backends_to_vip(
+                port_ips6, cluster_vips6
+            )
             cluster.load_balancer6.add_to_switches([self.switch.name])
             cluster.load_balancer6.add_to_routers([self.gw_router.name])
 
@@ -325,11 +372,13 @@ class WorkerNode(Node):
         # using those right now so the load blaancer is empty.
         if global_cfg.run_ipv4:
             self.gw_load_balancer = lb.OvnLoadBalancer(
-                f'lb-{self.gw_router.name}', cluster.nbctl)
+                f'lb-{self.gw_router.name}', cluster.nbctl
+            )
             self.gw_load_balancer.add_to_routers([self.gw_router.name])
         if global_cfg.run_ipv6:
             self.gw_load_balancer6 = lb.OvnLoadBalancer(
-                f'lb-{self.gw_router.name}6', cluster.nbctl)
+                f'lb-{self.gw_router.name}6', cluster.nbctl
+            )
             self.gw_load_balancer6.add_to_routers([self.gw_router.name])
 
     @ovn_stats.timeit
@@ -373,9 +422,10 @@ class WorkerNode(Node):
                 pass
 
             duration = (datetime.now() - start_time).seconds
-            if (duration > cluster.cluster_cfg.node_timeout_s):
-                log.error(f'Timeout waiting for {src} '
-                          f'to be able to ping {dest}')
+            if duration > cluster.cluster_cfg.node_timeout_s:
+                log.error(
+                    f'Timeout waiting for {src} ' f'to be able to ping {dest}'
+                )
                 raise ovn_exceptions.OvnPingTimeoutException()
 
     @ovn_stats.timeit
@@ -411,17 +461,23 @@ class Namespace(object):
         self.nbctl = cluster.nbctl
         self.ports = []
         self.enforcing = False
-        self.pg_def_deny_igr = \
-            self.nbctl.port_group_create(f'pg_deny_igr_{name}')
-        self.pg_def_deny_egr = \
-            self.nbctl.port_group_create(f'pg_deny_egr_{name}')
+        self.pg_def_deny_igr = self.nbctl.port_group_create(
+            f'pg_deny_igr_{name}'
+        )
+        self.pg_def_deny_egr = self.nbctl.port_group_create(
+            f'pg_deny_egr_{name}'
+        )
         self.pg = self.nbctl.port_group_create(f'pg_{name}')
-        self.addr_set4 = \
-            self.nbctl.address_set_create(f'as_{name}') \
-            if global_cfg.run_ipv4 else None
-        self.addr_set6 = \
-            self.nbctl.address_set_create(f'as6_{name}') \
-            if global_cfg.run_ipv6 else None
+        self.addr_set4 = (
+            self.nbctl.address_set_create(f'as_{name}')
+            if global_cfg.run_ipv4
+            else None
+        )
+        self.addr_set6 = (
+            self.nbctl.address_set_create(f'as6_{name}')
+            if global_cfg.run_ipv6
+            else None
+        )
         self.sub_as = []
         self.sub_pg = []
         self.load_balancer = None
@@ -435,11 +491,13 @@ class Namespace(object):
         # Simulate what OpenShift does, which is: create the port groups
         # when the first network policy is applied.
         if self.addr_set4:
-            self.nbctl.address_set_add_addrs(self.addr_set4,
-                                             [str(p.ip) for p in ports])
+            self.nbctl.address_set_add_addrs(
+                self.addr_set4, [str(p.ip) for p in ports]
+            )
         if self.addr_set6:
-            self.nbctl.address_set_add_addrs(self.addr_set6,
-                                             [str(p.ip6) for p in ports])
+            self.nbctl.address_set_add_addrs(
+                self.addr_set6, [str(p.ip6) for p in ports]
+            )
         if self.enforcing:
             self.nbctl.port_group_add_ports(self.pg_def_deny_igr, ports)
             self.nbctl.port_group_add_ports(self.pg_def_deny_egr, ports)
@@ -486,13 +544,15 @@ class Namespace(object):
         self.sub_pg.append(pg)
         if global_cfg.run_ipv4:
             addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}')
-            self.nbctl.address_set_add_addrs(addr_set,
-                                             [str(p.ip) for p in ports])
+            self.nbctl.address_set_add_addrs(
+                addr_set, [str(p.ip) for p in ports]
+            )
             self.sub_as.append(addr_set)
         if global_cfg.run_ipv6:
             addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}6')
-            self.nbctl.address_set_add_addrs(addr_set,
-                                             [str(p.ip6) for p in ports])
+            self.nbctl.address_set_add_addrs(
+                addr_set, [str(p.ip6) for p in ports]
+            )
             self.sub_as.append(addr_set)
         return n_sub_pgs
 
@@ -503,26 +563,38 @@ class Namespace(object):
         addr_set = f'self.addr_set{family}.name'
         self.nbctl.acl_add(
             self.pg_def_deny_igr.name,
-            'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
+            'to-lport',
+            ACL_DEFAULT_DENY_PRIO,
+            'port-group',
             f'ip4.src == \\${addr_set} && '
             f'outport == @{self.pg_def_deny_igr.name}',
-            'drop')
+            'drop',
+        )
         self.nbctl.acl_add(
             self.pg_def_deny_egr.name,
-            'to-lport', ACL_DEFAULT_DENY_PRIO, 'port-group',
+            'to-lport',
+            ACL_DEFAULT_DENY_PRIO,
+            'port-group',
             f'ip4.dst == \\${addr_set} && '
             f'inport == @{self.pg_def_deny_egr.name}',
-            'drop')
+            'drop',
+        )
         self.nbctl.acl_add(
             self.pg_def_deny_igr.name,
-            'to-lport', ACL_DEFAULT_ALLOW_ARP_PRIO, 'port-group',
+            'to-lport',
+            ACL_DEFAULT_ALLOW_ARP_PRIO,
+            'port-group',
             f'outport == @{self.pg_def_deny_igr.name} && arp',
-            'allow')
+            'allow',
+        )
         self.nbctl.acl_add(
             self.pg_def_deny_egr.name,
-            'to-lport', ACL_DEFAULT_ALLOW_ARP_PRIO, 'port-group',
+            'to-lport',
+            ACL_DEFAULT_ALLOW_ARP_PRIO,
+            'port-group',
             f'inport == @{self.pg_def_deny_egr.name} && arp',
-            'allow')
+            'allow',
+        )
 
     @ovn_stats.timeit
     def allow_within_namespace(self, family):
@@ -530,14 +602,20 @@ class Namespace(object):
 
         addr_set = f'self.addr_set{family}.name'
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip4.src == \\${addr_set} && outport == @{self.pg.name}',
-            'allow-related'
+            'allow-related',
         )
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip4.dst == \\${addr_set} && inport == @{self.pg.name}',
-            'allow-related'
+            'allow-related',
         )
 
     @ovn_stats.timeit
@@ -546,49 +624,66 @@ class Namespace(object):
 
         addr_set = f'self.addr_set{family}.name'
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip4.src == \\${addr_set} && outport == @{ns.pg.name}',
-            'allow-related'
+            'allow-related',
         )
         ns_addr_set = f'ns.addr_set{family}.name'
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip4.dst == \\${ns_addr_set} && inport == @{self.pg.name}',
-            'allow-related'
+            'allow-related',
         )
 
     @ovn_stats.timeit
     def allow_sub_namespace(self, src, dst, family):
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip{family}.src == \\${self.sub_as[src].name} && '
             f'outport == @{self.sub_pg[dst].name}',
-            'allow-related'
+            'allow-related',
         )
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip{family}.dst == \\${self.sub_as[dst].name} && '
             f'inport == @{self.sub_pg[src].name}',
-            'allow-related'
+            'allow-related',
         )
 
     @ovn_stats.timeit
-    def allow_from_external(self, external_ips, include_ext_gw=False,
-                            family=4):
+    def allow_from_external(
+        self, external_ips, include_ext_gw=False, family=4
+    ):
         self.enforce()
         # If requested, include the ext-gw of the first port in the namespace
         # so we can check that this rule is enforced.
         if include_ext_gw:
-            assert (len(self.ports) > 0)
+            assert len(self.ports) > 0
             if family == 4 and self.ports[0].ext_gw:
                 external_ips.append(self.ports[0].ext_gw)
             elif family == 6 and self.ports[0].ext_gw6:
                 external_ips.append(self.ports[0].ext_gw6)
         ips = [str(ip) for ip in external_ips]
         self.nbctl.acl_add(
-            self.pg.name, 'to-lport', ACL_NETPOL_ALLOW_PRIO, 'port-group',
+            self.pg.name,
+            'to-lport',
+            ACL_NETPOL_ALLOW_PRIO,
+            'port-group',
             f'ip.{family} == {{{",".join(ips)}}} && '
-            f'outport == @{self.pg.name}', 'allow-related'
+            f'outport == @{self.pg.name}',
+            'allow-related',
         )
 
     @ovn_stats.timeit
@@ -631,8 +726,9 @@ class Namespace(object):
         vip_ip = vip_net.ip.__add__(n_vips + 1)
 
         vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
-                [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
+            f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
+                f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
+            ]
             for i, ports in enumerate(backend_lists)
         }
         self.load_balancer.add_vips(vips)
@@ -662,47 +758,55 @@ class Cluster(object):
             w.configure(self.brex_cfg.physical_net)
 
         if self.cluster_cfg.clustered_db:
-            nb_cluster_ips = [str(self.central_node.mgmt_ip),
-                              str(self.central_node.mgmt_ip + 1),
-                              str(self.central_node.mgmt_ip + 2)]
+            nb_cluster_ips = [
+                str(self.central_node.mgmt_ip),
+                str(self.central_node.mgmt_ip + 1),
+                str(self.central_node.mgmt_ip + 2),
+            ]
         else:
             nb_cluster_ips = [str(self.central_node.mgmt_ip)]
         self.nbctl.start_daemon(nb_cluster_ips, self.cluster_cfg.enable_ssl)
         self.nbctl.set_global(
-            'use_logical_dp_groups',
-            self.cluster_cfg.logical_dp_groups
+            'use_logical_dp_groups', self.cluster_cfg.logical_dp_groups
         )
         self.nbctl.set_global(
-            'northd_probe_interval',
-            self.cluster_cfg.northd_probe_interval
+            'northd_probe_interval', self.cluster_cfg.northd_probe_interval
         )
         self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
         self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)
-        self.nbctl.lr_set_options(self.router, {
-            'always_learn_from_arp_request': 'false',
-        })
+        self.nbctl.lr_set_options(
+            self.router,
+            {
+                'always_learn_from_arp_request': 'false',
+            },
+        )
 
     def create_cluster_load_balancer(self, lb_name, global_cfg):
         if global_cfg.run_ipv4:
-            self.load_balancer = lb.OvnLoadBalancer(lb_name, self.nbctl,
-                                                    self.cluster_cfg.vips)
+            self.load_balancer = lb.OvnLoadBalancer(
+                lb_name, self.nbctl, self.cluster_cfg.vips
+            )
             self.load_balancer.add_vips(self.cluster_cfg.static_vips)
 
         if global_cfg.run_ipv6:
-            self.load_balancer6 = lb.OvnLoadBalancer(f'{lb_name}6', self.nbctl,
-                                                     self.cluster_cfg.vips6)
+            self.load_balancer6 = lb.OvnLoadBalancer(
+                f'{lb_name}6', self.nbctl, self.cluster_cfg.vips6
+            )
             self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
     def create_cluster_join_switch(self, sw_name):
-        self.join_switch = self.nbctl.ls_add(sw_name,
-                                             net_s=self.cluster_cfg.gw_net)
+        self.join_switch = self.nbctl.ls_add(
+            sw_name, net_s=self.cluster_cfg.gw_net
+        )
 
         self.join_rp = self.nbctl.lr_port_add(
-            self.router, 'rtr-to-join', RandMac(),
-            self.cluster_cfg.gw_net.reverse()
+            self.router,
+            'rtr-to-join',
+            RandMac(),
+            self.cluster_cfg.gw_net.reverse(),
         )
         self.join_ls_rp = self.nbctl.ls_port_add(
             self.join_switch, 'join-to-rtr', self.join_rp
@@ -732,8 +836,9 @@ class Cluster(object):
         vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
 
         vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}':
-                [f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports]
+            f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
+                f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
+            ]
             for i, ports in enumerate(backend_lists)
         }
         self.load_balancer.add_vips(vips)

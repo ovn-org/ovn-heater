@@ -1,10 +1,8 @@
 import json
-import numpy
 import os
 import pandas as pd
 import plotly.express as px
 import sys
-import time
 
 from datetime import datetime
 

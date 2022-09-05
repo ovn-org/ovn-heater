@@ -48,7 +48,7 @@ def monitor(suffix, out_file, exit_file):
                 json.dump(data, f, indent=4, sort_keys=True)
             break
 
-        except:
+        except Exception:
             # Ignoring all unexpected exceptions to avoid loosing data.
             continue
 

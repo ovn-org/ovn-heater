@@ -7,7 +7,7 @@ from io import StringIO
 log = logging.getLogger(__name__)
 
 LRouter = namedtuple('LRouter', ['uuid', 'name'])
-LRPort = namedtuple('LRPort', ['name'])
+LRPort = namedtuple('LRPort', ['name', 'mac', 'ip'])
 LSwitch = namedtuple('LSwitch', ['uuid', 'name', 'cidr', 'cidr6'])
 LSPort = namedtuple(
     'LSPort',
@@ -231,7 +231,7 @@ class OvnNbctl:
         if dual_ip.ip6 and dual_ip.plen6:
             cmd += f' {dual_ip.ip6}/{dual_ip.plen6} '
         self.run(cmd=cmd)
-        return LRPort(name=name)
+        return LRPort(name=name, mac=mac, ip=dual_ip)
 
     def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
         log.info(f'Setting gw chassis {chassis} for router port {rp.name}')

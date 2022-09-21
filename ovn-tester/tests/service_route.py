@@ -9,7 +9,7 @@ import ovn_load_balancer as lb
 ServiceRouteCfg = namedtuple('ServiceRouteCfg', ['n_lb', 'n_backends'])
 
 
-DEFAULT_VIP_SUBNET = netaddr.IPNetwork('90.0.0.0/16')
+DEFAULT_VIP_SUBNET = netaddr.IPNetwork('90.0.0.0/8')
 DEFAULT_VIP_SUBNET6 = netaddr.IPNetwork('9::/32')
 DEFAULT_VIP_PORT = 80
 DEFAULT_BACKEND_PORT = 8080

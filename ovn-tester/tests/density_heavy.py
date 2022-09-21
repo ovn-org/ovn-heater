@@ -16,7 +16,7 @@ DensityCfg = namedtuple(
     'DensityCfg', ['n_pods', 'n_startup', 'batch', 'pods_vip_ratio']
 )
 
-DEFAULT_VIP_SUBNET = netaddr.IPNetwork('100.0.0.0/16')
+DEFAULT_VIP_SUBNET = netaddr.IPNetwork('100.0.0.0/8')
 DEFAULT_VIP_SUBNET6 = netaddr.IPNetwork('100::/32')
 DEFAULT_VIP_PORT = 80
 DEFAULT_BACKEND_PORT = 8080

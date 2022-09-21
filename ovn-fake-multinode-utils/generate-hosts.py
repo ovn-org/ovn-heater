@@ -5,6 +5,7 @@ from __future__ import print_function
 import helpers
 import yaml
 import sys
+from pathlib import Path
 
 
 def usage(name):
@@ -35,6 +36,22 @@ def generate_node(config, user, prefix, internal_iface, **kwargs):
     )
 
 
+def generate_tester(config, user, prefix, internal_iface):
+    ssh_key = config.get("ssh_key")
+    if ssh_key is None:
+        ssh_key = Path.home().joinpath(".ssh/id_rsa")
+    else:
+        ssh_key = Path(ssh_key).resolve()
+    generate_node(
+        config,
+        user,
+        prefix,
+        internal_iface,
+        ovn_tester="true",
+        ssh_key=str(ssh_key),
+    )
+
+
 def generate_controller(config, user, prefix, internal_iface):
     generate_node(config, user, prefix, internal_iface, ovn_central="true")
 
@@ -59,9 +76,11 @@ def generate(input_file, target, repo, branch):
         prefix = config.get('prefix', 'ovn-scale')
         registry_node = config['registry-node']
         central_config = config['central-node']
+        tester_config = config['tester-node']
 
         print('[ovn_hosts]')
         internal_iface = config['internal-iface']
+        generate_tester(tester_config, user, prefix, internal_iface)
         generate_controller(central_config, user, prefix, internal_iface)
         generate_workers(config['worker-nodes'], user, prefix, internal_iface)
         print()

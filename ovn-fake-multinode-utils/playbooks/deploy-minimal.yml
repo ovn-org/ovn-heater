@@ -11,6 +11,15 @@
     shell: |
       docker volume prune -f
 
+  - name: Stop tester container if running
+    when: ovn_tester is defined
+    ignore_errors: yes
+    shell: |
+      cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
+      ./ovs-docker del-ports br-ovn ovn-tester
+      ./ovs-docker del-ports br-ovn-ext ovn-tester
+      docker rm -f --volumes ovn-tester
+
   - name: Delete old docker containers if any
     shell: |
       set -e

@@ -17,6 +17,8 @@ ovn_fmn_playbooks=${ovn_fmn_utils}/playbooks
 ovn_fmn_generate=${ovn_fmn_utils}/generate-hosts.py
 ovn_fmn_docker=${ovn_fmn_utils}/generate-docker-cfg.py
 ovn_fmn_podman=${ovn_fmn_utils}/generate-podman-cfg.py
+ovn_fmn_get=${ovn_fmn_utils}/get-config-value.py
+ovn_fmn_ip=${rundir}/ovn-fake-multinode/ip_gen.py
 hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
 docker_daemon_file=${rundir}/docker-daemon.json
@@ -26,7 +28,6 @@ log_perf_file=${rundir}/perf.sh
 process_monitor_file=${rundir}/process-monitor.py
 
 ovn_tester=${topdir}/ovn-tester
-ovn_tester_log_file=test-log
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
@@ -92,7 +93,7 @@ function install_venv() {
         python3 -m virtualenv ${ovn_heater_venv}
     fi
     source ${ovn_heater_venv}/bin/activate
-    pip install -r ${ovn_tester}/requirements.txt
+    pip install -r ${topdir}/utils/requirements.txt
     deactivate
     popd
 }
@@ -228,6 +229,22 @@ function install_ovn_fake_multinode() {
     popd
 }
 
+function install_ovn_tester() {
+    rm -rf tester_files
+    mkdir tester_files
+    ssh_key=$(${ovn_fmn_get} ${phys_deployment} tester-node ssh_key)
+    # We need to copy the files into a known directory within the Docker
+    # context directory. Otherwise, Docker can't find the files we reference.
+    cp ${ssh_key} tester_files
+    cp ${phys_deployment} tester_files
+    ssh_key_file=tester_files/$(basename ${ssh_key})
+    phys_deployment_file=tester_files/$(basename ${phys_deployment})
+    docker build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} --build-arg PHYS_DEPLOYMENT=${phys_deployment_file} -f ${topdir}/Dockerfile .
+    docker tag ovn/ovn-tester localhost:5000/ovn/ovn-tester
+    docker push localhost:5000/ovn/ovn-tester
+    rm -rf tester_files
+}
+
 # Prepare OVS bridges and cleanup containers.
 function init_ovn_fake_multinode() {
     echo "-- Initializing ovn-fake-multinode cluster on all nodes"
@@ -240,6 +257,10 @@ function pull_ovn_fake_multinode() {
     ansible-playbook ${ovn_fmn_playbooks}/pull-fake-multinode.yml -i ${hosts_file}
 }
 
+function pull_ovn_tester() {
+    ansible-playbook ${ovn_fmn_playbooks}/pull-ovn-tester.yml -i ${hosts_file}
+}
+
 function install() {
     pushd ${rundir}
     install_deps
@@ -248,6 +269,10 @@ function install() {
     install_ovn_fake_multinode
     init_ovn_fake_multinode
     pull_ovn_fake_multinode
+    popd
+    pushd ${topdir}
+    install_ovn_tester
+    pull_ovn_tester
     popd
 }
 
@@ -282,7 +307,6 @@ function mine_data() {
 
     echo "-- Mining data from logs in: ${out_dir}"
 
-
     pushd ${out_dir}
     mkdir -p mined-data
     for p in ovn-northd ovn-controller ovn-nbctl; do
@@ -301,6 +325,7 @@ function mine_data() {
     grep ovn-installed ${logs} | cut -d ':' -f 2- | tr '|' ' ' \
         | cut -d ' ' -f 1,7 | tr 'T' ' ' | sort > mined-data/ovn-installed.log
 
+    source ${rundir}/${ovn_heater_venv}/bin/activate
     python3 ${topdir}/utils/latency.py "$(date +%z)" \
         ./mined-data/ovn-binding.log ./mined-data/ovn-installed.log \
         > mined-data/binding-to-ovn-installed-latency
@@ -321,7 +346,30 @@ function mine_data() {
                             | grep ovn-scale | head -3)
     python3 ${topdir}/utils/process-stats.py \
         resource-usage-report-worker.html ${resource_usage_logs}
+    deactivate
+
     popd
+}
+
+function get_tester_ip() {
+    local test_file=$1
+
+    node_net=$(${ovn_fmn_get} ${test_file} cluster node_net --default=192.16.0.0/16)
+    node_cidr=${node_net#*/}
+    node_ip=${node_net%/*}
+    ip_index=1
+    clustered_db=$(${ovn_fmn_get} ${test_file} cluster clustered_db --default=True)
+    # The yaml loader normalizes "yes" and "no" values for clustered_db into
+    # "True" and "False"
+    if [ "${clustered_db}" = "True" ]; then
+        (( ip_index += 3 ))
+    else
+        (( ip_index += 1 ))
+    fi
+    n_relays=$(${ovn_fmn_get} ${test_file} cluster n_relays --default=0)
+    (( ip_index += ${n_relays} ))
+    tester_ip=$(${ovn_fmn_ip} ${node_net} ${node_ip} ${ip_index})
+    echo "${tester_ip}/${node_cidr}"
 }
 
 function run_test() {
@@ -338,11 +386,14 @@ function run_test() {
     # Perform a fast cleanup by doing a minimal redeploy.
     init_ovn_fake_multinode
 
-    source ${rundir}/${ovn_heater_venv}/bin/activate
-    pushd ${out_dir}
+    tester_ip=$(get_tester_ip ${test_file})
+    if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${test_file} tester_ip=${tester_ip}" ; then
+         echo "-- Failed to set up test!"
+    fi
 
-    if ! python -u ${ovn_tester}/ovn_tester.py $phys_deployment ${test_file} 2>&1 | tee ${ovn_tester_log_file}; then
-        echo "-- Failed to run test! Check logs at: $PWD/${ovn_tester_log_file}"
+    tester_host=$(${ovn_fmn_get} ${phys_deployment} tester-node name)
+    if ! ssh root@${tester_host} docker exec ovn-tester python3 -u /ovn-tester/ovn_tester.py /physical-deployment.yml /test-scenario.yml 2>&1 | tee ${out_dir}/test-log ; then
+        echo "-- Failed to run test. Check logs at: ${out_dir}/test-log"
     fi
 
     echo "-- Collecting logs to: ${out_dir}"
@@ -352,7 +403,10 @@ function run_test() {
     for f in *.tgz; do
        tar xvfz $f
     done
-    popd
+    # Prior to containerization of ovn-tester, HTML files written by ovn-tester
+    # were written directly to ${out_dir}. To make things easier for tools, we
+    # copy the HTML files back to this original location.
+    cp ${tester_host}/ovn-tester/*.html ${out_dir}
 
     # Once we successfully ran the test and collected its logs, the post
     # processing (e.g., data mining) can run in a subshell with errexit
@@ -362,9 +416,6 @@ function run_test() {
         set +o errexit
         mine_data ${out_dir}
     )
-
-    popd
-    deactivate
 }
 
 function usage() {

@@ -1,0 +1,12 @@
+registry-node: <ip>
+internal-iface: eno1
+
+central-node:
+  name: <ip>
+
+tester-node:
+  name: <ip>
+  ssh_key: /root/.ssh/id_rsa
+
+worker-nodes:
+  - <ip>

@@ -34,6 +34,13 @@ class OvnLoadBalancer(object):
         if vips:
             self.add_vips(vips)
 
+    def add_vip(self, vip, vport, backends, backend_port, version):
+        self.add_vips(
+            OvnLoadBalancer.get_vip_map(
+                vip, vport, backends, backend_port, version
+            )
+        )
+
     def add_vips(self, vips):
         '''
         Add VIPs to a load balancer.
@@ -92,6 +99,19 @@ class OvnLoadBalancer(object):
     def remove_from_switches(self, switches):
         for lb in self.lbs:
             self.nbctl.lb_remove_from_switches(lb, switches)
+
+    @staticmethod
+    def get_vip_map(vip, vport, backends, backend_port, version):
+        if version == 6:
+            return {
+                f'[{vip}]:{vport}': [
+                    f'[{b.ip6}]:{backend_port}' for b in backends
+                ]
+            }
+        else:
+            return {
+                f'{vip}:{vport}': [f'{b.ip}:{backend_port}' for b in backends]
+            }
 
 
 class OvnLoadBalancerGroup(object):

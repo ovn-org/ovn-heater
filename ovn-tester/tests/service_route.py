@@ -23,35 +23,29 @@ class ServiceRoute(ExtCmd):
             n_lb=test_config.get('n_lb', 16),
             n_backends=test_config.get('n_backends', 4),
         )
+        self.vips = DEFAULT_VIP_SUBNET.iter_hosts()
+        self.vips6 = DEFAULT_VIP_SUBNET6.iter_hosts()
 
-    def get_vip_map(self, vip, backend_lists, version):
-        if version == 6:
-            return {
-                f'[{vip}]:{DEFAULT_VIP_PORT}': [
-                    f'[{b.ip6}]:{DEFAULT_BACKEND_PORT}' for b in backend_lists
-                ]
-            }
-        else:
-            return {
-                f'{vip}:{DEFAULT_VIP_PORT}': [
-                    f'{b.ip}:{DEFAULT_BACKEND_PORT}' for b in backend_lists
-                ]
-            }
-
-    def provide_cluster_lb(self, name, cluster, vip_subnet, backends, index):
-        vip_net = vip_subnet.next(index)
-        vip_ip = vip_net.ip.__add__(1)
-        vip = self.get_vip_map(vip_ip, backends, vip_subnet.version)
+    def provide_cluster_lb(self, name, cluster, vip, backends, version):
         load_balancer = lb.OvnLoadBalancer(name, cluster.nbctl)
-        load_balancer.add_vips(vip)
         cluster.provision_lb(load_balancer)
+
+        load_balancer.add_vip(
+            vip,
+            DEFAULT_VIP_PORT,
+            backends,
+            DEFAULT_BACKEND_PORT,
+            version,
+        )
 
     def provide_node_load_balancer(
         self, name, cluster, node, backends, version
     ):
         load_balancer = lb.OvnLoadBalancer(name, cluster.nbctl)
         vip = node.ext_rp.ip.ip6 if version == 6 else node.ext_rp.ip.ip4
-        load_balancer.add_vips(self.get_vip_map(vip, backends, version))
+        load_balancer.add_vip(
+            vip, DEFAULT_VIP_PORT, backends, DEFAULT_BACKEND_PORT, version
+        )
         load_balancer.add_to_routers([node.gw_router.name])
         load_balancer.add_to_switches([node.switch.name])
 
@@ -66,17 +60,17 @@ class ServiceRoute(ExtCmd):
                     self.provide_cluster_lb(
                         f'slb-cluster-{i}',
                         ovn,
-                        DEFAULT_VIP_SUBNET,
+                        next(self.vips),
                         ports[1:],
-                        i,
+                        4,
                     )
                 if ports[1].ip6:
                     self.provide_cluster_lb(
                         f'slb6-cluster-{i}',
                         ovn,
-                        DEFAULT_VIP_SUBNET6,
+                        next(self.vips6),
                         ports[1:],
-                        i,
+                        6,
                     )
 
                 for w in ovn.worker_nodes:

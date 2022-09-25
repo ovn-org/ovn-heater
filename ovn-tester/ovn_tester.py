@@ -204,7 +204,7 @@ def create_nodes(cluster_config, central, workers):
             workers[i % len(workers)],
             f'ovn-scale-{i}',
             mgmt_net,
-            mgmt_ip + i + 1,
+            mgmt_ip + i,
             DualStackSubnet.next(internal_net, i),
             DualStackSubnet.next(external_net, i),
             gw_net,

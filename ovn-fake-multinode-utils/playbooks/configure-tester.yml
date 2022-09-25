@@ -1,0 +1,20 @@
+- name: Configure the tester
+  hosts: tester_hosts
+  tasks:
+  - name: Copy physical deployment file to tester host
+    ansible.builtin.copy:
+      src: "{{ phys_deployment }}"
+      dest: /tmp/physical-deployment.yml
+
+  - name: Copy physical deployment file to tester container
+    ansible.builtin.shell: |
+      docker cp /tmp/physical-deployment.yml ovn-tester:/physical-deployment.yml
+
+  - name: Copy test file to tester host
+    ansible.builtin.copy:
+      src: "{{ test_file }}"
+      dest: /tmp/test-scenario.yml
+
+  - name: Copy test file to the tester container
+    ansible.builtin.shell: |
+      docker cp /tmp/test-scenario.yml ovn-tester:/test-scenario.yml

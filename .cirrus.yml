@@ -13,6 +13,7 @@ low_scale_task:
   env:
     DEPENDENCIES: git ansible podman podman-docker
     FEDORA_DEP: ansible-collection-ansible-posix
+                ansible-collection-ansible-utils
     PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/ci.yml
 
   runtime_cache:

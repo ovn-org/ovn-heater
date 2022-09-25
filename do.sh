@@ -88,7 +88,7 @@ function generate() {
 function install_deps_local_rpm() {
     echo "-- Installing local dependencies"
     yum install redhat-lsb-core datamash \
-        python3-pip python3-virtualenv python3 python3-devel \
+        python3-pip python3-virtualenv python3-netaddr python3 python3-devel \
         python-virtualenv podman podman-docker \
         --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
@@ -98,7 +98,7 @@ function install_deps_local_rpm() {
 function install_deps_local_deb() {
     echo "-- Installing local dependencies"
     apt -y install datamash podman podman-docker python3-pip \
-           python3-virtualenv python3 python3-all-dev python3-virtualenv
+           python3-virtualenv python3-netaddr python3 python3-all-dev
 }
 
 function install_deps_remote() {
@@ -414,16 +414,27 @@ function mine_data() {
     popd
 }
 
-function get_tester_ip() {
+function get_cluster_var() {
     local test_file=$1
+    local var_name=$2
 
-    # The tester gets the first IP address in the configured node_net.
-    node_net=$(${ovn_fmn_get} ${test_file} cluster node_net)
-    node_cidr=${node_net#*/}
-    node_ip=${node_net%/*}
-    ip_index=1
-    tester_ip=$(${ovn_fmn_ip} ${node_net} ${node_ip} ${ip_index})
-    echo "${tester_ip}/${node_cidr}"
+    var=$(${ovn_fmn_get} ${test_file} cluster ${var_name})
+
+    if [ "${var_name}" == "clustered_db" ]; then
+        if [ "${var}" == "True" ]; then
+            echo -n "n_central=3 "
+        else
+            echo -n "n_central=1 "
+        fi
+    fi
+
+    if [ "${var}" == "True" ]; then
+        echo "${var_name}=yes";
+    elif [ "${var}" == "False" ]; then
+        echo "${var_name}=no"
+    else
+        echo "${var_name}=${var}"
+    fi
 }
 
 function run_test() {
@@ -440,8 +451,20 @@ function run_test() {
     # Perform a fast cleanup by doing a minimal redeploy.
     init_ovn_fake_multinode
 
-    tester_ip=$(get_tester_ip ${test_file})
-    if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${test_file} tester_ip=${tester_ip} phys_deployment=${phys_deployment}" ; then
+    cluster_vars=""
+    for var in enable_ssl clustered_db monitor_all use_ovsdb_etcd \
+               node_net datapath_type n_relays n_workers; do
+        cluster_vars="${cluster_vars} $(get_cluster_var ${test_file} ${var})"
+    done
+    echo "-- Cluster vars: ${cluster_vars}"
+
+    if ! ansible-playbook ${ovn_fmn_playbooks}/bringup-cluster.yml \
+           -i ${hosts_file} --extra-vars "${cluster_vars}" ; then
+        die "-- Failed to bring up fake cluster!"
+    fi
+
+    if ! ansible-playbook ${ovn_fmn_playbooks}/configure-tester.yml -i ${hosts_file} \
+           --extra-vars "test_file=${test_file} phys_deployment=${phys_deployment}" ; then
         die "-- Failed to set up test!"
     fi
 

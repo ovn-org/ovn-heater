@@ -59,38 +59,6 @@ class Node(ovn_sandbox.Sandbox):
         self.mgmt_net = mgmt_net
         self.mgmt_ip = mgmt_ip
 
-    def build_cmd(self, cluster_cfg, cmd, *args):
-        monitor_all = 'yes' if cluster_cfg.monitor_all else 'no'
-        etcd_cmd = 'yes' if cluster_cfg.use_ovsdb_etcd else 'no'
-        clustered_db = 'yes' if cluster_cfg.clustered_db else 'no'
-        enable_ssl = 'yes' if cluster_cfg.enable_ssl else 'no'
-        cmd = (
-            f'cd {cluster_cfg.cluster_cmd_path} && '
-            f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} '
-            f'ENABLE_SSL={enable_ssl} ENABLE_ETCD={etcd_cmd} '
-            f'OVN_DP_TYPE={cluster_cfg.datapath_type} '
-            f'CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 '
-            f'RELAY_COUNT={cluster_cfg.n_relays} '
-            f'IP_HOST={self.mgmt_net.ip} '
-            f'IP_CIDR={self.mgmt_net.prefixlen} '
-            f'IP_START={self.mgmt_ip} '
-            f'./ovn_cluster.sh {cmd}'
-        )
-        return cmd + ' ' + ' '.join(args)
-
-    def start_process_monitor(self, target_container):
-        log.info(f'Starting process monitor for {target_container}')
-        self.phys_node.run(
-            f'docker cp ' f'/tmp/process-monitor.py {target_container}:/tmp/'
-        )
-        self.phys_node.run(
-            f'docker exec {target_container} bash -c "'
-            f'nohup python3 /tmp/process-monitor.py '
-            f'-s {target_container} '
-            f'-o /var/log/process-stats.json '
-            f'-x /tmp/process-monitor.exit &"'
-        )
-
 
 class CentralNode(Node):
     def __init__(
@@ -103,14 +71,10 @@ class CentralNode(Node):
         self.relay_containers = relay_containers
 
     def start(self, cluster_cfg):
-        log.info('Starting central node')
-        self.phys_node.run(self.build_cmd(cluster_cfg, 'start'))
-        time.sleep(5)
+        log.info('Configuring central node')
         self.set_raft_election_timeout(cluster_cfg.raft_election_to)
         self.enable_trim_on_compaction()
         self.set_northd_threads(cluster_cfg.northd_threads)
-        for target in self.db_containers + self.relay_containers:
-            self.start_process_monitor(target)
 
     def set_northd_threads(self, n_threads):
         log.info(f'Configuring northd to use {n_threads} threads')
@@ -191,30 +155,6 @@ class WorkerNode(Node):
         self.vsctl = None
 
     def start(self, cluster_cfg):
-        log.info(f'Starting worker {self.container}')
-        self.phys_node.run(
-            self.build_cmd(
-                cluster_cfg, 'add-chassis', self.container, 'tcp:0.0.0.1:6642'
-            )
-        )
-        self.start_process_monitor(self.container)
-        pctl = ovn_utils.PhysCtl(self)
-        prot = "ptcp"
-        if cluster_cfg.enable_ssl:
-            prot = "pssl"
-            # It's lame that we have to use ovs-vsctl to set up the SSL
-            # connection. The alternative would be changing ovn-fake-multinode
-            # to set these values when it starts ovsdb-server.
-            pctl.run(
-                f"ovs-vsctl --id=@foo create SSL "
-                f"private_key={cluster_cfg.ssl_private_key} "
-                f"certificate={cluster_cfg.ssl_cert} "
-                f"ca_cert={cluster_cfg.ssl_cacert} "
-                f"-- set open_vswitch . ssl=@foo"
-            )
-        pctl.run(
-            f"ovs-appctl -t ovsdb-server ovsdb-server/add-remote {prot}:6640"
-        )
         self.vsctl = ovn_utils.OvsVsctl(
             self,
             self.get_connection_string(cluster_cfg, 6640),
@@ -223,21 +163,18 @@ class WorkerNode(Node):
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
-        log.info(f'Connecting worker {self.container}')
-        self.phys_node.run(
-            self.build_cmd(
-                cluster_cfg,
-                'set-chassis-ovn-remote',
-                self.container,
-                cluster_cfg.node_remote,
-            )
+        log.info(
+            f'Connecting worker {self.container}: '
+            f'ovn-remote = {cluster_cfg.node_remote}'
+        )
+        self.vsctl.set_global_external_id(
+            'ovn-remote', f'{cluster_cfg.node_remote}'
         )
 
     def configure_localnet(self, physical_net):
         log.info(f'Creating localnet on {self.container}')
-        self.run(
-            cmd=f'ovs-vsctl -- set open_vswitch . '
-            f'external-ids:ovn-bridge-mappings={physical_net}:br-ex'
+        self.vsctl.set_global_external_id(
+            'ovn-bridge-mappings', f'{physical_net}:br-ex'
         )
 
     def configure(self, physical_net):

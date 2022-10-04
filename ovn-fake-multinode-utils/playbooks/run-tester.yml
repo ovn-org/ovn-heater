@@ -10,7 +10,7 @@
   - name: Copy test file to tester host
     when: ovn_tester is defined
     ansible.builtin.copy:
-      src: {{ test_file }}
+      src: "{{ test_file }}"
       dest: /tmp/test-scenario.yml
 
   - name: Copy files to the tester container

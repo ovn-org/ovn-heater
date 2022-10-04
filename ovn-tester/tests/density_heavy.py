@@ -13,7 +13,7 @@ DENSITY_PODS_VIP_RATIO = 2
 
 
 DensityCfg = namedtuple(
-    'DensityCfg', ['n_pods', 'n_startup', 'batch', 'pods_vip_ratio']
+    'DensityCfg', ['n_pods', 'n_startup', 'pods_vip_ratio']
 )
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('100.0.0.0/8')
@@ -32,14 +32,9 @@ class DensityHeavy(ExtCmd):
         self.config = DensityCfg(
             n_pods=test_config.get('n_pods', 0),
             n_startup=test_config.get('n_startup', 0),
-            batch=test_config.get('batch', pods_vip_ratio),
             pods_vip_ratio=pods_vip_ratio,
         )
-        if (
-            self.config.pods_vip_ratio > self.config.batch
-            or self.config.batch % self.config.pods_vip_ratio
-            or self.config.n_pods % self.config.batch
-        ):
+        if self.config.n_startup > self.config.n_pods:
             raise ovn_exceptions.OvnInvalidConfigException()
         self.lb_list = []
         self.vips = DEFAULT_VIP_SUBNET.iter_hosts()
@@ -58,59 +53,40 @@ class DensityHeavy(ExtCmd):
         )
         self.lb_list.append(load_balancer)
 
+    def run_iteration(self, ovn, ns, index, global_cfg, passive):
+        ports = ovn.provision_ports(self.config.pods_vip_ratio, passive)
+        ns.add_ports(ports)
+        backends = ports[0:1]
+        if global_cfg.run_ipv4:
+            name = f'density_heavy_{index}'
+            self.create_lb(ovn, name, next(self.vips), backends, 4)
+        if global_cfg.run_ipv6:
+            name = f'density_heavy6_{index}'
+            self.create_lb(ovn, name, next(self.vips6), backends, 6)
+        if not passive:
+            ovn.ping_ports(ports)
+
     def run(self, ovn, global_cfg):
         if self.config.pods_vip_ratio == 0:
             return
 
         ns = Namespace(ovn, 'ns_density_heavy', global_cfg)
-
         with Context(ovn, 'density_heavy_startup', brief_report=True) as ctx:
-            ports = ovn.provision_ports(self.config.n_startup, passive=True)
-            ns.add_ports(ports)
             for i in range(
                 0, self.config.n_startup, self.config.pods_vip_ratio
             ):
-                if global_cfg.run_ipv4:
-                    self.create_lb(
-                        ovn,
-                        f'density_heavy_{i}',
-                        next(self.vips),
-                        [ports[i]],
-                        4,
-                    )
-                if global_cfg.run_ipv6:
-                    self.create_lb(
-                        ovn,
-                        f'density_heavy6_{i}',
-                        next(self.vips6),
-                        [ports[i]],
-                        6,
-                    )
+                self.run_iteration(ovn, ns, i, global_cfg, passive=True)
 
         with Context(
             ovn,
             'density_heavy',
-            (self.config.n_pods - self.config.n_startup) / self.config.batch,
+            (self.config.n_pods - self.config.n_startup)
+            / self.config.pods_vip_ratio,
             test=self,
         ) as ctx:
             for i in ctx:
-                ports = ovn.provision_ports(self.config.batch)
-                ns.add_ports(ports)
-                for j in range(
-                    0, self.config.batch, self.config.pods_vip_ratio
-                ):
-                    index = self.config.n_startup + i * self.config.batch + j
-                    if global_cfg.run_ipv4:
-                        name = f'density_heavy_{index}'
-                        self.create_lb(
-                            ovn, name, next(self.vips), [ports[j]], 4
-                        )
-                    if global_cfg.run_ipv6:
-                        name = f'density_heavy6_{index}'
-                        self.create_lb(
-                            ovn, name, next(self.vips6), [ports[j]], 6
-                        )
-                ovn.ping_ports(ports)
+                index = i * self.config.pods_vip_ratio + self.config.n_startup
+                self.run_iteration(ovn, ns, index, global_cfg, passive=False)
 
         if not global_cfg.cleanup:
             return

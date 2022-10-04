@@ -37,11 +37,8 @@ def generate_node(config, user, prefix, internal_iface, **kwargs):
 
 
 def generate_tester(config, user, prefix, internal_iface):
-    ssh_key = config.get("ssh_key")
-    if ssh_key is None:
-        ssh_key = Path.home().joinpath(".ssh/id_rsa")
-    else:
-        ssh_key = Path(ssh_key).resolve()
+    ssh_key = config["ssh_key"]
+    ssh_key = Path(ssh_key).resolve()
     generate_node(
         config,
         user,

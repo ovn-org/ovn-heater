@@ -7,10 +7,16 @@
     shell: |
       docker run -dt --name=ovn-tester --hostname=ovn-tester --privileged ovn/ovn-tester
 
+  - name: Copy test file to tester host
+    when: ovn_tester is defined
+    ansible.builtin.copy:
+      src: {{ test_file }}
+      dest: /tmp/test-scenario.yml
+
   - name: Copy files to the tester container
     when: ovn_tester is defined
     shell: |
-      docker cp {{ test_file }} ovn-tester:/test-scenario.yml
+      docker cp /tmp/test-scenario.yml ovn-tester:/test-scenario.yml
 
   - name: Add tester container interfaces to OVS bridges
     when: ovn_tester is defined

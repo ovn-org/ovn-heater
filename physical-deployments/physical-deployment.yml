@@ -6,7 +6,7 @@ central-node:
 
 tester-node:
   name: host02.mydoman.com
-  ssh-key: id_rsa
+  ssh_key: id_rsa
 
 worker-nodes:
   - host03.mydomain.com

@@ -8,6 +8,7 @@ import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
 from ovsdbapp.backend import ovs_idl
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import transaction
+from ovsdbapp.backend.ovs_idl import vlog
 from ovsdbapp import exceptions as ovsdbapp_exceptions
 
 
@@ -43,6 +44,9 @@ DEFAULT_CTL_TIMEOUT = 60
 
 
 DualStackIP = namedtuple('DualStackIP', ['ip4', 'plen4', 'ip6', 'plen6'])
+
+
+vlog.use_python_logger(max_level=vlog.INFO)
 
 
 class PhysCtl:
@@ -345,14 +349,14 @@ class OvnNbctl:
 
     def set_global(self, option, value):
         self.idl.db_set(
-            "NB_Global", self.idl._nb.uuid, ("options", {option: value})
+            "NB_Global", self.idl._nb.uuid, ("options", {option: str(value)})
         ).execute()
 
     def set_inactivity_probe(self, value):
         self.idl.db_set(
             "Connection",
             self.idl._connection.uuid,
-            ("inactivity_probe", value),
+            ("inactivity_probe", str(value)),
         ).execute()
 
     def lr_add(self, name):
@@ -570,12 +574,13 @@ class OvnNbctl:
         ).execute()
 
     def lr_set_options(self, router, options):
+        str_options = dict((k, str(v)) for k, v in options.items())
         self.idl.db_set(
-            "Logical_Router", router.uuid, ("options", options)
+            "Logical_Router", router.uuid, ("options", str_options)
         ).execute()
 
     def lb_set_vips(self, lb, vips):
-        vips = dict((k, ",".join(v)) for k, v in vips.items())
+        vips = dict((k, ",".join(str(v))) for k, v in vips.items())
         self.idl.db_set("Load_Balancer", lb.uuid, ("vips", vips)).execute()
 
     def lb_clear_vips(self, lb):
@@ -631,7 +636,7 @@ class OvnSbctl:
         self.idl.db_set(
             "Connection",
             self.idl._connection.uuid,
-            ("inactivity_probe", value),
+            ("inactivity_probe", str(value)),
         ).execute()
 
     def chassis_bound(self, chassis=""):

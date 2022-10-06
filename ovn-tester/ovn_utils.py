@@ -1,5 +1,6 @@
 import logging
 import netaddr
+import select
 import ovn_exceptions
 from collections import namedtuple
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
@@ -11,6 +12,7 @@ from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp.backend.ovs_idl import transaction
 from ovsdbapp.backend.ovs_idl import vlog
 from ovsdbapp import exceptions as ovsdbapp_exceptions
+from ovs import poller
 
 
 log = logging.getLogger(__name__)
@@ -48,6 +50,7 @@ DualStackIP = namedtuple('DualStackIP', ['ip4', 'plen4', 'ip6', 'plen6'])
 
 
 vlog.use_python_logger(max_level=vlog.INFO)
+poller.SelectPoll = select.poll
 
 
 class PhysCtl:

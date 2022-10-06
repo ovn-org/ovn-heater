@@ -47,6 +47,7 @@ done
 
 for c in $(docker ps --format "{{.Names}}" --filter "name=ovn-tester"); do
     mkdir ${host}/$c
+    docker exec $c bash -c 'touch /tmp/process-monitor.exit && sleep 5'
     docker exec $c bash -c "mkdir -p /htmls; cp -f /*.html /htmls"
     docker cp $c:/htmls/. ${host}/$c/
 done

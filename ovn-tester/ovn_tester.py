@@ -6,7 +6,9 @@ import netaddr
 import yaml
 import importlib
 import ovn_exceptions
+import subprocess
 import gc
+import shlex
 
 from collections import namedtuple
 from ovn_context import Context
@@ -15,6 +17,9 @@ from ovn_workload import BrExConfig, ClusterConfig
 from ovn_workload import CentralNode, WorkerNode, Cluster
 from ovn_utils import DualStackSubnet
 from ovs.stream import Stream
+
+
+log = logging.getLogger(__name__)
 
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
@@ -346,6 +351,17 @@ def run_base_cluster_bringup(ovn, bringup_cfg, global_cfg):
         ovn.provision_lb_group()
 
 
+def start_process_monitor(container):
+    log.info(f'Starting process monitor for {container}')
+    cmd = shlex.split(
+        f'bash -c "nohup python3 /tmp/process-monitor.py '
+        f'-s {container} '
+        f'-o /var/log/process-stats.json '
+        f'-x /tmp/process-monitor.exit"'
+    )
+    subprocess.Popen(cmd)
+
+
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         usage(sys.argv[0])
@@ -364,6 +380,8 @@ if __name__ == '__main__':
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     central_node, worker_nodes = create_nodes(cluster_cfg, central, workers)
     tests = configure_tests(config, central_node, worker_nodes, global_cfg)
+
+    start_process_monitor("ovn-tester")
 
     ovn = prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg)
     run_base_cluster_bringup(ovn, bringup_cfg, global_cfg)

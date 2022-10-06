@@ -3,6 +3,7 @@ import netaddr
 import select
 import ovn_exceptions
 from collections import namedtuple
+from functools import partial
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
 import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
@@ -44,6 +45,9 @@ LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
 LoadBalancerGroup = namedtuple('LoadBalancerGroup', ['name', 'uuid'])
 
 DEFAULT_CTL_TIMEOUT = 60
+
+
+MAX_RETRY = 5
 
 
 DualStackIP = namedtuple('DualStackIP', ['ip4', 'plen4', 'ip6', 'plen6'])
@@ -343,6 +347,10 @@ class NBIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         return next(iter(self.db_list_rows('Connection').execute()))
 
 
+class UUIDTransactionError(Exception):
+    pass
+
+
 class OvnNbctl:
     def __init__(self, sb, connection_string, inactivity_probe):
         i = connection.OvsdbIdl.from_server(
@@ -350,6 +358,41 @@ class OvnNbctl:
         )
         c = connection.Connection(i, inactivity_probe)
         self.idl = NBIdl(c)
+
+    def uuid_transaction(self, func):
+        # Occasionally, due to RAFT leadership changes, a transaction can
+        # appear to fail. In reality, they succeeded and the error is spurious.
+        # When we encounter this sort of error, the result of the command will
+        # not have the UUID of the row. Our strategy is to retry the
+        # transaction with may_exist=True so that we can get the UUID.
+        for _ in range(MAX_RETRY):
+            cmd = func(may_exist=True)
+            cmd.execute()
+            try:
+                return cmd.result.uuid
+            except AttributeError:
+                continue
+
+        raise UUIDTransactionError("Failed to get UUID from transaction")
+
+    def db_create_transaction(self, table, *, get_func, **columns):
+        # db_create does not afford the ability to retry with "may_exist". We
+        # therefore need to have a method of ensuring that the value was not
+        # actually set in the DB before we can retry the transaction.
+        for _ in range(MAX_RETRY):
+            cmd = self.idl.db_create(table, **columns)
+            cmd.execute()
+            try:
+                return cmd.result
+            except AttributeError:
+                cmd = get_func()
+                cmd.execute()
+                try:
+                    return cmd.result
+                except AttributeError:
+                    continue
+
+        raise UUIDTransactionError("Failed to get UUID from transaction")
 
     def set_global(self, option, value):
         self.idl.db_set(
@@ -365,10 +408,8 @@ class OvnNbctl:
 
     def lr_add(self, name):
         log.info(f'Creating lrouter {name}')
-
-        add_cmd = self.idl.lr_add(name)
-        add_cmd.execute()
-        return LRouter(name=name, uuid=add_cmd.result.uuid)
+        uuid = self.uuid_transaction(partial(self.idl.lr_add, name))
+        return LRouter(name=name, uuid=uuid)
 
     def lr_port_add(self, router, name, mac, dual_ip=None):
         networks = []
@@ -386,14 +427,12 @@ class OvnNbctl:
 
     def ls_add(self, name, net_s):
         log.info(f'Creating lswitch {name}')
-
-        cmd = self.idl.ls_add(name)
-        cmd.execute()
+        uuid = self.uuid_transaction(partial(self.idl.ls_add, name))
         return LSwitch(
             name=name,
             cidr=net_s.n4,
             cidr6=net_s.n6,
-            uuid=cmd.result.uuid,
+            uuid=uuid,
         )
 
     def ls_port_add(
@@ -432,9 +471,9 @@ class OvnNbctl:
             if security:
                 columns["port_security"] = addresses
 
-        add_cmd = self.idl.lsp_add(lswitch.uuid, name, **columns)
-        add_cmd.execute()
-        uuid = add_cmd.result.uuid
+        uuid = self.uuid_transaction(
+            partial(self.idl.lsp_add, lswitch.uuid, name, **columns)
+        )
 
         ip4 = "unknown" if localnet else ip.ip4 if ip else None
         plen4 = ip.plen4 if ip else None
@@ -551,16 +590,23 @@ class OvnNbctl:
         lb_name = f"{name}-{protocol}"
         # We can't use ovsdbapp's lb_add here because it is not possible to
         # create a load balancer with no VIPs.
-        cmd = self.idl.db_create(
-            "Load_Balancer", name=lb_name, protocol=protocol
+        uuid = self.db_create_transaction(
+            "Load_Balancer",
+            name=lb_name,
+            protocol=protocol,
+            get_func=partial(self.idl.lb_get, lb_name),
         )
-        cmd.execute()
-        return LoadBalancer(name=lb_name, uuid=cmd.result)
+        return LoadBalancer(name=lb_name, uuid=uuid)
 
     def create_lbg(self, name):
-        cmd = self.idl.db_create("Load_Balancer_Group", name=name)
-        cmd.execute()
-        return LoadBalancerGroup(name=name, uuid=cmd.result)
+        uuid = self.db_create_transaction(
+            "Load_Balancer_Group",
+            name=name,
+            get_func=partial(
+                self.idl.db_get, "Load_Balancer_Group", name, "uuid"
+            ),
+        )
+        return LoadBalancerGroup(name=name, uuid=uuid)
 
     def lbg_add_lb(self, lbg, lb):
         self.idl.db_add(

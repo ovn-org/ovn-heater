@@ -328,7 +328,7 @@ function mine_data() {
         | cut -d ' ' -f 1,7 | tr 'T' ' ' | sort > mined-data/ovn-installed.log
 
     source ${rundir}/${ovn_heater_venv}/bin/activate
-    python3 ${topdir}/utils/latency.py "$(date +%z)" \
+    python3 ${topdir}/utils/latency.py \
         ./mined-data/ovn-binding.log ./mined-data/ovn-installed.log \
         > mined-data/binding-to-ovn-installed-latency
 

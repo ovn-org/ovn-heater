@@ -356,7 +356,7 @@ class OvnNbctl:
         self.idl.db_set(
             "Connection",
             self.idl._connection.uuid,
-            ("inactivity_probe", str(value)),
+            ("inactivity_probe", value),
         ).execute()
 
     def lr_add(self, name):
@@ -580,7 +580,7 @@ class OvnNbctl:
         ).execute()
 
     def lb_set_vips(self, lb, vips):
-        vips = dict((k, ",".join(str(v))) for k, v in vips.items())
+        vips = dict((k, ",".join(v)) for k, v in vips.items())
         self.idl.db_set("Load_Balancer", lb.uuid, ("vips", vips)).execute()
 
     def lb_clear_vips(self, lb):
@@ -636,7 +636,7 @@ class OvnSbctl:
         self.idl.db_set(
             "Connection",
             self.idl._connection.uuid,
-            ("inactivity_probe", str(value)),
+            ("inactivity_probe", value),
         ).execute()
 
     def chassis_bound(self, chassis=""):

@@ -1,56 +1,40 @@
 from datetime import datetime
-from datetime import timedelta
 import numpy as np
 import sys
 
-if len(sys.argv) < 4:
-    print(
-        f'Usage {sys.argv[0]} "$(date +%z)" '
-        f'ovn-binding.log ovn-installed.log'
-    )
+if len(sys.argv) < 3:
+    print(f'Usage {sys.argv[0]} ' f'ovn-binding.log ovn-installed.log')
 
-tz = -int(sys.argv[1])
-delta = timedelta(hours=int(tz / 100), minutes=int(tz % 100))
-
-with open(sys.argv[3], 'r') as installed_file:
+with open(sys.argv[2], 'r') as installed_file:
     ovn_installed = installed_file.read().strip().splitlines()
 
-with open(sys.argv[2], 'r') as binding_file:
+with open(sys.argv[1], 'r') as binding_file:
     ovn_binding = binding_file.read().strip().splitlines()
 
-latency_per_port = {}
-
+binding_times = dict()
 for record in ovn_binding:
-    record = record.split(' ')
-
-    date = record[0]
-    time = record[1]
-    port = record[2]
+    date, time, port = record.split(' ')
 
     date = datetime.strptime(f'{date} {time}', '%Y-%m-%d %H:%M:%S,%f')
-    latency_per_port[port] = date + delta
+    binding_times[port] = date
 
+latency_per_port = dict()
 for record in ovn_installed:
-    record = record.split(' ')
+    date, time, port = record.split(' ')
 
-    date = record[0]
-    time = record[1]
-    port = record[2]
-
-    if isinstance(latency_per_port[port], timedelta):
+    if port in latency_per_port:
         # ovn-installed more than once, ignoring.
         continue
 
-    date = datetime.strptime(f'{date} {time}', '%Y-%m-%d %H:%M:%S.%fZ')
-    latency_per_port[port] = date - latency_per_port[port]
+    binding_time = binding_times.pop(port)
 
-failures = 0
+    date = datetime.strptime(f'{date} {time}', '%Y-%m-%d %H:%M:%S.%fZ')
+    latency_per_port[port] = date - binding_time
+
+failures = len(binding_times)
 latencies = []
 
-for port, latency in latency_per_port.items():
-    if isinstance(latency, datetime):
-        failures = failures + 1
-        continue
+for latency in latency_per_port.values():
     ms = int(latency.total_seconds() * 1000)
     latencies.append(ms)
 
@@ -71,16 +55,16 @@ never set (at least, there is no evidence in logs).
 '''
 )
 
-print('min     :', min(latencies), 'ms')
-print('max     :', max(latencies), 'ms')
-print('avg     :', int(sum(latencies) / len(latencies)), 'ms')
+print('min     :', min(latencies, default=0), 'ms')
+print('max     :', max(latencies, default=0), 'ms')
+print('avg     :', sum(latencies) // len(latencies), 'ms')
 print('95%     :', int(np.percentile(latencies, 95)), 'ms')
 print('total   :', len(latency_per_port))
 print('failures:', failures)
 print()
 
 for port, latency in latency_per_port.items():
-    if isinstance(latency, datetime):
+    if port in binding_times:
         print(f'{port:<10}: Not installed')
         continue
     ms = int(latency.total_seconds() * 1000)

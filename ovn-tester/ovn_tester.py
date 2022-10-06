@@ -6,6 +6,7 @@ import netaddr
 import yaml
 import importlib
 import ovn_exceptions
+import gc
 
 from collections import namedtuple
 from ovn_context import Context
@@ -247,6 +248,9 @@ def read_config(config):
 def setup_logging(global_cfg):
     FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
+
+    if gc.isenabled():
+        gc.set_debug(gc.DEBUG_STATS)
 
     if not global_cfg.log_cmds:
         return

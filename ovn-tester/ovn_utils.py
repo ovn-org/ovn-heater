@@ -7,6 +7,7 @@ import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
 from ovsdbapp.backend import ovs_idl
 from ovsdbapp.backend.ovs_idl import connection
+from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp.backend.ovs_idl import transaction
 from ovsdbapp.backend.ovs_idl import vlog
 from ovsdbapp import exceptions as ovsdbapp_exceptions
@@ -613,6 +614,17 @@ class OvnNbctl:
             pass
 
 
+class BaseOvnSbIdl(connection.OvsdbIdl):
+    schema = "OVN_Southbound"
+
+    @classmethod
+    def from_server(cls, connection_string):
+        helper = idlutils.get_schema_helper(connection_string, cls.schema)
+        helper.register_table('Chassis')
+        helper.register_table('Connection')
+        return cls(connection_string, helper)
+
+
 class SBIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def __init__(self, connection):
         super(SBIdl, self).__init__(connection)
@@ -626,9 +638,7 @@ class SBIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
 
 class OvnSbctl:
     def __init__(self, sb, connection_string, inactivity_probe):
-        i = connection.OvsdbIdl.from_server(
-            connection_string, "OVN_Southbound"
-        )
+        i = BaseOvnSbIdl.from_server(connection_string)
         c = connection.Connection(i, inactivity_probe)
         self.idl = SBIdl(c)
 

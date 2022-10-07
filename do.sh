@@ -307,6 +307,10 @@ function mine_data() {
 
     rm -rf ./mined-data/ovn-binding.log ./mined-data/ovn-installed.log
 
+    logs=$(find ${out_dir}/logs -iname 'ps*')
+    grep died ${logs} | sed 's/.*\/\(ovn-.*\)/\1/' > mined-data/crashes
+    [ -s mined-data/crashes ] || rm -f mined-data/crashes
+
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
                             | grep -v ovn-scale)
     python3 ${topdir}/utils/process-stats.py \

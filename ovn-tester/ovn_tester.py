@@ -7,6 +7,7 @@ import yaml
 import importlib
 import ovn_exceptions
 import gc
+import time
 
 from collections import namedtuple
 from ovn_context import Context
@@ -248,6 +249,7 @@ def read_config(config):
 def setup_logging(global_cfg):
     FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
+    logging.Formatter.converter = time.gmtime
 
     if gc.isenabled():
         gc.disable()

@@ -286,7 +286,7 @@ def configure_tests(yaml, central_node, worker_nodes, global_cfg):
 
 def create_nodes(cluster_config, central, workers):
     mgmt_net = cluster_config.node_net
-    mgmt_ip = mgmt_net.ip + 1
+    mgmt_ip = mgmt_net.ip + 2
     internal_net = cluster_config.internal_net
     external_net = cluster_config.external_net
     gw_net = cluster_config.gw_net

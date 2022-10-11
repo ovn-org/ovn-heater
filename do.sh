@@ -356,20 +356,11 @@ function mine_data() {
 function get_tester_ip() {
     local test_file=$1
 
+    # The tester gets the first IP address in the configured node_net.
     node_net=$(${ovn_fmn_get} ${test_file} cluster node_net --default=192.16.0.0/16)
     node_cidr=${node_net#*/}
     node_ip=${node_net%/*}
     ip_index=1
-    clustered_db=$(${ovn_fmn_get} ${test_file} cluster clustered_db --default=True)
-    # The yaml loader normalizes "yes" and "no" values for clustered_db into
-    # "True" and "False"
-    if [ "${clustered_db}" = "True" ]; then
-        (( ip_index += 3 ))
-    else
-        (( ip_index += 1 ))
-    fi
-    n_relays=$(${ovn_fmn_get} ${test_file} cluster n_relays --default=0)
-    (( ip_index += ${n_relays} ))
     tester_ip=$(${ovn_fmn_ip} ${node_net} ${node_ip} ${ip_index})
     echo "${tester_ip}/${node_cidr}"
 }

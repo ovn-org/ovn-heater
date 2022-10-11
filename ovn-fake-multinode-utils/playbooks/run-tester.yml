@@ -24,3 +24,11 @@
       cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
       ./ovs-docker add-port br-ovn eth1 ovn-tester --ipaddress={{ tester_ip }}
       ./ovs-docker add-port br-ovn-ext eth2 ovn-tester
+
+  - name: Start process monitor
+    when: ovn_tester is defined
+    shell: |
+      nohup python3 /tmp/process-monitor.py \
+      -s ovn-tester \
+      -o /var/log/process-stats.json \
+      -x /tmp/process-monitor.exit &

@@ -19,7 +19,7 @@ from ovn_utils import DualStackSubnet
 from ovs.stream import Stream
 
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("ovn_tester")
 
 
 DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
@@ -255,7 +255,8 @@ def setup_logging(global_cfg):
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
 
     if gc.isenabled():
-        gc.set_debug(gc.DEBUG_STATS)
+        gc.disable()
+        gc.set_threshold(0)
 
     if not global_cfg.log_cmds:
         return

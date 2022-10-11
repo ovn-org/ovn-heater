@@ -309,10 +309,6 @@ function mine_data() {
     echo "-- Mining data from logs in: ${out_dir}"
 
     pushd ${out_dir}
-    # Prior to containerization of ovn-tester, HTML files written by ovn-tester
-    # were written directly to ${out_dir}. To make things easier for tools, we
-    # copy the HTML files back to this original location.
-    cp logs/${tester_host}/ovn-tester/*.html ${out_dir}
 
     mkdir -p mined-data
     for p in ovn-northd ovn-controller ovn-nbctl; do
@@ -409,6 +405,10 @@ function run_test() {
     for f in *.tgz; do
        tar xvfz $f
     done
+    # Prior to containerization of ovn-tester, HTML files written by ovn-tester
+    # were written directly to ${out_dir}. To make things easier for tools, we
+    # copy the HTML files back to this original location.
+    cp logs/${tester_host}/ovn-tester/*.html ${out_dir} || true
 
     # Once we successfully ran the test and collected its logs, the post
     # processing (e.g., data mining) can run in a subshell with errexit

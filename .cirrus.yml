@@ -5,7 +5,6 @@ low_scale_task:
     image: family/fedora-cloud-35
     platform: linux
     memory: 8G
-    use_static_ip: true
 
   env:
     DEPENDENCIES: git ansible podman podman-docker
@@ -15,7 +14,10 @@ low_scale_task:
     folder: runtime-cache
 
   configure_ssh_script:
-    - export IP_ADDR=$(ip route get 8.8.8.8 | head -1 | sed 's/.*src \([0-9\.]*\).*/\1/')
+    - |
+      export IP_ADDR=$(ip route get 8.8.8.8 | \
+      head -1 | \
+      sed 's/.*src \([0-9\.]*\).*/\1/')
     - mkdir -p /root/.ssh/
     - ssh-keygen -t rsa -N '' -q -f /root/.ssh/id_rsa
     - ssh-keyscan ${IP_ADDR} >> /root/.ssh/known_hosts
@@ -32,7 +34,10 @@ low_scale_task:
     - tar -xzf runtime-cache/runtime.tar.gz || true
 
   install_script:
-    - export IP_ADDR=$(ip route get 8.8.8.8 | head -1 | sed 's/.*src \([0-9\.]*\).*/\1/')
+    - |
+      export IP_ADDR=$(ip route get 8.8.8.8 | \
+      head -1 | \
+      sed 's/.*src \([0-9\.]*\).*/\1/')
     - 'sed -i "s/<ip>/${IP_ADDR}/g" ${PHYS_DEPLOYMENT}'
     - ./do.sh install
 

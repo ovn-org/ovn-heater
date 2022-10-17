@@ -178,6 +178,9 @@ This step will:
   can be enabled by setting the `EXTRA_OPTIMIZE=yes` environment variable
   (`EXTRA_OPTIMIZE=yes ./do.sh install`).
 - push the container image to all other nodes and prepare the test environment.
+- build the `ovn/ovn-tester` container image which will be used by the TESTER
+  node to run the ovn-tester application.
+- push the `ovn/ovn-tester` container image to the TESTER node.
 
 To override the OVS, OVN or ovn-fake-multinode repos/branches use the
 following environment variables:
@@ -191,6 +194,10 @@ For example, installing components with custom OVS/OVN code:
 cd ~/ovn-heater
 OVS_REPO=https://github.com/dceara/ovs OVS_BRANCH=tmp-branch OVN_REPO=https://github.com/dceara/ovn OVN_BRANCH=tmp-branch-2 ./do.sh install
 ```
+
+NOTE: Because the installation step is responsible for deploying the ovn-tester
+container to the TESTER, this means that if any changes are made to the
+ovn-tester application, the installation step must be re-run.
 
 ## Perform a reinstallation (e.g., new OVS/OVN versions are needed):
 

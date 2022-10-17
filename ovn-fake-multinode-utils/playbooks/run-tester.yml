@@ -28,7 +28,7 @@
   - name: Start process monitor
     when: ovn_tester is defined
     shell: |
-      nohup python3 /tmp/process-monitor.py \
+      docker exec ovn-tester bash -c "nohup python3 /tmp/process-monitor.py \
       -s ovn-tester \
       -o /var/log/process-stats.json \
-      -x /tmp/process-monitor.exit &
+      -x /tmp/process-monitor.exit </dev/null >/dev/null 2>&1 &"

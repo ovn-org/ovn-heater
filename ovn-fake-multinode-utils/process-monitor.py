@@ -21,6 +21,12 @@ def monitor(suffix, out_file, exit_file):
             for p in psutil.process_iter():
                 if any(name in p.name() for name in process_names):
                     processes.add(p)
+                elif any(
+                    name in part
+                    for part in p.cmdline()
+                    for name in process_names
+                ):
+                    processes.add(p)
 
             if len(processes) == 0:
                 time.sleep(0.5)

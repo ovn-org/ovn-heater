@@ -397,7 +397,7 @@ function run_test() {
     # Prior to containerization of ovn-tester, HTML files written by ovn-tester
     # were written directly to ${out_dir}. To make things easier for tools, we
     # copy the HTML files back to this original location.
-    cp logs/${tester_host}/ovn-tester/*.html ${out_dir} || true
+    cp ${tester_host}/ovn-tester/*.html ${out_dir} || true
 
     # Once we successfully ran the test and collected its logs, the post
     # processing (e.g., data mining) can run in a subshell with errexit

@@ -1,12 +1,12 @@
-registry-node: <ip>
+registry-node: <host>
 internal-iface: lo
 
 central-node:
-  name: <ip>
+  name: <host>
 
 tester-node:
-  name: <ip>
+  name: <host>
   ssh_key: /root/.ssh/id_rsa
 
 worker-nodes:
-  - <ip>
+  - <host>

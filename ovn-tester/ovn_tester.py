@@ -252,6 +252,16 @@ def setup_logging(global_cfg):
     logging.Formatter.converter = time.gmtime
 
     if gc.isenabled():
+        # If the garbage collector is enabled, it runs from time to time, and
+        # interrupts ovn-tester to do so. If we are timing an operation, then
+        # the gc can distort the amount of time something actually takes to
+        # complete, resulting in graphs with spikes.
+        #
+        # Disabling the garbage collector runs the theoretical risk of leaking
+        # a lot of memory, but in practical tests, this has not been a
+        # problem. If gigantic-scale tests end up introducing memory issues,
+        # then we may want to manually run the garbage collector between test
+        # iterations or between test runs.
         gc.disable()
         gc.set_threshold(0)
 

@@ -54,6 +54,11 @@ DualStackIP = namedtuple('DualStackIP', ['ip4', 'plen4', 'ip6', 'plen6'])
 
 
 vlog.use_python_logger(max_level=vlog.INFO)
+
+# Under the hood, ovsdbapp uses select.select, but it has a hard-coded limit
+# on the number of file descriptors that can be selected from. In large-scale
+# tests (500 nodes), we exceed this number and run into issues. By switching to
+# select.poll, we do not have this limitation.
 poller.SelectPoll = select.poll
 
 

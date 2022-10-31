@@ -7,6 +7,17 @@
     shell: |
       docker run -dt --name=ovn-tester --hostname=ovn-tester --privileged ovn/ovn-tester
 
+  - name: Copy physical deployment file to tester host
+    when: ovn_tester is defined
+    copy:
+      src: "{{ phys_deployment }}"
+      dest: /tmp/physical-deployment.yml
+
+  - name: Copy physical deployment file to tester container
+    when: ovn_tester is defined
+    shell: |
+      docker cp /tmp/physical-deployment.yml ovn-tester:/physical-deployment.yml
+
   - name: Copy test file to tester host
     when: ovn_tester is defined
     ansible.builtin.copy:

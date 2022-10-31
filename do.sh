@@ -236,10 +236,8 @@ function install_ovn_tester() {
     # We need to copy the files into a known directory within the Docker
     # context directory. Otherwise, Docker can't find the files we reference.
     cp ${ssh_key} tester_files
-    cp ${phys_deployment} tester_files
     ssh_key_file=tester_files/$(basename ${ssh_key})
-    phys_deployment_file=tester_files/$(basename ${phys_deployment})
-    docker build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} --build-arg PHYS_DEPLOYMENT=${phys_deployment_file} -f ${topdir}/Dockerfile .
+    docker build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} -f ${topdir}/Dockerfile .
     docker tag ovn/ovn-tester localhost:5000/ovn/ovn-tester
     docker push localhost:5000/ovn/ovn-tester
     rm -rf tester_files
@@ -380,7 +378,7 @@ function run_test() {
     init_ovn_fake_multinode
 
     tester_ip=$(get_tester_ip ${test_file})
-    if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${test_file} tester_ip=${tester_ip}" ; then
+    if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${test_file} tester_ip=${tester_ip} phys_deployment=${phys_deployment}" ; then
          echo "-- Failed to set up test!"
     fi
 

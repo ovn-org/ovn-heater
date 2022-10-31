@@ -375,7 +375,7 @@ function run_test() {
 
     tester_ip=$(get_tester_ip ${test_file})
     if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${test_file} tester_ip=${tester_ip} phys_deployment=${phys_deployment}" ; then
-         echo "-- Failed to set up test!"
+        die "-- Failed to set up test!"
     fi
 
     tester_host=$(${ovn_fmn_get} ${phys_deployment} tester-node name)

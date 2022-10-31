@@ -3,7 +3,8 @@
 set -o errexit -o pipefail
 
 topdir=$(pwd)
-rundir=${topdir}/runtime
+rundir_name=runtime
+rundir=${topdir}/${rundir_name}
 deployment_dir=${topdir}/physical-deployments
 result_dir=${topdir}/test_results
 
@@ -230,17 +231,14 @@ function install_ovn_fake_multinode() {
 }
 
 function install_ovn_tester() {
-    rm -rf tester_files
-    mkdir tester_files
     ssh_key=$(${ovn_fmn_get} ${phys_deployment} tester-node ssh_key)
     # We need to copy the files into a known directory within the Docker
     # context directory. Otherwise, Docker can't find the files we reference.
-    cp ${ssh_key} tester_files
-    ssh_key_file=tester_files/$(basename ${ssh_key})
-    docker build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} -f ${topdir}/Dockerfile .
+    cp ${ssh_key} .
+    ssh_key_file=${rundir_name}/$(basename ${ssh_key})
+    docker build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} -f ${topdir}/Dockerfile ${topdir}
     docker tag ovn/ovn-tester localhost:5000/ovn/ovn-tester
     docker push localhost:5000/ovn/ovn-tester
-    rm -rf tester_files
 }
 
 # Prepare OVS bridges and cleanup containers.
@@ -267,8 +265,6 @@ function install() {
     install_ovn_fake_multinode
     init_ovn_fake_multinode
     pull_ovn_fake_multinode
-    popd
-    pushd ${topdir}
     install_ovn_tester
     pull_ovn_tester
     popd

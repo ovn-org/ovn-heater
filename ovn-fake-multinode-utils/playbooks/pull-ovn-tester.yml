@@ -6,4 +6,3 @@
       shell: |
               set -e
               docker pull {{ registry_node }}:5000/ovn/ovn-tester
-              docker tag {{ registry_node }}:5000/ovn/ovn-tester ovn/ovn-tester

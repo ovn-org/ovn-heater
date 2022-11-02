@@ -245,7 +245,7 @@ class OvsVsctl:
         self.run(f'ip netns del {lport.name}', prefix='')
 
 
-LLONG_MAX = 2 ** 63 - 1
+LLONG_MAX = 2**63 - 1
 
 
 # We have to subclass the base Transaction for NB in order to facilitate the
@@ -283,7 +283,11 @@ class NBTransaction(transaction.Transaction):
     def pre_commit(self, txn):
         if self.wait_type:
             if self.api._nb.nb_cfg == LLONG_MAX:
-                txn.add(self.api.db_set("NB_Global", self.api._nb.uuid, ("nb_cfg", 0)))
+                txn.add(
+                    self.api.db_set(
+                        "NB_Global", self.api._nb.uuid, ("nb_cfg", 0)
+                    )
+                )
             self.api._nb.increment('nb_cfg')
 
     def post_commit(self, txn):

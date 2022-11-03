@@ -32,9 +32,9 @@ class ClusterDensity(ExtCmd):
     def run_iteration(self, ovn, index, global_cfg, passive):
         ns = Namespace(ovn, f'NS_density_{index}', global_cfg)
         # Create DENSITY_N_BUILD_PODS short lived "build" pods.
-        build_ports = ovn.provision_ports(DENSITY_N_BUILD_PODS, passive)
-        ns.add_ports(build_ports)
         if not passive:
+            build_ports = ovn.provision_ports(DENSITY_N_BUILD_PODS, passive)
+            ns.add_ports(build_ports)
             ovn.ping_ports(build_ports)
 
         # Add DENSITY_N_PODS test pods and provision them as backends
@@ -46,11 +46,11 @@ class ClusterDensity(ExtCmd):
         ns.provision_vips_to_load_balancers(
             [ports[0:2], ports[2:3], ports[3:4]]
         )
+
+        # Ping the test pods and remove the short lived ones.
         if not passive:
             ovn.ping_ports(ports)
-
-        # Remove the short lived pods
-        ns.unprovision_ports(build_ports)
+            ns.unprovision_ports(build_ports)
         return ns
 
     def run(self, ovn, global_cfg):

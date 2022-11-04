@@ -20,6 +20,7 @@ ovn_fmn_docker=${ovn_fmn_utils}/generate-docker-cfg.py
 ovn_fmn_podman=${ovn_fmn_utils}/generate-podman-cfg.py
 ovn_fmn_get=${ovn_fmn_utils}/get-config-value.py
 ovn_fmn_ip=${rundir}/ovn-fake-multinode/ip_gen.py
+ovn_fmn_translate=${ovn_fmn_utils}/translate_yaml.py
 hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
 docker_daemon_file=${rundir}/docker-daemon.json
@@ -351,7 +352,7 @@ function get_tester_ip() {
     local test_file=$1
 
     # The tester gets the first IP address in the configured node_net.
-    node_net=$(${ovn_fmn_get} ${test_file} cluster node_net --default=192.16.0.0/16)
+    node_net=$(${ovn_fmn_get} ${test_file} cluster node_net)
     node_cidr=${node_net#*/}
     node_ip=${node_net%/*}
     ip_index=1
@@ -373,8 +374,11 @@ function run_test() {
     # Perform a fast cleanup by doing a minimal redeploy.
     init_ovn_fake_multinode
 
-    tester_ip=$(get_tester_ip ${test_file})
-    if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${test_file} tester_ip=${tester_ip} phys_deployment=${phys_deployment}" ; then
+    local_test_file=${rundir}/test-scenario.yml
+    ${ovn_fmn_translate} ${test_file} ${local_test_file}
+
+    tester_ip=$(get_tester_ip ${local_test_file})
+    if ! ansible-playbook ${ovn_fmn_playbooks}/run-tester.yml -i ${hosts_file} --extra-vars "test_file=${local_test_file} tester_ip=${tester_ip} phys_deployment=${phys_deployment}" ; then
         die "-- Failed to set up test!"
     fi
 

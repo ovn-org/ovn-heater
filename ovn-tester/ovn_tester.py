@@ -18,80 +18,11 @@ from ovn_utils import DualStackSubnet
 from ovs.stream import Stream
 
 
-DEFAULT_VIP_SUBNET = netaddr.IPNetwork('4.0.0.0/8')
-DEFAULT_VIP_SUBNET6 = netaddr.IPNetwork('4::/32')
-DEFAULT_N_VIPS = 2
-DEFAULT_VIP_PORT = 80
-DEFAULT_BACKEND_PORT = 8080
-
-
-def calculate_default_vips(vip_subnet=DEFAULT_VIP_SUBNET):
-    vip_gen = vip_subnet.iter_hosts()
-    vip_range = range(0, DEFAULT_N_VIPS)
-    prefix = '[' if vip_subnet.version == 6 else ''
-    suffix = ']' if vip_subnet.version == 6 else ''
-    return {
-        f'{prefix}{next(vip_gen)}{suffix}:{DEFAULT_VIP_PORT}': None
-        for _ in vip_range
-    }
-
-
-DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
-DEFAULT_STATIC_VIP_SUBNET6 = netaddr.IPNetwork('5::/32')
-DEFAULT_N_STATIC_VIPS = 65
-DEFAULT_STATIC_BACKEND_SUBNET = netaddr.IPNetwork('6.0.0.0/8')
-DEFAULT_STATIC_BACKEND_SUBNET6 = netaddr.IPNetwork('6::/32')
-DEFAULT_N_STATIC_BACKENDS = 2
-
-
-def calculate_default_static_vips(
-    vip_subnet=DEFAULT_STATIC_VIP_SUBNET,
-    backend_subnet=DEFAULT_STATIC_BACKEND_SUBNET,
-):
-    vip_gen = vip_subnet.iter_hosts()
-    vip_range = range(0, DEFAULT_N_STATIC_VIPS)
-
-    backend_gen = backend_subnet.iter_hosts()
-    backend_range = range(0, DEFAULT_N_STATIC_BACKENDS)
-
-    prefix = '[' if vip_subnet.version == 6 else ''
-    suffix = ']' if vip_subnet.version == 6 else ''
-
-    # This assumes it's OK to use the same backend list for each
-    # VIP. If we need to use different backends for each VIP,
-    # then this will need to be updated
-    backend_list = [
-        f'{prefix}{next(backend_gen)}{suffix}:{DEFAULT_BACKEND_PORT}'
-        for _ in backend_range
-    ]
-
-    return {
-        f'{prefix}{next(vip_gen)}{suffix}:{DEFAULT_VIP_PORT}': backend_list
-        for _ in vip_range
-    }
-
-
 GlobalCfg = namedtuple(
     'GlobalCfg', ['log_cmds', 'cleanup', 'run_ipv4', 'run_ipv6']
 )
 
 ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
-
-
-def calculate_default_node_remotes(net, clustered, n_relays, enable_ssl):
-    ip_gen = net.iter_hosts()
-    if n_relays > 0:
-        skip = 3 if clustered else 1
-        for _ in range(0, skip):
-            next(ip_gen)
-        ip_range = range(0, n_relays)
-    else:
-        ip_range = range(0, 3 if clustered else 1)
-    if enable_ssl:
-        remotes = ["ssl:" + str(next(ip_gen)) + ":6642" for _ in ip_range]
-    else:
-        remotes = ["tcp:" + str(next(ip_gen)) + ":6642" for _ in ip_range]
-    return ','.join(remotes)
 
 
 def usage(name):
@@ -128,113 +59,68 @@ SSL_CACERT_FILE = "/opt/ovn/pki/switchca/cacert.pem"
 
 def read_config(config):
     global_args = config.get('global', dict())
-    global_cfg = GlobalCfg(
-        log_cmds=global_args.get('log_cmds', False),
-        cleanup=global_args.get('cleanup', False),
-        run_ipv4=global_args.get('run_ipv4', True),
-        run_ipv6=global_args.get('run_ipv6', False),
-    )
+    global_cfg = GlobalCfg(**global_args)
 
-    cluster_args = config.get('cluster', dict())
-    clustered_db = cluster_args.get('clustered_db', True)
-    node_net = netaddr.IPNetwork(cluster_args.get('node_net', '192.16.0.0/16'))
-    enable_ssl = cluster_args.get('enable_ssl', True)
-    n_relays = cluster_args.get('n_relays', 0)
-    vips = (
-        cluster_args.get('vips', calculate_default_vips(DEFAULT_VIP_SUBNET))
-        if global_cfg.run_ipv4
-        else None
-    )
-    vips6 = (
-        cluster_args.get('vips6', calculate_default_vips(DEFAULT_VIP_SUBNET6))
-        if global_cfg.run_ipv6
-        else None
-    )
-    static_vips = (
-        cluster_args.get(
-            'static_vips',
-            calculate_default_static_vips(
-                DEFAULT_STATIC_VIP_SUBNET, DEFAULT_STATIC_BACKEND_SUBNET
-            ),
-        )
-        if global_cfg.run_ipv4
-        else None
-    )
-    static_vips6 = (
-        cluster_args.get(
-            'static_vips6',
-            calculate_default_static_vips(
-                DEFAULT_STATIC_VIP_SUBNET6, DEFAULT_STATIC_BACKEND_SUBNET6
-            ),
-        )
-        if global_cfg.run_ipv6
-        else None
-    )
+    cluster_args = config.get('cluster')
     cluster_cfg = ClusterConfig(
-        cluster_cmd_path=cluster_args.get(
-            'cluster_cmd_path', '/root/ovn-heater/runtime/ovn-fake-multinode'
-        ),
-        monitor_all=cluster_args.get('monitor_all', True),
-        logical_dp_groups=cluster_args.get('logical_dp_groups', True),
-        clustered_db=clustered_db,
-        datapath_type=cluster_args.get('datapath_type', 'system'),
-        raft_election_to=cluster_args.get('raft_election_to', 16),
-        node_net=node_net,
-        n_relays=n_relays,
-        enable_ssl=enable_ssl,
-        node_remote=cluster_args.get(
-            'node_remote',
-            calculate_default_node_remotes(
-                node_net, clustered_db, n_relays, enable_ssl
-            ),
-        ),
-        northd_probe_interval=cluster_args.get('northd_probe_interval', 5000),
-        db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
-        node_timeout_s=cluster_args.get('node_timeout_s', 20),
+        cluster_cmd_path=cluster_args['cluster_cmd_path'],
+        monitor_all=cluster_args['monitor_all'],
+        logical_dp_groups=cluster_args['logical_dp_groups'],
+        clustered_db=cluster_args['clustered_db'],
+        datapath_type=cluster_args['datapath_type'],
+        raft_election_to=cluster_args['raft_election_to'],
+        node_net=netaddr.IPNetwork(cluster_args['node_net']),
+        n_relays=cluster_args['n_relays'],
+        enable_ssl=cluster_args['enable_ssl'],
+        node_remote=cluster_args['node_remote'],
+        northd_probe_interval=cluster_args['northd_probe_interval'],
+        db_inactivity_probe=cluster_args['db_inactivity_probe'],
+        node_timeout_s=cluster_args['node_timeout_s'],
         internal_net=DualStackSubnet(
-            netaddr.IPNetwork(cluster_args.get('internal_net', '16.0.0.0/16'))
+            netaddr.IPNetwork(cluster_args['internal_net'])
             if global_cfg.run_ipv4
             else None,
-            netaddr.IPNetwork(cluster_args.get('internal_net6', '16::/64'))
+            netaddr.IPNetwork(cluster_args['internal_net6'])
             if global_cfg.run_ipv6
             else None,
         ),
         external_net=DualStackSubnet(
-            netaddr.IPNetwork(cluster_args.get('external_net', '3.0.0.0/16'))
+            netaddr.IPNetwork(cluster_args['external_net'])
             if global_cfg.run_ipv4
             else None,
-            netaddr.IPNetwork(cluster_args.get('external_net6', '3::/64'))
+            netaddr.IPNetwork(cluster_args['external_net6'])
             if global_cfg.run_ipv6
             else None,
         ),
         gw_net=DualStackSubnet(
-            netaddr.IPNetwork(cluster_args.get('gw_net', '2.0.0.0/16'))
+            netaddr.IPNetwork(cluster_args['gw_net'])
             if global_cfg.run_ipv4
             else None,
-            netaddr.IPNetwork(cluster_args.get('gw_net6', '2::/64'))
+            netaddr.IPNetwork(cluster_args['gw_net6'])
             if global_cfg.run_ipv6
             else None,
         ),
         cluster_net=DualStackSubnet(
-            netaddr.IPNetwork(cluster_args.get('cluster_net', '16.0.0.0/4'))
+            netaddr.IPNetwork(cluster_args['cluster_net'])
             if global_cfg.run_ipv4
             else None,
-            netaddr.IPNetwork(cluster_args.get('cluster_net6', '16::/32'))
+            netaddr.IPNetwork(cluster_args['cluster_net6'])
             if global_cfg.run_ipv6
             else None,
         ),
-        n_workers=cluster_args.get('n_workers', 2),
-        vips=vips,
-        vips6=vips6,
-        vip_subnet=DEFAULT_VIP_SUBNET,
-        static_vips=static_vips,
-        static_vips6=static_vips6,
-        use_ovsdb_etcd=cluster_args.get('use_ovsdb_etcd', False),
-        northd_threads=cluster_args.get('northd_threads', 4),
+        n_workers=cluster_args['n_workers'],
+        vips=cluster_args['vips'],
+        vips6=cluster_args['vips6'],
+        vip_subnet=cluster_args['vip_subnet'],
+        static_vips=cluster_args['static_vips'],
+        static_vips6=cluster_args['static_vips6'],
+        use_ovsdb_etcd=cluster_args['use_ovsdb_etcd'],
+        northd_threads=cluster_args['northd_threads'],
         ssl_private_key=SSL_KEY_FILE,
         ssl_cert=SSL_CERT_FILE,
         ssl_cacert=SSL_CACERT_FILE,
     )
+
     brex_cfg = BrExConfig(
         physical_net=cluster_args.get('physical_net', 'providernet'),
     )

@@ -20,6 +20,7 @@ ovn_fmn_docker=${ovn_fmn_utils}/generate-docker-cfg.py
 ovn_fmn_podman=${ovn_fmn_utils}/generate-podman-cfg.py
 ovn_fmn_get=${ovn_fmn_utils}/get-config-value.py
 ovn_fmn_ip=${rundir}/ovn-fake-multinode/ip_gen.py
+ovn_fmn_translate=${ovn_fmn_utils}/translate_yaml.py
 hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
 docker_daemon_file=${rundir}/docker-daemon.json
@@ -272,6 +273,19 @@ function install() {
     popd
 }
 
+function translate_yaml() {
+    local test_file=$1
+
+    pushd ${rundir} > /dev/null
+    source ${ovn_heater_venv}/bin/activate
+    translated_test_file=${rundir}/test-scenario.yml
+    ${ovn_fmn_translate} ${test_file} ${translated_test_file}
+    deactivate
+    popd > /dev/null
+
+    echo ${translated_test_file}
+}
+
 function record_test_config() {
     local out_dir=$1
     local out_file=${out_dir}/config
@@ -353,7 +367,7 @@ function get_tester_ip() {
     local test_file=$1
 
     # The tester gets the first IP address in the configured node_net.
-    node_net=$(${ovn_fmn_get} ${test_file} cluster node_net --default=192.16.0.0/16)
+    node_net=$(${ovn_fmn_get} ${test_file} cluster node_net)
     node_cidr=${node_net#*/}
     node_ip=${node_net%/*}
     ip_index=1
@@ -484,6 +498,7 @@ case "${1:-"usage"}" in
         fi
         shift; shift
 
+        test_file=$(translate_yaml ${test_file})
         # Run the new test.
         run_test ${test_file} ${out_dir}
         ;;

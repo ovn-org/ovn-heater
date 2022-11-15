@@ -12,9 +12,9 @@ insecure docker registries, cleanup existing docker containers).
 
 ## Physical topology
 
-* TESTER: One machine to run the tests which needs to be able to SSH
-  paswordless (preferably as `root`) to all other machines in the topology.
-  Performs the following:
+* ORCHESTRATOR: One machine that needs to be able to SSH paswordless
+  (preferably as `root`) to all other machines in the topology. Performs the
+  following:
   - prepares the test enviroment: clone the specified versions of `OVS` and
     `OVN` and build the `ovn-fake-multinode` image to be used by the `OVN`
     nodes.
@@ -22,10 +22,12 @@ insecure docker registries, cleanup existing docker containers).
     and with the correct version of `ovn-fake-multinode` to run simulated/fake
     `OVN` chassis.
   - runs a docker registry where the `ovn-fake-multinode` (i.e.,
-    `ovn/ovn-multi-node`) image is pushed and from which all other `OVN`
-    nodes will pull the image.
-  - runs the scale test scenarios.
+    `ovn/ovn-multi-node`) and `ovn-tester` images are pushed and from which all
+    other `OVN` nodes will pull the image.
 
+* TESTER: One machine to run the `ovn-tester` container which runs the python
+  ovn-tester code. Like the ORCHESTRATOR, the TESTER also needs to be able to
+  SSH passwordless to all other machines in the topology.
 * OVN-CENTRAL: One machine to run the `ovn-central` container(s) which
   run `ovn-northd` and the `Northbound` and `Southbound` databases.
 * OVN-WORKER-NODE(s): Machines to run `ovn-netlab` container(s), each of
@@ -41,12 +43,12 @@ single L2 switch. This interface will be used for traffic to/from the
 `Northbound` and `Southbound` databases and for tunneled traffic.
 
 **NOTE**: there's no restriction regarding physical machine roles so for
-debugging issues the TESTER, OVN-CENTRAL and OVN-WORKER-NODEs can all
-be the same physical machine in which case there's no need for the secondary
-Ethernet interface to exist.
+debugging issues the ORCHESTRATOR, TESTER, OVN-CENTRAL and OVN-WORKER-NODEs can
+all be the same physical machine in which case there's no need for the
+secondary Ethernet interface to exist.
 
 ## Sample physical topology:
-* TESTER: `host01.mydomain.com`
+* ORCHESTRATOR: `host01.mydomain.com`
 * OVN-CENTRAL: `host02.mydomain.com`
 * OVN-WORKER-NODEs:
   - `host03.mydomain.com`
@@ -55,14 +57,22 @@ Ethernet interface to exist.
 OVN-CENTRAL and OVN-WORKER-NODEs all have Ethernet interface `eno1`
 connected to a physical switch in a separate VLAN, as untagged interfaces.
 
-## Minimal requirements on the TESTER node (tested on Fedora 32)
+**NOTE**: The hostnames specified in the physical topology are used by both
+the ORCHESTRATOR and by the `ovn-tester` container running in the TESTER.
+Therefore, the values need to be resolvable by both of these entities and
+need to resolve to the same host. `localhost` will not work since this does
+not resolve to a unique host.
+
+## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 32)
 
 ### Install required packages:
 ```
 dnf install -y git ansible
 ```
 
-### Make docker work with Fedora 32 (disable cgroup hierarchy):
+## Minimal requirements on the TESTER node (tested on Fedora 36)
+
+### Make docker work with Fedora 32+ (disable cgroup hierarchy):
 
 ```
 dnf install -y grubby
@@ -107,10 +117,16 @@ A sample file written for the deployment described above is available at
 
 The file should contain the following mandatory sections and fields:
 - `registry-node`: the hostname (or IP) of the node that will store the
-  docker private registry. In usual cases this is should be the TESTER
+  docker private registry. In usual cases this is should be the ORCHESTRATOR
   machine.
 - `internal-iface`: the name of the Ethernet interface used by the underlay
   (DB and tunnel traffic). This can be overridden per node if needed.
+- `tester-node`:
+  - `name`: the hostname (or IP) of the node that will run `ovn-tester` (the
+    python code that performs the actual test)
+  - `ssh_key`: An ssh private key to install in the TESTER that can be used
+    to communicate with the other machines in the cluster.
+    Default: `~/.ssh/id_rsa`
 - `central-node`:
   - `name`: the hostname (or IP) of the node that will run `ovn-central`
     (`ovn-northd` and databases).
@@ -162,6 +178,9 @@ This step will:
   can be enabled by setting the `EXTRA_OPTIMIZE=yes` environment variable
   (`EXTRA_OPTIMIZE=yes ./do.sh install`).
 - push the container image to all other nodes and prepare the test environment.
+- build the `ovn/ovn-tester` container image which will be used by the TESTER
+  node to run the ovn-tester application.
+- push the `ovn/ovn-tester` container image to the TESTER node.
 
 To override the OVS, OVN or ovn-fake-multinode repos/branches use the
 following environment variables:
@@ -175,6 +194,10 @@ For example, installing components with custom OVS/OVN code:
 cd ~/ovn-heater
 OVS_REPO=https://github.com/dceara/ovs OVS_BRANCH=tmp-branch OVN_REPO=https://github.com/dceara/ovn OVN_BRANCH=tmp-branch-2 ./do.sh install
 ```
+
+NOTE: Because the installation step is responsible for deploying the ovn-tester
+container to the TESTER, this means that if any changes are made to the
+ovn-tester application, the installation step must be re-run.
 
 ## Perform a reinstallation (e.g., new OVS/OVN versions are needed):
 
@@ -231,10 +254,11 @@ cd ~/ovn-heater
 ./do.sh run <scenario> <results-dir>
 ```
 
-This executes `<scenario>` on the physical deployment. Current
-scenarios also cleanup the environment, i.e., remove all docker containers
-from all physical nodes. **NOTE**: If the environment needs to be explictly
-cleaned up, we can also execute before running the scenario:
+This executes `<scenario>` on the physical deployment (specifically on the
+`ovn-tester` container on the TESTER). Current scenarios also cleanup the
+environment, i.e., remove all docker containers from all physical nodes.
+**NOTE**: If the environment needs to be explictly cleaned up, we can also
+execute before running the scenario:
 
 ```
 cd ~/ovn-heater

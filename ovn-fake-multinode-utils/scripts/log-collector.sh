@@ -45,6 +45,14 @@ for c in $(docker ps --format "{{.Names}}" --filter "name=ovn-relay"); do
     docker cp $c:/var/log/process-stats.json ${host}/$c/
 done
 
+for c in $(docker ps --format "{{.Names}}" --filter "name=ovn-tester"); do
+    mkdir ${host}/$c
+    docker exec $c bash -c 'touch /tmp/process-monitor.exit && sleep 5'
+    docker exec $c bash -c "mkdir -p /htmls; cp -f /*.html /htmls"
+    docker cp $c:/htmls/. ${host}/$c/
+    docker cp $c:/var/log/process-stats.json ${host}/$c/
+done
+
 journalctl --since "8 hours ago" -a > ${host}/messages
 
 tar cvfz ${host}.tgz ${host}

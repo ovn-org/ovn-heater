@@ -8,7 +8,7 @@ low_scale_task:
 
   env:
     DEPENDENCIES: git ansible podman podman-docker
-    PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/localhost.yml
+    PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/ci.yml
 
   runtime_cache:
     folder: runtime-cache
@@ -16,10 +16,10 @@ low_scale_task:
   configure_ssh_script:
     - mkdir -p /root/.ssh/
     - ssh-keygen -t rsa -N '' -q -f /root/.ssh/id_rsa
-    - ssh-keyscan localhost >> /root/.ssh/known_hosts
+    - ssh-keyscan $(hostname) >> /root/.ssh/known_hosts
     - cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
     - chmod og-wx /root/.ssh/authorized_keys
-    - ssh root@localhost -v echo Hello
+    - ssh root@$(hostname) -v echo Hello
 
   install_dependencies_script:
     - dnf install -y ${DEPENDENCIES}
@@ -30,6 +30,7 @@ low_scale_task:
     - tar -xzf runtime-cache/runtime.tar.gz || true
 
   install_script:
+    - 'sed -i "s/<host>/$(hostname)/g" ${PHYS_DEPLOYMENT}'
     - ./do.sh install
 
   pack_caches_script:

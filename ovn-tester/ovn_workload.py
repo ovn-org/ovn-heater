@@ -13,6 +13,7 @@ from datetime import datetime
 
 log = logging.getLogger(__name__)
 
+
 ClusterConfig = namedtuple(
     'ClusterConfig',
     [
@@ -41,6 +42,9 @@ ClusterConfig = namedtuple(
         'static_vips',
         'static_vips6',
         'use_ovsdb_etcd',
+        'ssl_private_key',
+        'ssl_cert',
+        'ssl_cacert',
     ],
 )
 
@@ -152,6 +156,13 @@ class CentralNode(Node):
                 f'ovsdb-server/memory-trim-on-compaction on'
             )
 
+    def get_connection_string(self, cluster_cfg, port):
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        ip = self.mgmt_ip
+        num_conns = 3 if cluster_cfg.clustered_db else 1
+        conns = [f"{protocol}:{ip + idx}:{port}" for idx in range(num_conns)]
+        return ",".join(conns)
+
 
 class WorkerNode(Node):
     def __init__(
@@ -177,6 +188,7 @@ class WorkerNode(Node):
         self.ext_switch = None
         self.lports = []
         self.next_lport_index = 0
+        self.vsctl = None
 
     def start(self, cluster_cfg):
         log.info(f'Starting worker {self.container}')
@@ -186,6 +198,28 @@ class WorkerNode(Node):
             )
         )
         self.start_process_monitor(self.container)
+        pctl = ovn_utils.PhysCtl(self)
+        prot = "ptcp"
+        if cluster_cfg.enable_ssl:
+            prot = "pssl"
+            # It's lame that we have to use ovs-vsctl to set up the SSL
+            # connection. The alternative would be changing ovn-fake-multinode
+            # to set these values when it starts ovsdb-server.
+            pctl.run(
+                f"ovs-vsctl --id=@foo create SSL "
+                f"private_key={cluster_cfg.ssl_private_key} "
+                f"certificate={cluster_cfg.ssl_cert} "
+                f"ca_cert={cluster_cfg.ssl_cacert} "
+                f"-- set open_vswitch . ssl=@foo"
+            )
+        pctl.run(
+            f"ovs-appctl -t ovsdb-server ovsdb-server/add-remote {prot}:6640"
+        )
+        self.vsctl = ovn_utils.OvsVsctl(
+            self,
+            self.get_connection_string(cluster_cfg, 6640),
+            cluster_cfg.db_inactivity_probe // 1000,
+        )
 
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
@@ -384,19 +418,17 @@ class WorkerNode(Node):
     @ovn_stats.timeit
     def bind_port(self, port):
         log.info(f'Binding lport {port.name} on {self.container}')
-        vsctl = ovn_utils.OvsVsctl(self)
-        vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
+        self.vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
         # Skip creating a netns for "passive" ports, we won't be sending
         # traffic on those.
         if not port.passive:
-            vsctl.bind_vm_port(port)
+            self.vsctl.bind_vm_port(port)
 
     @ovn_stats.timeit
     def unbind_port(self, port):
-        vsctl = ovn_utils.OvsVsctl(self)
         if not port.passive:
-            vsctl.unbind_vm_port(port)
-        vsctl.del_port(port)
+            self.vsctl.unbind_vm_port(port)
+        self.vsctl.del_port(port)
 
     def provision_ports(self, cluster, n_ports, passive=False):
         ports = [self.provision_port(cluster, passive) for i in range(n_ports)]
@@ -445,6 +477,13 @@ class WorkerNode(Node):
                 self.ping_port(cluster, port, dest=port.ext_gw)
             if port.ip6:
                 self.ping_port(cluster, port, dest=port.ext_gw6)
+
+    def get_connection_string(self, cluster_cfg, port):
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        offset = 0
+        offset += 3 if cluster_cfg.clustered_db else 1
+        offset += cluster_cfg.n_relays
+        return f"{protocol}:{self.mgmt_ip + offset}:{port}"
 
 
 ACL_DEFAULT_DENY_PRIO = 1
@@ -741,8 +780,8 @@ class Cluster(object):
         self.worker_nodes = worker_nodes
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
-        self.nbctl = ovn_utils.OvnNbctl(self.central_node)
-        self.sbctl = ovn_utils.OvnSbctl(self.central_node)
+        self.nbctl = None
+        self.sbctl = None
         self.net = cluster_cfg.cluster_net
         self.router = None
         self.load_balancer = None
@@ -753,19 +792,24 @@ class Cluster(object):
 
     def start(self):
         self.central_node.start(self.cluster_cfg)
+        nb_conn = self.central_node.get_connection_string(
+            self.cluster_cfg, 6641
+        )
+        inactivity_probe = self.cluster_cfg.db_inactivity_probe // 1000
+        self.nbctl = ovn_utils.OvnNbctl(
+            self.central_node, nb_conn, inactivity_probe
+        )
+
+        sb_conn = self.central_node.get_connection_string(
+            self.cluster_cfg, 6642
+        )
+        self.sbctl = ovn_utils.OvnSbctl(
+            self.central_node, sb_conn, inactivity_probe
+        )
         for w in self.worker_nodes:
             w.start(self.cluster_cfg)
             w.configure(self.brex_cfg.physical_net)
 
-        if self.cluster_cfg.clustered_db:
-            nb_cluster_ips = [
-                str(self.central_node.mgmt_ip),
-                str(self.central_node.mgmt_ip + 1),
-                str(self.central_node.mgmt_ip + 2),
-            ]
-        else:
-            nb_cluster_ips = [str(self.central_node.mgmt_ip)]
-        self.nbctl.start_daemon(nb_cluster_ips, self.cluster_cfg.enable_ssl)
         self.nbctl.set_global(
             'use_logical_dp_groups', self.cluster_cfg.logical_dp_groups
         )

@@ -11,6 +11,12 @@
     shell: |
       docker volume prune -f
 
+  - name: Stop tester container if running
+    when: ovn_tester is defined
+    ignore_errors: yes
+    shell: |
+      docker rm -f --volumes ovn-tester
+
   - name: Delete old docker containers if any
     shell: |
       set -e

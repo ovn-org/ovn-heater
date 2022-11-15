@@ -5,41 +5,65 @@ from __future__ import print_function
 import helpers
 import yaml
 import sys
+from pathlib import Path
 
 
 def usage(name):
     print(
-        """
-{} DEPLOYMENT ovn-fake-multinode-target github-repo branch
+        f"""
+{name} DEPLOYMENT ovn-fake-multinode-target github-repo branch
 where DEPLOYMENT is the YAML file defining the deployment.
-""".format(
-            name
-        ),
+""",
         file=sys.stderr,
     )
 
 
-def generate_nodes(nodes_config, user, prefix, internal_iface):
-    for node_config in nodes_config:
-        host, node_config = helpers.get_node_config(node_config)
-        iface = node_config.get('internal-iface', internal_iface)
-        generate_worker(host, user, prefix, iface)
+def generate_node_string(host, **kwargs):
+    args = ' '.join(f"{key}={value}" for key, value in kwargs.items())
+    print(f"{host} {args}")
+
+
+def generate_node(config, user, prefix, internal_iface, **kwargs):
+    host = config['name']
+    internal_iface = config.get('internal-iface', internal_iface)
+    generate_node_string(
+        host,
+        ansible_user=user,
+        become="true",
+        internal_iface=internal_iface,
+        node_name=prefix,
+        **kwargs,
+    )
+
+
+def generate_tester(config, user, prefix, internal_iface):
+    ssh_key = config["ssh_key"]
+    ssh_key = Path(ssh_key).resolve()
+    generate_node(
+        config,
+        user,
+        prefix,
+        internal_iface,
+        ovn_tester="true",
+        ssh_key=str(ssh_key),
+    )
 
 
 def generate_controller(config, user, prefix, internal_iface):
-    host = config['name']
-    internal_iface = config.get('internal-iface', internal_iface)
-    print(
-        '{} ansible_user=root become=true internal_iface={} '
-        'node_name={} ovn_central=true'.format(host, internal_iface, prefix)
-    )
+    generate_node(config, user, prefix, internal_iface, ovn_central="true")
 
 
-def generate_worker(host, user, prefix, internal_iface):
-    print(
-        '{} ansible_user=root become=true internal_iface={} '
-        'node_name={}'.format(host, internal_iface, prefix)
-    )
+def generate_workers(nodes_config, user, prefix, internal_iface):
+    for node_config in nodes_config:
+        host, node_config = helpers.get_node_config(node_config)
+        iface = node_config.get('internal-iface', internal_iface)
+        generate_node_string(
+            host,
+            ansible_user=user,
+            become="true",
+            internal_iface=iface,
+            node_name=prefix,
+        )
 
 
 def generate(input_file, target, repo, branch):
@@ -49,11 +73,13 @@ def generate(input_file, target, repo, branch):
         prefix = config.get('prefix', 'ovn-scale')
         registry_node = config['registry-node']
         central_config = config['central-node']
+        tester_config = config['tester-node']
 
         print('[ovn_hosts]')
         internal_iface = config['internal-iface']
+        generate_tester(tester_config, user, prefix, internal_iface)
         generate_controller(central_config, user, prefix, internal_iface)
-        generate_nodes(config['worker-nodes'], user, prefix, internal_iface)
+        generate_workers(config['worker-nodes'], user, prefix, internal_iface)
         print()
 
         print('[ovn_hosts:vars]')

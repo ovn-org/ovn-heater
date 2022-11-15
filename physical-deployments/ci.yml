@@ -1,0 +1,12 @@
+registry-node: <host>
+internal-iface: lo
+
+central-node:
+  name: <host>
+
+tester-node:
+  name: <host>
+  ssh_key: /root/.ssh/id_rsa
+
+worker-nodes:
+  - <host>

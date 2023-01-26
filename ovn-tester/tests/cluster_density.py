@@ -43,9 +43,14 @@ class ClusterDensity(ExtCmd):
         ns.add_ports(ports)
         ns.create_load_balancer()
         ovn.provision_lb(ns.load_balancer)
-        ns.provision_vips_to_load_balancers(
-            [ports[0:2], ports[2:3], ports[3:4]]
-        )
+        if global_cfg.run_ipv4:
+            ns.provision_vips_to_load_balancers(
+                [ports[0:2], ports[2:3], ports[3:4]], 4
+            )
+        if global_cfg.run_ipv6:
+            ns.provision_vips_to_load_balancers(
+                [ports[0:2], ports[2:3], ports[3:4]], 6
+            )
 
         # Ping the test pods and remove the short lived ones.
         if not passive:

@@ -490,6 +490,7 @@ ACL_DEFAULT_DENY_PRIO = 1
 ACL_DEFAULT_ALLOW_ARP_PRIO = 2
 ACL_NETPOL_ALLOW_PRIO = 3
 DEFAULT_NS_VIP_SUBNET = netaddr.IPNetwork('30.0.0.0/16')
+DEFAULT_NS_VIP_SUBNET6 = netaddr.IPNetwork('30::/32')
 DEFAULT_VIP_PORT = 80
 DEFAULT_BACKEND_PORT = 8080
 
@@ -759,18 +760,30 @@ class Namespace(object):
         self.load_balancer = lb.OvnLoadBalancer(f'lb_{self.name}', self.nbctl)
 
     @ovn_stats.timeit
-    def provision_vips_to_load_balancers(self, backend_lists):
-        vip_net = DEFAULT_NS_VIP_SUBNET.next(self.cluster.n_ns)
+    def provision_vips_to_load_balancers(self, backend_lists, version):
+        vip_ns_subnet = DEFAULT_NS_VIP_SUBNET
+        if version == 6:
+            vip_ns_subnet = DEFAULT_NS_VIP_SUBNET6
+        vip_net = vip_ns_subnet.next(self.cluster.n_ns)
         n_vips = len(self.load_balancer.vips.keys())
         vip_ip = vip_net.ip.__add__(n_vips + 1)
 
-        vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
-                f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
-            ]
-            for i, ports in enumerate(backend_lists)
-        }
-        self.load_balancer.add_vips(vips)
+        if version == 6:
+            vips = {
+                f'[{vip_ip + i}]:{DEFAULT_VIP_PORT}': [
+                    f'[{p.ip6}]:{DEFAULT_BACKEND_PORT}' for p in ports
+                ]
+                for i, ports in enumerate(backend_lists)
+            }
+            self.load_balancer.add_vips(vips)
+        else:
+            vips = {
+                f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
+                    f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
+                ]
+                for i, ports in enumerate(backend_lists)
+            }
+            self.load_balancer.add_vips(vips)
 
 
 class Cluster(object):

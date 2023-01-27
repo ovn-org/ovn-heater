@@ -390,7 +390,7 @@ class WorkerNode(Node):
 
         if global_cfg.run_ipv6:
             port_ips6 = (
-                f'{port.ip6}:{DEFAULT_BACKEND_PORT}'
+                f'[{port.ip6}]:{DEFAULT_BACKEND_PORT}'
                 for port in ports
                 if port.ip6 is not None
             )

@@ -608,7 +608,13 @@ class OvnNbctl:
             "Load_Balancer",
             name=lb_name,
             protocol=protocol,
-            options={"neighbor_responder": "none"},
+            options={
+                "reject": "true",
+                "event": "false",
+                "skip_snat": "false",
+                "hairpin_snat_ip": "169.254.169.5 fd69::5",  # magic IPs.
+                "neighbor_responder": "none",
+            },
             get_func=partial(self.idl.lb_get, lb_name),
         )
         return LoadBalancer(name=lb_name, uuid=uuid)

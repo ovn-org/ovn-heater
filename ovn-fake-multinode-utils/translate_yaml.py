@@ -31,6 +31,8 @@ def calculate_node_remotes(
     net = netaddr.IPNetwork(node_net)
 
     ip_gen = net.iter_hosts()
+    # The first IP is assigned to the tester, skip it.
+    next(ip_gen)
     if n_relays > 0:
         skip = 3 if clustered_db else 1
         for _ in range(0, skip):

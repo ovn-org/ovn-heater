@@ -1,42 +1,35 @@
 - name: Run the tester
-  hosts: all
+  hosts: tester_hosts
   tasks:
   - name: Start tester container
-    when: ovn_tester is defined
     shell: |
       docker run -dt --name=ovn-tester --hostname=ovn-tester --privileged ovn/ovn-tester
 
   - name: Copy physical deployment file to tester host
-    when: ovn_tester is defined
     copy:
       src: "{{ phys_deployment }}"
       dest: /tmp/physical-deployment.yml
 
   - name: Copy physical deployment file to tester container
-    when: ovn_tester is defined
     shell: |
       docker cp /tmp/physical-deployment.yml ovn-tester:/physical-deployment.yml
 
   - name: Copy test file to tester host
-    when: ovn_tester is defined
     ansible.builtin.copy:
       src: "{{ test_file }}"
       dest: /tmp/test-scenario.yml
 
   - name: Copy files to the tester container
-    when: ovn_tester is defined
     shell: |
       docker cp /tmp/test-scenario.yml ovn-tester:/test-scenario.yml
 
   - name: Add tester container interfaces to OVS bridges
-    when: ovn_tester is defined
     shell: |
       cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
       ./ovs-docker add-port br-ovn eth1 ovn-tester --ipaddress={{ tester_ip }}
       ./ovs-docker add-port br-ovn-ext eth2 ovn-tester
 
   - name: Start process monitor
-    when: ovn_tester is defined
     shell: |
       docker exec ovn-tester bash -c "nohup python3 /tmp/process-monitor.py \
       -s ovn-tester \

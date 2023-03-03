@@ -1,8 +1,7 @@
 - name: Install ovn-tester
-  hosts: all
+  hosts: tester_hosts
   tasks:
     - name: Pull latest containers
-      when: ovn_tester is defined
       shell: |
               set -e
               docker pull {{ registry_node }}:5000/ovn/ovn-tester

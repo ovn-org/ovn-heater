@@ -1,5 +1,5 @@
 - name: Prepare the setup
-  hosts: ovn_hosts
+  hosts: all
   become: true
   tasks:
   - name: Start openvswitch

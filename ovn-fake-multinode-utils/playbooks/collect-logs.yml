@@ -1,5 +1,5 @@
 - name: Collect remote logs
-  hosts: ovn_hosts
+  hosts: all
   become: true
   tasks:
   - name: Collect logs from containers

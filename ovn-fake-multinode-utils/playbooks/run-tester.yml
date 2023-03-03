@@ -1,5 +1,5 @@
 - name: Run the tester
-  hosts: ovn_hosts
+  hosts: all
   become: true
   tasks:
   - name: Start tester container

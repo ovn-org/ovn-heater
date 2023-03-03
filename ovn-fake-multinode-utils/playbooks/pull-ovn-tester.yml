@@ -1,5 +1,5 @@
 - name: Install ovn-tester
-  hosts: ovn_hosts
+  hosts: all
   tasks:
     - name: Pull latest containers
       when: ovn_tester is defined

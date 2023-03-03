@@ -163,13 +163,15 @@ OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
 
 function install_ovn_fake_multinode() {
     echo "-- Cloning ${ovn_fmn_repo} on all nodes, revision ${ovn_fmn_branch}"
-    # Clone repo on all hosts.
-    ansible-playbook ${ovn_fmn_playbooks}/install-fake-multinode.yml -i ${hosts_file}
 
     local rebuild_needed=0
 
     # Clone repo locally
     clone_component ovn-fake-multinode ${ovn_fmn_repo} ${ovn_fmn_branch} || rebuild_needed=1
+
+    # Copy repo to all hosts.
+    ansible-playbook ${ovn_fmn_playbooks}/install-fake-multinode.yml -i ${hosts_file} \
+        --extra-vars="ovn_fake_multinode_local_path=${rundir}/ovn-fake-multinode"
 
     if [ -n "$RPM_OVS" ]
     then

@@ -6,18 +6,9 @@
         path: "{{ ovn_fake_multinode_target_path }}"
         state: directory
 
-    - name: Remove old ovn-fake-multinode remote installation
-      file:
-        path: "{{ ovn_fake_multinode_target_path }}/ovn-fake-multinode"
-        state: absent
-
-    - name: Clone ovn-fake-multinode
-      shell: |
-              set -e
-              cd {{ ovn_fake_multinode_target_path }}
-              git clone {{ ovn_fake_multinode_repo }}
-              cd ovn-fake-multinode
-              git remote set-url origin {{ ovn_fake_multinode_repo }}
-              git fetch origin
-              git checkout {{ ovn_fake_multinode_branch }}
-              git pull
+    - name: Sync ovn-fake-multinode
+      ansible.posix.synchronize:
+        src: "{{ ovn_fake_multinode_local_path }}"
+        dest: "{{ ovn_fake_multinode_target_path }}"
+        delete: true
+        recursive: true

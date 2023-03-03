@@ -183,6 +183,7 @@ class VSIdl(ovs_impl_idl.OvsdbIdl, Backend):
 
 class OvsVsctl:
     def __init__(self, sb, connection_string, inactivity_probe):
+        log.info(f'OvsVsctl: {connection_string}, probe: {inactivity_probe}')
         self.sb = sb
         i = connection.OvsdbIdl.from_server(connection_string, "Open_vSwitch")
         c = connection.Connection(i, inactivity_probe)
@@ -367,6 +368,7 @@ class UUIDTransactionError(Exception):
 
 class OvnNbctl:
     def __init__(self, sb, connection_string, inactivity_probe):
+        log.info(f'OvnNbctl: {connection_string}, probe: {inactivity_probe}')
         i = connection.OvsdbIdl.from_server(
             connection_string, "OVN_Northbound"
         )
@@ -708,6 +710,7 @@ class SBIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
 
 class OvnSbctl:
     def __init__(self, sb, connection_string, inactivity_probe):
+        log.info(f'OvnSbctl: {connection_string}, probe: {inactivity_probe}')
         i = BaseOvnSbIdl.from_server(connection_string)
         c = connection.Connection(i, inactivity_probe)
         self.idl = SBIdl(c)

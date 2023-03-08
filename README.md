@@ -369,3 +369,11 @@ The following fields are important for ovn-fake-node to detect and run ovsdb-etc
   enable_ssl: False
   use_ovsdb_etcd: true
 ```
+
+# Contributing to ovn-heater
+
+Please check out our [contributing guidelines](./CONTRIBUTING.md) for
+instructions about contributing patches to ovn-heater.  Please open
+[GitHub issues](https://github.com/dceara/ovn-heater/issues) for
+reporting any potential bugs or for requesting new ovn-heater
+features.

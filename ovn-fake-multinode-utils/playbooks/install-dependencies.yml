@@ -2,6 +2,24 @@
   hosts: ovn_hosts
   tasks:
     - name: Install required packages
-      shell: yum install git gcc openvswitch python3-pyyaml python3-virtualenv python3-devel containers-common --skip-broken -y
+      shell: |
+        yum install git gcc openvswitch python3-pyyaml python3-virtualenv \
+            python3-devel containers-common --skip-broken -y
+      when: ansible_os_family == "RedHat"
+    - name: Install required packages
+      ansible.builtin.package:
+        name:
+          - git
+          - gcc
+          - openvswitch-switch
+          - python3-yaml
+          - python3-virtualenv
+          - python3-all-dev
+        state: present
+      when: ansible_os_family == "Debian"
     - name: Install container command
-      shell: yum install podman podman-docker -y
+      ansible.builtin.package:
+        name:
+          - podman
+          - podman-docker
+        state: present

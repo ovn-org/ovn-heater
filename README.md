@@ -67,7 +67,7 @@ not resolve to a unique host.
 
 ### Install required packages:
 ```
-dnf install -y git ansible
+dnf install -y git ansible ansible-collection-ansible-posix
 ```
 
 ## Minimal requirements on the TESTER node (tested on Fedora 36)

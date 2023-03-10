@@ -17,7 +17,6 @@ log = logging.getLogger(__name__)
 ClusterConfig = namedtuple(
     'ClusterConfig',
     [
-        'cluster_cmd_path',
         'monitor_all',
         'logical_dp_groups',
         'clustered_db',

@@ -1,6 +1,5 @@
 - name: Run the tester
   hosts: all
-  become: true
   tasks:
   - name: Start tester container
     when: ovn_tester is defined

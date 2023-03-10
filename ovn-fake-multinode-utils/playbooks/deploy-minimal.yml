@@ -1,6 +1,5 @@
 - name: Prepare the setup
   hosts: all
-  become: true
   tasks:
   - name: Start openvswitch
     ansible.builtin.systemd:

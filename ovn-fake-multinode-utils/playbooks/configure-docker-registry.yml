@@ -1,6 +1,5 @@
 - name: Configure docker
   hosts: all
-  become: true
   tasks:
   - name: Start docker
     systemd:

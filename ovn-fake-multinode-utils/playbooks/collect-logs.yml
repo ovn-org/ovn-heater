@@ -1,6 +1,5 @@
 - name: Collect remote logs
   hosts: all
-  become: true
   tasks:
   - name: Collect logs from containers
     shell: |

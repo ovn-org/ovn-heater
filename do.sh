@@ -469,12 +469,16 @@ function run_test() {
     fi
 
     tester_host=$(${ovn_fmn_get} ${phys_deployment} tester-node name)
-    if ! ssh root@${tester_host} docker exec ovn-tester python3 -u /ovn-tester/ovn_tester.py /physical-deployment.yml /test-scenario.yml 2>&1 | tee ${out_dir}/test-log ; then
+    if ! ssh root@${tester_host} docker exec \
+            ovn-tester python3 -u /ovn-tester/ovn_tester.py \
+                                  /physical-deployment.yml /test-scenario.yml ;
+    then
         echo "-- Failed to run test. Check logs at: ${out_dir}/test-log"
     fi
 
     echo "-- Collecting logs to: ${out_dir}"
-    ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} --extra-vars "results_dir=${out_dir}/logs"
+    ansible-playbook ${ovn_fmn_playbooks}/collect-logs.yml -i ${hosts_file} \
+        --extra-vars "results_dir=${out_dir}/logs"
 
     pushd ${out_dir}/logs
     for f in *.tgz; do
@@ -574,7 +578,8 @@ case "${1:-"usage"}" in
 
         test_file=$(translate_yaml ${test_file})
         # Run the new test.
-        run_test ${test_file} ${out_dir}
+        mkdir -p ${out_dir}
+        run_test ${test_file} ${out_dir} 2>&1 | tee ${out_dir}/test-log
         ;;
     *)
         usage $0

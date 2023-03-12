@@ -1,14 +1,18 @@
 low_scale_task:
 
   compute_engine_instance:
-    image_project: fedora-cloud
-    image: family/fedora-cloud-35
+    matrix:
+      - image_project: fedora-cloud
+        image: family/fedora-cloud-35
+      - image_project: ubuntu-os-cloud
+        image: family/ubuntu-2204-lts
     platform: linux
     memory: 8G
+    disk: 20
 
   env:
-    DEPENDENCIES: git ansible ansible-collection-ansible-posix
-                  podman podman-docker
+    DEPENDENCIES: git ansible podman podman-docker
+    FEDORA_DEP: ansible-collection-ansible-posix
     PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/ci.yml
 
   runtime_cache:
@@ -23,7 +27,12 @@ low_scale_task:
     - ssh root@$(hostname) -v echo Hello
 
   install_dependencies_script:
-    - dnf install -y ${DEPENDENCIES}
+    - 'if [ $(which dnf) ]; then
+        dnf install -y ${DEPENDENCIES} ${FEDORA_DEP};
+       fi'
+    - 'if [ $(which apt) ]; then
+        apt update && apt install -y ${DEPENDENCIES};
+       fi'
 
   unpack_caches_script:
     - mkdir -p runtime runtime-cache

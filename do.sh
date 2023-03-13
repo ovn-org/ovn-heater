@@ -56,14 +56,9 @@ function install_deps() {
     ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml -i ${hosts_file}
 
     echo "-- Installing local dependencies"
-    if yum install docker-ce --nobest -y
-    then
-        systemctl start docker
-    else
-        yum install -y podman podman-docker
-    fi
     yum install redhat-lsb-core datamash \
         python3-pip python3-virtualenv python3 python3-devel python-virtualenv \
+        podman podman-docker \
         --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 

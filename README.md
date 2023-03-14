@@ -1,4 +1,4 @@
-# ovn-heater
+# ovn-heater <img align="right" src="logo.png" width="35px"/>
 
 Mega script to install/configure/run
 a simulated OVN cluster deployed with

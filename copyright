@@ -1,3 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ovn-heater
+Source: https://github.com/ovn-org/ovn-heater
+
+Upstream Authors:
+
 Ales Musil amusil@redhat.com
 Ben Pfaff blp@ovn.org
 Dan Williams dcbw@redhat.com
@@ -9,3 +15,8 @@ Lorenzo Bianconi lorenzo.bianconi@redhat.com
 Mark Michelson mmichels@redhat.com
 Mohamed S. Mahmoud mmahmoud@redhat.com
 Numan Siddique nusiddiq@redhat.com
+
+Files: *
+Copyright: (c) 2020 VMware, Inc.
+           (c) 2020-2023 RedHat, Inc.
+License: Apache-2.0

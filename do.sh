@@ -34,9 +34,43 @@ ovn_tester=${topdir}/ovn-tester
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
 
+# We want values from both the `ID` and `ID_LIKE` fields to ensure successful
+# categorization.  The shell will happily accept both spaces and newlines as
+# separators:
+# https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
+DISTRO_IDS=$(awk -F= '/^ID/{print$2}' /etc/os-release | tr -d '"')
+
+function is_rpm_based() {
+    for id in $DISTRO_IDS; do
+        case $id in
+        centos* | rhel* | fedora*)
+            true
+            return
+        ;;
+        esac
+    done
+    false
+}
+
+function is_deb_based() {
+    for id in $DISTRO_IDS; do
+        case $id in
+        debian* | ubuntu*)
+            true
+            return
+            ;;
+        esac
+    done
+    false
+}
+
 function die() {
     echo $1
     exit 1
+}
+
+function die_distro() {
+    die "Unable to determine distro type, rpm- and deb-based are supported."
 }
 
 function generate() {
@@ -51,22 +85,29 @@ function generate() {
     cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
 }
 
-function install_deps() {
-    echo "-- Installing dependencies on all nodes"
-    ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml -i ${hosts_file}
-
+function install_deps_local_rpm() {
     echo "-- Installing local dependencies"
-    if yum install docker-ce --nobest -y
-    then
-        systemctl start docker
-    else
-        yum install -y podman podman-docker
-    fi
     yum install redhat-lsb-core datamash \
-        python3-pip python3-virtualenv python3 python3-devel python-virtualenv \
+        python3-pip python3-virtualenv python3 python3-devel \
+        python-virtualenv podman podman-docker \
         --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
+}
+
+function install_deps_local_deb() {
+    echo "-- Installing local dependencies"
+    apt -y install datamash podman podman-docker python3-pip \
+           python3-virtualenv python3 python3-all-dev python3-virtualenv
+}
+
+function install_deps_remote() {
+    echo "-- Installing dependencies on all nodes"
+    ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml \
+        -i ${hosts_file}
+}
+
+function run_registry() {
     containers=$(docker ps --all --filter='name=(ovn|registry)' \
                         | grep -v "CONTAINER ID" | awk '{print $1}' || true)
     for container_name in $containers
@@ -77,10 +118,10 @@ function install_deps() {
     [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
     docker run --privileged -d --name registry -p 5000:5000 \
           -v /var/lib/registry:/var/lib/registry --restart=always docker.io/library/registry:2
-        cp /etc/containers/registries.conf /etc/containers/registries.conf.bak
-        cat > /etc/containers/registries.conf << EOF
-[registries.search]
-registries = ['registry.access.redhat.com', 'registry.redhat.io']
+
+    # This is requried on the orchestrator for local image build/push to work
+    cp /etc/containers/registries.conf /etc/containers/registries.conf.bak
+    cat > /etc/containers/registries.conf << EOF
 [registries.insecure]
 registries = ['localhost:5000']
 [registries.block]
@@ -262,7 +303,17 @@ function pull_ovn_tester() {
 
 function install() {
     pushd ${rundir}
-    install_deps
+    if is_rpm_based
+    then
+        install_deps_local_rpm
+    elif is_deb_based
+    then
+        install_deps_local_deb
+    else
+        die_distro
+    fi
+    install_deps_remote
+    run_registry
     install_venv
     configure_docker
     install_ovn_fake_multinode

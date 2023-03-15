@@ -66,29 +66,56 @@ not resolve to a unique host.
 ## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 32)
 
 ### Install required packages:
+
+#### RPM-based
 ```
 dnf install -y git ansible ansible-collection-ansible-posix
 ```
 
+#### DEB-based
+```
+sudo apt -y install ansible
+```
+
 ## Minimal requirements on the TESTER node (tested on Fedora 36)
 
-### Make docker work with Fedora 32+ (disable cgroup hierarchy):
+### Make docker work with nested containers (disable cgroup hierarchy):
 
+#### RPM-based Fedora 32+
 ```
 dnf install -y grubby
 grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
 reboot
 ```
+
+#### DEB-based
+Edit /etc/default/grub and add `systemd.unified_cgroup_hierarchy=0` at the
+end of the `GRUB_CMDLINE_LINUX_DEFAULT` variable.
+
+```
+sudo update-grub
+sudo reboot
+````
 
 ## Minimal requirements on the OVN-CENTRAL and OVN-WORKER-NODEs
 
-### Make docker work with Fedora 32 (disable cgroup hierarchy):
+### Make docker work with nested containers (disable cgroup hierarchy):
 
+#### RPM-based Fedora 32+
 ```
 dnf install -y grubby
 grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
 reboot
 ```
+
+#### DEB-based
+Edit /etc/default/grub and add `systemd.unified_cgroup_hierarchy=0` at the
+end of the `GRUB_CMDLINE_LINUX_DEFAULT` variable.
+
+```
+sudo update-grub
+sudo reboot
+````
 
 # Installation
 

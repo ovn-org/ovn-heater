@@ -2,6 +2,43 @@
   hosts: ovn_hosts
   tasks:
     - name: Install required packages
-      shell: yum install git gcc openvswitch python3-pyyaml python3-virtualenv python3-devel containers-common --skip-broken -y
+      ansible.builtin.package:
+        name:
+          - git
+          - gcc
+          - python3-pyyaml
+          - python3-virtualenv
+          - python3-devel
+          - containers-common
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    # 'skip-broken' might not work with specific ansible versions
+    # so ignore_errors for packages that might not be there.
+    # https://github.com/ansible/ansible/commit/6bcb494f8306
+    - name: Install optional packages
+      ansible.builtin.package:
+        name:
+          - openvswitch
+        state: present
+      ignore_errors: true
+      when: ansible_os_family == "RedHat"
+
+    - name: Install required packages
+      ansible.builtin.package:
+        name:
+          - git
+          - gcc
+          - openvswitch-switch
+          - python3-yaml
+          - python3-virtualenv
+          - python3-all-dev
+        state: present
+      when: ansible_os_family == "Debian"
+
     - name: Install container command
-      shell: yum install docker-ce --nobest -y || yum install docker -y || yum install podman podman-docker -y
+      ansible.builtin.package:
+        name:
+          - podman
+          - podman-docker
+        state: present

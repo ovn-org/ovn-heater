@@ -135,7 +135,7 @@ nodes.
 
 ```
 cd
-git clone https://github.com/dceara/ovn-heater.git
+git clone https://github.com/ovn-org/ovn-heater.git
 ```
 
 ## Write the physical deployment description yaml file:
@@ -402,6 +402,6 @@ The following fields are important for ovn-fake-node to detect and run ovsdb-etc
 
 Please check out our [contributing guidelines](./CONTRIBUTING.md) for
 instructions about contributing patches to ovn-heater.  Please open
-[GitHub issues](https://github.com/dceara/ovn-heater/issues) for
+[GitHub issues](https://github.com/ovn-org/ovn-heater/issues) for
 reporting any potential bugs or for requesting new ovn-heater
 features.

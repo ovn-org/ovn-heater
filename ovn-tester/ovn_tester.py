@@ -63,7 +63,6 @@ def read_config(config):
 
     cluster_args = config.get('cluster')
     cluster_cfg = ClusterConfig(
-        cluster_cmd_path=cluster_args['cluster_cmd_path'],
         monitor_all=cluster_args['monitor_all'],
         logical_dp_groups=cluster_args['logical_dp_groups'],
         clustered_db=cluster_args['clustered_db'],
@@ -204,7 +203,7 @@ def create_nodes(cluster_config, central, workers):
             workers[i % len(workers)],
             f'ovn-scale-{i}',
             mgmt_net,
-            mgmt_ip + i + 1,
+            mgmt_ip + i,
             DualStackSubnet.next(internal_net, i),
             DualStackSubnet.next(external_net, i),
             gw_net,

@@ -1,5 +1,5 @@
 - name: Install ovn-fake-multinode
-  hosts: ovn_hosts
+  hosts: all
   tasks:
     - name: Ensure ovn-fake-multinode remote dirs
       file:

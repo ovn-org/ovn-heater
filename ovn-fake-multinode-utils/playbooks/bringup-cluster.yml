@@ -1,0 +1,123 @@
+- name: Bring up the tester
+  hosts: tester_hosts
+  tasks:
+  - name: Start tester container
+    ansible.builtin.shell: |
+      docker run -dt --name=ovn-tester --hostname=ovn-tester \
+                     --privileged ovn/ovn-tester
+
+  - name: Add tester container interfaces to OVS bridges
+    ansible.builtin.shell: |
+      ./ovs-docker add-port br-ovn eth1 ovn-tester \
+          --ipaddress={{ node_net|ansible.utils.ipaddr('1') }}
+      ./ovs-docker add-port br-ovn-ext eth2 ovn-tester
+    args:
+      chdir: "{{ ovn_fake_multinode_target_path }}/ovn-fake-multinode"
+
+
+- name: Bring up central nodes
+  hosts: central_hosts
+  tasks:
+  - name: Start central containers
+    environment:
+      CHASSIS_COUNT: 0
+      CREATE_FAKE_VMS: no
+      ENABLE_ETCD: '{{ use_ovsdb_etcd }}'
+      ENABLE_SSL:  '{{ enable_ssl }}'
+      GW_COUNT: 0
+      IP_CIDR:  "{{ node_net|ansible.utils.ipaddr('prefix') }}"
+      IP_HOST:  "{{ node_net|ansible.utils.ipaddr('network') }}"
+      IP_START: "{{ node_net|ansible.utils.ipmath(2) }}"
+      OVN_DB_CLUSTER:  '{{ clustered_db }}'
+      OVN_DP_TYPE:     '{{ datapath_type }}'
+      OVN_MONITOR_ALL: '{{ monitor_all }}'
+      RELAY_COUNT:     '{{ n_relays }}'
+    ansible.builtin.shell: |
+      ./ovn_cluster.sh start
+    args:
+      chdir: "{{ ovn_fake_multinode_target_path }}/ovn-fake-multinode"
+
+
+- name: Bring up worker nodes
+  hosts: worker_hosts
+  tasks:
+  - name: Start worker containers
+    environment:
+      CHASSIS_COUNT: 0
+      CREATE_FAKE_VMS: no
+      ENABLE_ETCD: '{{ use_ovsdb_etcd }}'
+      ENABLE_SSL:  '{{ enable_ssl }}'
+      GW_COUNT: 0
+      IP_CIDR:  "{{ node_net|ansible.utils.ipaddr('prefix') }}"
+      IP_HOST:  "{{ node_net|ansible.utils.ipaddr('network') }}"
+      IP_START: "{{ node_net|ansible.utils.ipmath(2 + item|int) }}"
+      OVN_DB_CLUSTER:  '{{ clustered_db }}'
+      OVN_DP_TYPE:     '{{ datapath_type }}'
+      OVN_MONITOR_ALL: '{{ monitor_all }}'
+      RELAY_COUNT:     '{{ n_relays }}'
+    ansible.builtin.shell: |
+      ./ovn_cluster.sh add-chassis \
+          {{ node_name }}-{{ item|int }} tcp:0.0.0.1:6642
+    args:
+      chdir: "{{ ovn_fake_multinode_target_path }}/ovn-fake-multinode"
+    loop: "{{ range(groups['worker_hosts'].index(inventory_hostname),
+                    n_workers|int, groups['worker_hosts']|length) | list }}"
+
+
+- name: Start process monitoring
+  hosts: all
+  tasks:
+  - name: Enumerate containers
+    ansible.builtin.shell: |
+      docker ps --filter='name=ovn-' --noheading --format={{ '{{.Names}}' }}
+    register: containers
+
+  - name: Copy and start the process monitoring script in containers
+    ansible.builtin.shell: |
+      docker cp /tmp/process-monitor.py {{ item }}:/tmp/
+      docker exec {{ item }} bash -c "
+        nohup python3 /tmp/process-monitor.py \\
+          -s {{ item }} \\
+          -o /var/log/process-stats.json \\
+          -x /tmp/process-monitor.exit &
+      "
+    loop: "{{ containers.stdout_lines }}"
+
+
+- name: Set up SSL remote for local ovsdb-server
+  hosts: worker_hosts
+  tasks:
+  - name: Enumerate containers
+    ansible.builtin.shell: |
+      docker ps --filter='name={{ node_name }}-' \
+                --noheading --format={{ '{{.Names}}' }}
+    register: containers
+
+  - name: Set up SSL
+    when: enable_ssl == "yes"
+    ansible.builtin.shell: |
+      # SSL files are installed by ovn-fake-multinode in these locations.
+      docker exec {{ item }} bash -c "
+        ovs-vsctl --id=@foo create SSL \\
+          private_key=/opt/ovn/ovn-privkey.pem \\
+          certificate=/opt/ovn/ovn-cert.pem \\
+          ca_cert=/opt/ovn/pki/switchca/cacert.pem \\
+          -- set Open_vSwitch . ssl=@foo
+      "
+    loop: "{{ containers.stdout_lines }}"
+
+  - name: Add secure OVSDB remote
+    when: enable_ssl == "yes"
+    ansible.builtin.shell: |
+      docker exec {{ item }} bash -c "
+        ovs-appctl -t ovsdb-server ovsdb-server/add-remote pssl:6640
+      "
+    loop: "{{ containers.stdout_lines }}"
+
+  - name: Add insecure OVSDB remote
+    when: enable_ssl == "no"
+    ansible.builtin.shell: |
+      docker exec {{ item }} bash -c "
+        ovs-appctl -t ovsdb-server ovsdb-server/add-remote ptcp:6640
+      "
+    loop: "{{ containers.stdout_lines }}"

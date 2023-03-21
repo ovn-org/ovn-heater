@@ -198,6 +198,13 @@ class OvsVsctl:
     ):
         self.sb.run(cmd=prefix + cmd, stdout=stdout, timeout=timeout)
 
+    def set_global_external_id(self, key, value):
+        self.idl.db_set(
+            "Open_vSwitch",
+            self.idl._ovs.uuid,
+            ("external_ids", {key: str(value)}),
+        ).execute(check_error=True)
+
     def add_port(self, port, bridge, internal=True, ifaceid=None):
         name = port.name
         with self.idl.transaction(check_error=True) as txn:

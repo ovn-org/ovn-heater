@@ -109,7 +109,6 @@ class ClusterConfig:
     Fields with "None" as their default are calculated in the __post_init__
     method."""
 
-    cluster_cmd_path: str = '/root/ovn-heater/runtime/ovn-fake-multinode'
     monitor_all: bool = True
     logical_dp_groups: bool = True
     clustered_db: bool = True

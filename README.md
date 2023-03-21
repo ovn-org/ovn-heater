@@ -69,7 +69,8 @@ not resolve to a unique host.
 
 #### RPM-based
 ```
-dnf install -y git ansible ansible-collection-ansible-posix
+dnf install -y git ansible \
+    ansible-collection-ansible-posix ansible-collection-ansible-utils
 ```
 
 #### DEB-based

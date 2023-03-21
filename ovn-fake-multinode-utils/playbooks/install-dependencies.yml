@@ -1,5 +1,5 @@
 - name: Install dependencies
-  hosts: ovn_hosts
+  hosts: all
   tasks:
     - name: Install required packages
       ansible.builtin.package:

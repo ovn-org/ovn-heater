@@ -23,46 +23,38 @@ def generate_node_string(host, **kwargs):
     print(f"{host} {args}")
 
 
-def generate_node(config, user, prefix, internal_iface, **kwargs):
+def generate_node(config, internal_iface, **kwargs):
     host = config['name']
     internal_iface = config.get('internal-iface', internal_iface)
     generate_node_string(
         host,
-        ansible_user=user,
-        become="true",
         internal_iface=internal_iface,
-        node_name=prefix,
         **kwargs,
     )
 
 
-def generate_tester(config, user, prefix, internal_iface):
+def generate_tester(config, internal_iface):
     ssh_key = config["ssh_key"]
     ssh_key = Path(ssh_key).resolve()
     generate_node(
         config,
-        user,
-        prefix,
         internal_iface,
         ovn_tester="true",
         ssh_key=str(ssh_key),
     )
 
 
-def generate_controller(config, user, prefix, internal_iface):
-    generate_node(config, user, prefix, internal_iface, ovn_central="true")
+def generate_controller(config, internal_iface):
+    generate_node(config, internal_iface, ovn_central="true")
 
 
-def generate_workers(nodes_config, user, prefix, internal_iface):
+def generate_workers(nodes_config, internal_iface):
     for node_config in nodes_config:
         host, node_config = helpers.get_node_config(node_config)
         iface = node_config.get('internal-iface', internal_iface)
         generate_node_string(
             host,
-            ansible_user=user,
-            become="true",
             internal_iface=iface,
-            node_name=prefix,
         )
 
 
@@ -74,15 +66,20 @@ def generate(input_file, target, repo, branch):
         registry_node = config['registry-node']
         central_config = config['central-node']
         tester_config = config['tester-node']
-
-        print('[ovn_hosts]')
         internal_iface = config['internal-iface']
-        generate_tester(tester_config, user, prefix, internal_iface)
-        generate_controller(central_config, user, prefix, internal_iface)
-        generate_workers(config['worker-nodes'], user, prefix, internal_iface)
+
+        print('[tester_hosts]')
+        generate_tester(tester_config, internal_iface)
+        print('\n[central_hosts]')
+        generate_controller(central_config, internal_iface)
+        print('\n[worker_hosts]')
+        generate_workers(config['worker-nodes'], internal_iface)
         print()
 
-        print('[ovn_hosts:vars]')
+        print('[all:vars]')
+        print('ansible_user=' + user)
+        print('become=true')
+        print('node_name=' + prefix)
         print('ovn_fake_multinode_target_path=' + target)
         print('ovn_fake_multinode_path=' + target + '/ovn-fake-multinode')
         print('ovn_fake_multinode_repo=' + repo)

@@ -1,6 +1,5 @@
 - name: Configure docker
-  hosts: ovn_hosts
-  become: true
+  hosts: all
   tasks:
 
   - name: backup registries.conf

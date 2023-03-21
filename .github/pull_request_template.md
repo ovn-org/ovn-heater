@@ -1,6 +1,6 @@
 <!--
 Please make sure you've read and understood our contributing guidelines;
-https://github.com/dceara/ovn-heater/blob/main/CONTRIBUTING.md
+https://github.com/ovn-org/ovn-heater/blob/main/CONTRIBUTING.md
 
 ** Make sure all your commits include a signature generated with `git commit -s` **
 

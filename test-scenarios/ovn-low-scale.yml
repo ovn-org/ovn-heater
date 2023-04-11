@@ -13,7 +13,7 @@ ext_cmd:
   - c0:
     iteration: 1
     node: "ovn-scale-*"
-    cmd: "perf record -g -e cpu-cycles -F 99 -o ovn-perf.data"
+    cmd: "perf record -a -g -F 99 -o perf.data"
     pid_name: "ovn-controller"
     pid_opt: "-p"
     background_opt: True
@@ -27,7 +27,7 @@ ext_cmd:
   - c2:
     iteration: 1
     node: "ovn-central*"
-    cmd: "perf record -g -e cpu-cycles -F 99 -o ovn-perf.data"
+    cmd: "perf record -a -g -F 99 -o perf.data"
     pid_name: "ovn-northd"
     pid_opt: "-p"
     background_opt: True

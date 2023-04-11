@@ -1,5 +1,16 @@
 from collections import defaultdict
+from fnmatch import fnmatch
 from io import StringIO
+from ovn_sandbox import Sandbox
+
+
+# The wrapper allows us to execute the command on all
+# matching central containers
+class CentralNodeWrapper(Sandbox):
+    def __init__(self, central_node, container):
+        super(CentralNodeWrapper, self).__init__(
+            central_node.phys_node, container
+        )
 
 
 class ExtCmdUnit(object):
@@ -10,39 +21,41 @@ class ExtCmdUnit(object):
         self.pid_name = conf.get('pid_name')
         self.background_opt = conf.get('background_opt')
         self.pid_opt = conf.get('pid_opt', '')
-        self.node = None
 
         node = conf.get('node')
-        if node == central_node.container:
-            self.node = central_node
-            return
-
-        for wn in worker_nodes:
-            if node == wn.container:
-                self.node = wn
-                return
+        self.nodes = [n for n in worker_nodes if fnmatch(n.container, node)]
+        self.nodes.extend(
+            [
+                CentralNodeWrapper(central_node, c)
+                for c in central_node.central_containers()
+                if fnmatch(c, node)
+            ]
+        )
 
     def is_valid(self):
         return (
             self.iteration is not None
             and self.cmd
             and self.test
-            and self.node is not None
+            and self.nodes
         )
 
     def exec(self):
+        return [self._node_exec(node) for node in self.nodes]
+
+    def _node_exec(self, node):
         cmd = self.cmd
 
         if self.pid_name:
             stdout = StringIO()
-            self.node.run(f'pidof -s {self.pid_name}', stdout=stdout)
+            node.run(f'pidof -s {self.pid_name}', stdout=stdout)
             cmd += f' {self.pid_opt} {stdout.getvalue().strip()}'
 
         if self.background_opt:
             cmd += ' &'
 
         stdout = StringIO()
-        self.node.run(cmd, stdout=stdout)
+        node.run(cmd, stdout=stdout)
         return stdout.getvalue().strip()
 
 

@@ -126,6 +126,9 @@ class CentralNode(Node):
         conns = [f"{protocol}:{ip + idx}:{port}" for idx in range(num_conns)]
         return ",".join(conns)
 
+    def central_containers(self):
+        return self.db_containers
+
 
 class WorkerNode(Node):
     def __init__(

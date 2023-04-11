@@ -12,7 +12,7 @@ cluster:
 ext_cmd:
   - c0:
     iteration: 1
-    node: "ovn-scale-0"
+    node: "ovn-scale-*"
     cmd: "perf record -g -e cpu-cycles -F 99 -o ovn-perf.data"
     pid_name: "ovn-controller"
     pid_opt: "-p"
@@ -20,7 +20,21 @@ ext_cmd:
     test: "density_light"
   - c1:
     iteration: 9
-    node: "ovn-scale-0"
+    node: "ovn-scale-*"
+    cmd: "kill"
+    pid_name: "perf"
+    test: "density_light"
+  - c2:
+    iteration: 1
+    node: "ovn-central*"
+    cmd: "perf record -g -e cpu-cycles -F 99 -o ovn-perf.data"
+    pid_name: "ovn-northd"
+    pid_opt: "-p"
+    background_opt: True
+    test: "density_light"
+  - c3:
+    iteration: 9
+    node: "ovn-central*"
     cmd: "kill"
     pid_name: "perf"
     test: "density_light"

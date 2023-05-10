@@ -136,7 +136,10 @@ function install_venv() {
         python3 -m virtualenv ${ovn_heater_venv}
     fi
     source ${ovn_heater_venv}/bin/activate
-    pip install -r ${topdir}/utils/requirements.txt
+    if is_rpm_based; then
+        python3 -m ensurepip
+    fi
+    python3 -m pip install -r ${topdir}/utils/requirements.txt
     deactivate
     popd
 }

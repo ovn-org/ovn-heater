@@ -3,7 +3,7 @@ low_scale_task:
   compute_engine_instance:
     matrix:
       - image_project: fedora-cloud
-        image: family/fedora-cloud-35
+        image: family/fedora-cloud-38
       - image_project: ubuntu-os-cloud
         image: family/ubuntu-2210-amd64
     platform: linux

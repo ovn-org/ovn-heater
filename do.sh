@@ -40,6 +40,8 @@ USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
 # https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
 DISTRO_IDS=$(awk -F= '/^ID/{print$2}' /etc/os-release | tr -d '"')
 
+DISTRO_VERSION_ID=$(awk -F= '/^VERSION_ID/{print$2}' /etc/os-release | tr -d '"')
+
 function is_rpm_based() {
     for id in $DISTRO_IDS; do
         case $id in
@@ -254,15 +256,13 @@ function install_ovn_fake_multinode() {
 
     if [ ${rebuild_needed} -eq 1 ]; then
         if [ -z "${OS_IMAGE_OVERRIDE}" ]; then
-            os_release=$(lsb_release -r | awk '{print $2}')
-            os_release=${os_release:-"32"}
             if grep Fedora /etc/redhat-release
             then
-                os_image="fedora:$os_release"
+                os_image="fedora:${DISTRO_VERSION_ID}"
             elif grep "Red Hat Enterprise Linux" /etc/redhat-release
             then
-                [[ "$os_release" =~ 7\..* ]] && os_image="registry.access.redhat.com/ubi7/ubi:$os_release"
-                [[ "$os_release" =~ 8\..* ]] && os_image="registry.access.redhat.com/ubi8/ubi:$os_release"
+                [[ "${DISTRO_VERSION_ID}" =~ 7\..* ]] && os_image="registry.access.redhat.com/ubi7/ubi:${DISTRO_VERSION_ID}"
+                [[ "${DISTRO_VERSION_ID}" =~ 8\..* ]] && os_image="registry.access.redhat.com/ubi8/ubi:${DISTRO_VERSION_ID}"
             fi
         else
             os_image=${OS_IMAGE_OVERRIDE}

@@ -7,7 +7,6 @@
           - git
           - gcc
           - python3-pyyaml
-          - python3-virtualenv
           - python3-devel
           - containers-common
         state: present
@@ -31,7 +30,6 @@
           - gcc
           - openvswitch-switch
           - python3-yaml
-          - python3-virtualenv
           - python3-all-dev
         state: present
       when: ansible_os_family == "Debian"

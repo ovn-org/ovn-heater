@@ -669,22 +669,22 @@ class OvnNbctl:
     def lb_add_to_routers(self, lb, routers):
         with self.idl.transaction(check_error=True) as txn:
             for r in routers:
-                txn.add(self.idl.lr_lb_add(r, lb.uuid))
+                txn.add(self.idl.lr_lb_add(r, lb.uuid, may_exist=True))
 
     def lb_add_to_switches(self, lb, switches):
         with self.idl.transaction(check_error=True) as txn:
             for s in switches:
-                txn.add(self.idl.ls_lb_add(s, lb.uuid))
+                txn.add(self.idl.ls_lb_add(s, lb.uuid, may_exist=True))
 
     def lb_remove_from_routers(self, lb, routers):
         with self.idl.transaction(check_error=True) as txn:
             for r in routers:
-                txn.add(self.idl.lr_lb_del(r, lb.uuid))
+                txn.add(self.idl.lr_lb_del(r, lb.uuid, if_exists=True))
 
     def lb_remove_from_switches(self, lb, switches):
         with self.idl.transaction(check_error=True) as txn:
             for s in switches:
-                txn.add(self.idl.ls_lb_del(s, lb.uuid))
+                txn.add(self.idl.ls_lb_del(s, lb.uuid, if_exists=True))
 
     def sync(self, wait="hv", timeout=DEFAULT_CTL_TIMEOUT):
         with self.idl.transaction(

@@ -54,6 +54,30 @@ function is_rpm_based() {
     false
 }
 
+function is_rhel() {
+    for id in $DISTRO_IDS; do
+        case $id in
+        centos* | rhel*)
+            true
+            return
+        ;;
+        esac
+    done
+    false
+}
+
+function is_fedora() {
+    for id in $DISTRO_IDS; do
+        case $id in
+        fedora*)
+            true
+            return
+        ;;
+        esac
+    done
+    false
+}
+
 function is_deb_based() {
     for id in $DISTRO_IDS; do
         case $id in
@@ -207,6 +231,7 @@ ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-mul
 ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-main}"
 
 OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
+OS_IMAGE_DEFAULT="registry.fedoraproject.org/fedora:latest"
 
 function install_ovn_fake_multinode() {
     echo "-- Cloning ${ovn_fmn_repo} on all nodes, revision ${ovn_fmn_branch}"
@@ -256,13 +281,14 @@ function install_ovn_fake_multinode() {
 
     if [ ${rebuild_needed} -eq 1 ]; then
         if [ -z "${OS_IMAGE_OVERRIDE}" ]; then
-            if grep Fedora /etc/redhat-release
-            then
+            if is_fedora; then
                 os_image="fedora:${DISTRO_VERSION_ID}"
-            elif grep "Red Hat Enterprise Linux" /etc/redhat-release
-            then
+            elif is_rhel; then
                 [[ "${DISTRO_VERSION_ID}" =~ 7\..* ]] && os_image="registry.access.redhat.com/ubi7/ubi:${DISTRO_VERSION_ID}"
                 [[ "${DISTRO_VERSION_ID}" =~ 8\..* ]] && os_image="registry.access.redhat.com/ubi8/ubi:${DISTRO_VERSION_ID}"
+                [[ "${DISTRO_VERSION_ID}" =~ 9\..* ]] && os_image="registry.access.redhat.com/ubi9/ubi:${DISTRO_VERSION_ID}"
+            else
+                os_image=${OS_IMAGE_DEFAULT}
             fi
         else
             os_image=${OS_IMAGE_OVERRIDE}

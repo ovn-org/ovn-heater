@@ -88,8 +88,8 @@ function generate() {
 function install_deps_local_rpm() {
     echo "-- Installing local dependencies"
     yum install redhat-lsb-core datamash \
-        python3-pip python3-virtualenv python3-netaddr python3 python3-devel \
-        python-virtualenv podman podman-docker \
+        python3-pip python3-netaddr python3 python3-devel \
+        podman podman-docker \
         --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
@@ -98,7 +98,7 @@ function install_deps_local_rpm() {
 function install_deps_local_deb() {
     echo "-- Installing local dependencies"
     apt -y install datamash podman podman-docker python3-pip \
-           python3-virtualenv python3-netaddr python3 python3-all-dev
+           python3-netaddr python3 python3-all-dev
 }
 
 function install_deps_remote() {
@@ -133,7 +133,7 @@ function install_venv() {
     pushd ${rundir}
     if [ ! -f ${ovn_heater_venv}/bin/activate ]; then
         rm -rf ${ovn_heater_venv}
-        python3 -m virtualenv ${ovn_heater_venv}
+        python3 -m venv ${ovn_heater_venv}
     fi
     source ${ovn_heater_venv}/bin/activate
     if is_rpm_based; then

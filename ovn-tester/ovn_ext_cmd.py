@@ -52,7 +52,7 @@ class ExtCmdUnit(object):
             cmd += f' {self.pid_opt} {stdout.getvalue().strip()}'
 
         if self.background_opt:
-            cmd += ' &'
+            cmd += ' >/dev/null 2>&1 &'
 
         stdout = StringIO()
         node.run(cmd, stdout=stdout)

@@ -58,10 +58,7 @@ low_scale_task:
     - ./do.sh run test-scenarios/ovn-low-scale.yml low-scale
 
   check_logs_script:
-    - '! grep -B 30 -A 30 "Result: FAIL" ./test_results/*/test-log'
-    - '! grep -B 30 -A 30 "Traceback" ./test_results/*/test-log'
-    - '! grep "Failed to run test" ./test_results/*/test-log'
-    - grep "Result: SUCCESS" ./test_results/*/test-log
+    - ./utils/logs-checker.sh
 
   always:
     test_logs_artifacts:

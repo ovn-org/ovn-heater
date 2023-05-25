@@ -63,7 +63,7 @@ Therefore, the values need to be resolvable by both of these entities and
 need to resolve to the same host. `localhost` will not work since this does
 not resolve to a unique host.
 
-## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 32)
+## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 38 and Ubuntu 22.10)
 
 ### Install required packages:
 
@@ -77,46 +77,6 @@ dnf install -y git ansible \
 ```
 sudo apt -y install ansible
 ```
-
-## Minimal requirements on the TESTER node (tested on Fedora 36)
-
-### Make docker work with nested containers (disable cgroup hierarchy):
-
-#### RPM-based Fedora 32+
-```
-dnf install -y grubby
-grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
-reboot
-```
-
-#### DEB-based
-Edit /etc/default/grub and add `systemd.unified_cgroup_hierarchy=0` at the
-end of the `GRUB_CMDLINE_LINUX_DEFAULT` variable.
-
-```
-sudo update-grub
-sudo reboot
-````
-
-## Minimal requirements on the OVN-CENTRAL and OVN-WORKER-NODEs
-
-### Make docker work with nested containers (disable cgroup hierarchy):
-
-#### RPM-based Fedora 32+
-```
-dnf install -y grubby
-grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
-reboot
-```
-
-#### DEB-based
-Edit /etc/default/grub and add `systemd.unified_cgroup_hierarchy=0` at the
-end of the `GRUB_CMDLINE_LINUX_DEFAULT` variable.
-
-```
-sudo update-grub
-sudo reboot
-````
 
 # Installation
 

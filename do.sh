@@ -124,7 +124,7 @@ function install_deps_local_rpm() {
 function install_deps_local_deb() {
     echo "-- Installing local dependencies"
     apt -y install datamash podman podman-docker python3-pip \
-           python3-netaddr python3 python3-all-dev
+           python3-netaddr python3 python3-all-dev python3-venv
 }
 
 function install_deps_remote() {

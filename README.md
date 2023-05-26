@@ -6,7 +6,7 @@ a simulated OVN cluster deployed with
 
 **NOTE**: This script is designed to be used on test machines only. It
 performs disruptive changes to the machines it is run on (e.g., create
-insecure docker registries, cleanup existing docker containers).
+insecure container registries, cleanup existing containers).
 
 # Prerequisites
 
@@ -21,7 +21,7 @@ insecure docker registries, cleanup existing docker containers).
   - provisions all other `OVN` nodes with the required software packages
     and with the correct version of `ovn-fake-multinode` to run simulated/fake
     `OVN` chassis.
-  - runs a docker registry where the `ovn-fake-multinode` (i.e.,
+  - runs a container image registry where the `ovn-fake-multinode` (i.e.,
     `ovn/ovn-multi-node`) and `ovn-tester` images are pushed and from which all
     other `OVN` nodes will pull the image.
 
@@ -104,9 +104,9 @@ A sample file written for the deployment described above is available at
 `physical-deployments/physical-deployment.yml`.
 
 The file should contain the following mandatory sections and fields:
-- `registry-node`: the hostname (or IP) of the node that will store the
-  docker private registry. In usual cases this is should be the ORCHESTRATOR
-  machine.
+- `registry-node`: the hostname (or IP) of the node that will run the
+  container image private registry. In usual cases this is should be
+  the ORCHESTRATOR machine.
 - `internal-iface`: the name of the Ethernet interface used by the underlay
   (DB and tunnel traffic). This can be overridden per node if needed.
 - `tester-node`:
@@ -244,7 +244,7 @@ cd ~/ovn-heater
 
 This executes `<scenario>` on the physical deployment (specifically on the
 `ovn-tester` container on the TESTER). Current scenarios also cleanup the
-environment, i.e., remove all docker containers from all physical nodes.
+environment, i.e., remove all containers from all physical nodes.
 **NOTE**: If the environment needs to be explictly cleaned up, we can also
 execute before running the scenario:
 
@@ -261,7 +261,7 @@ consist of:
   stored.
 - html reports
 - a copy of the `hosts` ansible inventory used for the test.
-- OVN docker container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
+- OVN container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
   ovsdb-server logs).
 - physical nodes journal files.
 - perf sampling results if enabled

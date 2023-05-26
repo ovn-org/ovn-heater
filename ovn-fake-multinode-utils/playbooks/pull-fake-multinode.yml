@@ -4,5 +4,5 @@
     - name: Pull latest containers
       shell: |
               set -e
-              docker pull {{ registry_node }}:5000/ovn/ovn-multi-node
-              docker tag {{ registry_node }}:5000/ovn/ovn-multi-node ovn/ovn-multi-node
+              podman pull {{ registry_node }}:5000/ovn/ovn-multi-node
+              podman tag {{ registry_node }}:5000/ovn/ovn-multi-node ovn/ovn-multi-node

@@ -16,14 +16,12 @@ clustered_db=${CLUSTERED_DB:-True}
 ovn_fmn_utils=${topdir}/ovn-fake-multinode-utils
 ovn_fmn_playbooks=${ovn_fmn_utils}/playbooks
 ovn_fmn_generate=${ovn_fmn_utils}/generate-hosts.py
-ovn_fmn_docker=${ovn_fmn_utils}/generate-docker-cfg.py
 ovn_fmn_podman=${ovn_fmn_utils}/generate-podman-cfg.py
 ovn_fmn_get=${ovn_fmn_utils}/get-config-value.py
 ovn_fmn_ip=${rundir}/ovn-fake-multinode/ip_gen.py
 ovn_fmn_translate=${ovn_fmn_utils}/translate_yaml.py
 hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
-docker_daemon_file=${rundir}/docker-daemon.json
 podman_registry_file=${rundir}/registries.conf
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
@@ -104,7 +102,6 @@ function generate() {
     mkdir -p ${rundir}
 
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
-    PYTHONPATH=${topdir}/utils ${ovn_fmn_docker} ${phys_deployment} > ${docker_daemon_file}
     PYTHONPATH=${topdir}/utils ${ovn_fmn_podman} ${phys_deployment} > ${podman_registry_file}
     cp ${ovn_fmn_utils}/process-monitor.py ${process_monitor_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
@@ -115,7 +112,7 @@ function install_deps_local_rpm() {
     echo "-- Installing local dependencies"
     yum install redhat-lsb-core datamash \
         python3-pip python3-netaddr python3 python3-devel \
-        podman podman-docker \
+        podman \
         --skip-broken -y
     [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
@@ -123,7 +120,7 @@ function install_deps_local_rpm() {
 
 function install_deps_local_deb() {
     echo "-- Installing local dependencies"
-    apt -y install datamash podman podman-docker python3-pip \
+    apt -y install datamash podman python3-pip \
            python3-netaddr python3 python3-all-dev python3-venv
 }
 
@@ -134,15 +131,15 @@ function install_deps_remote() {
 }
 
 function run_registry() {
-    containers=$(docker ps --all --filter='name=(ovn|registry)' \
+    containers=$(podman ps --all --filter='name=(ovn|registry)' \
                         | grep -v "CONTAINER ID" | awk '{print $1}' || true)
     for container_name in $containers
     do
-        docker stop $container_name
-        docker rm $container_name
+        podman stop $container_name
+        podman rm $container_name
     done
     [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
-    docker run --privileged -d --name registry -p 5000:5000 \
+    podman run --privileged -d --name registry -p 5000:5000 \
           -v /var/lib/registry:/var/lib/registry --restart=always docker.io/library/registry:2
 
     # This is requried on the orchestrator for local image build/push to work
@@ -170,17 +167,9 @@ function install_venv() {
     popd
 }
 
-function configure_docker() {
-    echo "-- Configuring local registry on tester nodes"
-    if which podman
-    then
-        echo "-- Configuring podman local registry on all nodes"
-        ansible-playbook ${ovn_fmn_playbooks}/configure-podman-registry.yml -i ${hosts_file}
-    else
-        echo "-- Configuring docker local registry on all nodes"
-        ansible-playbook ${ovn_fmn_playbooks}/configure-docker-registry.yml -i ${hosts_file}
-    fi
-
+function configure_podman() {
+    echo "-- Configuring podman local registry on all nodes"
+    ansible-playbook ${ovn_fmn_playbooks}/configure-podman-registry.yml -i ${hosts_file}
 }
 
 function clone_component() {
@@ -277,7 +266,7 @@ function install_ovn_fake_multinode() {
         [ -n "$RPM_OVN_HOST" ] && wget $RPM_OVN_HOST
     fi
 
-    docker images | grep -q 'ovn/ovn-multi-node' || rebuild_needed=1
+    podman images | grep -q 'ovn/ovn-multi-node' || rebuild_needed=1
 
     if [ ${rebuild_needed} -eq 1 ]; then
         if [ -z "${OS_IMAGE_OVERRIDE}" ]; then
@@ -295,23 +284,26 @@ function install_ovn_fake_multinode() {
         fi
 
         # Build images locally.
-        OS_IMAGE=$os_image OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} USE_OVSDB_ETCD=${USE_OVSDB_ETCD} ./ovn_cluster.sh build
+        OS_IMAGE=$os_image OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn \
+            EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
+            RUNC_CMD=podman ./ovn_cluster.sh build
     fi
     # Tag and push image
-    docker tag ovn/ovn-multi-node localhost:5000/ovn/ovn-multi-node
-    docker push localhost:5000/ovn/ovn-multi-node
+    podman tag ovn/ovn-multi-node localhost:5000/ovn/ovn-multi-node
+    podman push localhost:5000/ovn/ovn-multi-node
     popd
 }
 
 function install_ovn_tester() {
     ssh_key=$(${ovn_fmn_get} ${phys_deployment} tester-node ssh_key)
-    # We need to copy the files into a known directory within the Docker
-    # context directory. Otherwise, Docker can't find the files we reference.
+    # We need to copy the files into a known directory within the container
+    # runtime context directory. Otherwise, podman can't find the files we
+    # reference.
     cp ${ssh_key} .
     ssh_key_file=${rundir_name}/$(basename ${ssh_key})
-    docker build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} -f ${topdir}/Dockerfile ${topdir}
-    docker tag ovn/ovn-tester localhost:5000/ovn/ovn-tester
-    docker push localhost:5000/ovn/ovn-tester
+    podman build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} -f ${topdir}/Dockerfile ${topdir}
+    podman tag ovn/ovn-tester localhost:5000/ovn/ovn-tester
+    podman push localhost:5000/ovn/ovn-tester
 }
 
 # Prepare OVS bridges and cleanup containers.
@@ -344,7 +336,7 @@ function install() {
     install_deps_remote
     run_registry
     install_venv
-    configure_docker
+    configure_podman
     install_ovn_fake_multinode
     init_ovn_fake_multinode
     pull_ovn_fake_multinode
@@ -498,7 +490,7 @@ function run_test() {
     fi
 
     tester_host=$(${ovn_fmn_get} ${phys_deployment} tester-node name)
-    if ! ssh root@${tester_host} docker exec \
+    if ! ssh root@${tester_host} podman exec \
             ovn-tester python3 -u /ovn-tester/ovn_tester.py \
                                   /physical-deployment.yml /test-scenario.yml ;
     then

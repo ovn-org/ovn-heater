@@ -55,8 +55,8 @@ low_scale_task:
 
   unpack_caches_script:
     - mkdir -p runtime runtime-cache
-    - podman load -i runtime-cache/ovn-multi-node.tar || true
     - tar -xzf runtime-cache/runtime.tar.gz || true
+    - podman load -i runtime/ovn-fake-multinode/ovn-multi-node-image.tar || true
 
   install_script:
     - 'sed -i "s/<host>/$(hostname)/g" ${PHYS_DEPLOYMENT}'
@@ -64,7 +64,6 @@ low_scale_task:
 
   pack_caches_script:
     - rm -rf runtime-cache/*
-    - podman save -o runtime-cache/ovn-multi-node.tar ovn/ovn-multi-node:latest
     - tar -czf runtime-cache/runtime.tar.gz runtime
 
   upload_caches:

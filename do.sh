@@ -16,13 +16,11 @@ clustered_db=${CLUSTERED_DB:-True}
 ovn_fmn_utils=${topdir}/ovn-fake-multinode-utils
 ovn_fmn_playbooks=${ovn_fmn_utils}/playbooks
 ovn_fmn_generate=${ovn_fmn_utils}/generate-hosts.py
-ovn_fmn_podman=${ovn_fmn_utils}/generate-podman-cfg.py
 ovn_fmn_get=${ovn_fmn_utils}/get-config-value.py
 ovn_fmn_ip=${rundir}/ovn-fake-multinode/ip_gen.py
 ovn_fmn_translate=${ovn_fmn_utils}/translate_yaml.py
 hosts_file=${rundir}/hosts
 installer_log_file=${rundir}/installer-log
-podman_registry_file=${rundir}/registries.conf
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
 process_monitor_file=${rundir}/process-monitor.py
@@ -102,7 +100,6 @@ function generate() {
     mkdir -p ${rundir}
 
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
-    PYTHONPATH=${topdir}/utils ${ovn_fmn_podman} ${phys_deployment} > ${podman_registry_file}
     cp ${ovn_fmn_utils}/process-monitor.py ${process_monitor_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
     cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
@@ -130,28 +127,6 @@ function install_deps_remote() {
         -i ${hosts_file}
 }
 
-function run_registry() {
-    containers=$(podman ps --all --filter='name=(ovn|registry)' \
-                        | grep -v "CONTAINER ID" | awk '{print $1}' || true)
-    for container_name in $containers
-    do
-        podman stop $container_name
-        podman rm $container_name
-    done
-    [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
-    podman run --privileged -d --name registry -p 5000:5000 \
-          -v /var/lib/registry:/var/lib/registry --restart=always docker.io/library/registry:2
-
-    # This is requried on the orchestrator for local image build/push to work
-    cp /etc/containers/registries.conf /etc/containers/registries.conf.bak
-    cat > /etc/containers/registries.conf << EOF
-[registries.insecure]
-registries = ['localhost:5000']
-[registries.block]
-registries = []
-EOF
-}
-
 function install_venv() {
     pushd ${rundir}
     if [ ! -f ${ovn_heater_venv}/bin/activate ]; then
@@ -165,11 +140,6 @@ function install_venv() {
     python3 -m pip install -r ${topdir}/utils/requirements.txt
     deactivate
     popd
-}
-
-function configure_podman() {
-    echo "-- Configuring podman local registry on all nodes"
-    ansible-playbook ${ovn_fmn_playbooks}/configure-podman-registry.yml -i ${hosts_file}
 }
 
 function clone_component() {
@@ -288,9 +258,7 @@ function install_ovn_fake_multinode() {
             EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
             RUNC_CMD=podman ./ovn_cluster.sh build
     fi
-    # Tag and push image
-    podman tag ovn/ovn-multi-node localhost:5000/ovn/ovn-multi-node
-    podman push localhost:5000/ovn/ovn-multi-node
+
     popd
 }
 
@@ -302,8 +270,6 @@ function install_ovn_tester() {
     cp ${ssh_key} .
     ssh_key_file=${rundir_name}/$(basename ${ssh_key})
     podman build -t ovn/ovn-tester --build-arg SSH_KEY=${ssh_key_file} -f ${topdir}/Dockerfile ${topdir}
-    podman tag ovn/ovn-tester localhost:5000/ovn/ovn-tester
-    podman push localhost:5000/ovn/ovn-tester
 }
 
 # Prepare OVS bridges and cleanup containers.
@@ -312,13 +278,24 @@ function init_ovn_fake_multinode() {
     ansible-playbook ${ovn_fmn_playbooks}/deploy-minimal.yml -i ${hosts_file}
 }
 
-# Pull image on all nodes
+# Pull image on all nodes.
 function pull_ovn_fake_multinode() {
-    # Pull image on all nodes
+    echo "-- Saving the ovn/ovn-multi-node image and pulling it on all nodes."
+
+    pushd ${rundir}/ovn-fake-multinode
+    rm -f ovn-multi-node-image.tar
+    podman save --format oci-archive -o ovn-multi-node-image.tar \
+        ovn/ovn-multi-node:latest
     ansible-playbook ${ovn_fmn_playbooks}/pull-fake-multinode.yml -i ${hosts_file}
+    popd
 }
 
 function pull_ovn_tester() {
+    echo "-- Saving the ovn/ovn-tester image and pulling it on the tester."
+
+    rm -f ovn-tester-image.tar
+    podman save --format oci-archive -o ovn-tester-image.tar \
+        ovn/ovn-tester:latest
     ansible-playbook ${ovn_fmn_playbooks}/pull-ovn-tester.yml -i ${hosts_file}
 }
 
@@ -334,9 +311,7 @@ function install() {
         die_distro
     fi
     install_deps_remote
-    run_registry
     install_venv
-    configure_podman
     install_ovn_fake_multinode
     init_ovn_fake_multinode
     pull_ovn_fake_multinode

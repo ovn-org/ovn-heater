@@ -5,8 +5,8 @@ a simulated OVN cluster deployed with
 [ovn-fake-multinode](https://github.com/ovn-org/ovn-fake-multinode).
 
 **NOTE**: This script is designed to be used on test machines only. It
-performs disruptive changes to the machines it is run on (e.g., create
-insecure container registries, cleanup existing containers).
+performs disruptive changes to the machines it is run on (e.g.,cleanup
+existing containers).
 
 # Prerequisites
 
@@ -21,9 +21,6 @@ insecure container registries, cleanup existing containers).
   - provisions all other `OVN` nodes with the required software packages
     and with the correct version of `ovn-fake-multinode` to run simulated/fake
     `OVN` chassis.
-  - runs a container image registry where the `ovn-fake-multinode` (i.e.,
-    `ovn/ovn-multi-node`) and `ovn-tester` images are pushed and from which all
-    other `OVN` nodes will pull the image.
 
 * TESTER: One machine to run the `ovn-tester` container which runs the python
   ovn-tester code. Like the ORCHESTRATOR, the TESTER also needs to be able to
@@ -104,9 +101,6 @@ A sample file written for the deployment described above is available at
 `physical-deployments/physical-deployment.yml`.
 
 The file should contain the following mandatory sections and fields:
-- `registry-node`: the hostname (or IP) of the node that will run the
-  container image private registry. In usual cases this is should be
-  the ORCHESTRATOR machine.
 - `internal-iface`: the name of the Ethernet interface used by the underlay
   (DB and tunnel traffic). This can be overridden per node if needed.
 - `tester-node`:

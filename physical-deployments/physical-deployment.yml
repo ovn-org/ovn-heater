@@ -1,4 +1,3 @@
-registry-node: host01.mydomain.com
 internal-iface: eno1
 
 central-node:

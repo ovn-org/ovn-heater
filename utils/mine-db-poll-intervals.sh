@@ -3,8 +3,8 @@
 function mine_data_for_poll_intervals {
     res=$(echo "$1" \
         | sed '/\(writes\|involuntary\)/s/$/\n\n/' \
-        | egrep -A 2 -B 1 'Unreasonably' \
-        | grep -v '\-\-' | cut -c 45- | paste -d " " - - - - \
+        | grep -A 2 -B 1 'Unreasonably' \
+        | grep -v '\--' | cut -c 45- | paste -d " " - - - - \
         | sed 's/.*took \([0-9]*\)ms .*long \([0-9]*\)ms .* \([0-9]*\)ms system.* \([0-9]*\) writes.*/\2 \3 \4 compaction \1/' \
         | sed 's/.*long \([0-9]*\)ms .* \([0-9]*\)ms system.*/\1 \2/' \
         | sort -h | grep -v compaction | cut -f 1 -d ' ' \

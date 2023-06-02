@@ -1,4 +1,3 @@
-registry-node: <host>
 internal-iface: lo
 
 central-node:

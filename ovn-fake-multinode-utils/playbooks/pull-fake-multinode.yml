@@ -1,8 +1,11 @@
 - name: Install ovn-fake-multinode
   hosts: all
   tasks:
-    - name: Pull latest containers
-      shell: |
-              set -e
-              docker pull {{ registry_node }}:5000/ovn/ovn-multi-node
-              docker tag {{ registry_node }}:5000/ovn/ovn-multi-node ovn/ovn-multi-node
+  - name: Copy ovn-multi-node image
+    ansible.posix.synchronize:
+      src: "{{ rundir }}/ovn-fake-multinode/ovn-multi-node-image.tar"
+      dest: "{{ ovn_fake_multinode_path }}/ovn-multi-node-image.tar"
+
+  - name: Load latest containers
+    ansible.builtin.shell: |
+      podman load -i {{ ovn_fake_multinode_path }}/ovn-multi-node-image.tar

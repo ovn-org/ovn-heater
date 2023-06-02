@@ -8,7 +8,7 @@
 
   - name: Copy physical deployment file to tester container
     ansible.builtin.shell: |
-      docker cp /tmp/physical-deployment.yml ovn-tester:/physical-deployment.yml
+      podman cp /tmp/physical-deployment.yml ovn-tester:/physical-deployment.yml
 
   - name: Copy test file to tester host
     ansible.builtin.copy:
@@ -17,4 +17,4 @@
 
   - name: Copy test file to the tester container
     ansible.builtin.shell: |
-      docker cp /tmp/test-scenario.yml ovn-tester:/test-scenario.yml
+      podman cp /tmp/test-scenario.yml ovn-tester:/test-scenario.yml

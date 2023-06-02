@@ -5,8 +5,8 @@ a simulated OVN cluster deployed with
 [ovn-fake-multinode](https://github.com/ovn-org/ovn-fake-multinode).
 
 **NOTE**: This script is designed to be used on test machines only. It
-performs disruptive changes to the machines it is run on (e.g., create
-insecure docker registries, cleanup existing docker containers).
+performs disruptive changes to the machines it is run on (e.g.,cleanup
+existing containers).
 
 # Prerequisites
 
@@ -21,9 +21,6 @@ insecure docker registries, cleanup existing docker containers).
   - provisions all other `OVN` nodes with the required software packages
     and with the correct version of `ovn-fake-multinode` to run simulated/fake
     `OVN` chassis.
-  - runs a docker registry where the `ovn-fake-multinode` (i.e.,
-    `ovn/ovn-multi-node`) and `ovn-tester` images are pushed and from which all
-    other `OVN` nodes will pull the image.
 
 * TESTER: One machine to run the `ovn-tester` container which runs the python
   ovn-tester code. Like the ORCHESTRATOR, the TESTER also needs to be able to
@@ -63,7 +60,7 @@ Therefore, the values need to be resolvable by both of these entities and
 need to resolve to the same host. `localhost` will not work since this does
 not resolve to a unique host.
 
-## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 32)
+## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 38 and Ubuntu 22.10)
 
 ### Install required packages:
 
@@ -77,46 +74,6 @@ dnf install -y git ansible \
 ```
 sudo apt -y install ansible
 ```
-
-## Minimal requirements on the TESTER node (tested on Fedora 36)
-
-### Make docker work with nested containers (disable cgroup hierarchy):
-
-#### RPM-based Fedora 32+
-```
-dnf install -y grubby
-grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
-reboot
-```
-
-#### DEB-based
-Edit /etc/default/grub and add `systemd.unified_cgroup_hierarchy=0` at the
-end of the `GRUB_CMDLINE_LINUX_DEFAULT` variable.
-
-```
-sudo update-grub
-sudo reboot
-````
-
-## Minimal requirements on the OVN-CENTRAL and OVN-WORKER-NODEs
-
-### Make docker work with nested containers (disable cgroup hierarchy):
-
-#### RPM-based Fedora 32+
-```
-dnf install -y grubby
-grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
-reboot
-```
-
-#### DEB-based
-Edit /etc/default/grub and add `systemd.unified_cgroup_hierarchy=0` at the
-end of the `GRUB_CMDLINE_LINUX_DEFAULT` variable.
-
-```
-sudo update-grub
-sudo reboot
-````
 
 # Installation
 
@@ -144,9 +101,6 @@ A sample file written for the deployment described above is available at
 `physical-deployments/physical-deployment.yml`.
 
 The file should contain the following mandatory sections and fields:
-- `registry-node`: the hostname (or IP) of the node that will store the
-  docker private registry. In usual cases this is should be the ORCHESTRATOR
-  machine.
 - `internal-iface`: the name of the Ethernet interface used by the underlay
   (DB and tunnel traffic). This can be overridden per node if needed.
 - `tester-node`:
@@ -284,7 +238,7 @@ cd ~/ovn-heater
 
 This executes `<scenario>` on the physical deployment (specifically on the
 `ovn-tester` container on the TESTER). Current scenarios also cleanup the
-environment, i.e., remove all docker containers from all physical nodes.
+environment, i.e., remove all containers from all physical nodes.
 **NOTE**: If the environment needs to be explictly cleaned up, we can also
 execute before running the scenario:
 
@@ -301,7 +255,7 @@ consist of:
   stored.
 - html reports
 - a copy of the `hosts` ansible inventory used for the test.
-- OVN docker container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
+- OVN container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
   ovsdb-server logs).
 - physical nodes journal files.
 - perf sampling results if enabled

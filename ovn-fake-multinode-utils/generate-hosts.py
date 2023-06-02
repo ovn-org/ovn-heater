@@ -63,7 +63,6 @@ def generate(input_file, target, repo, branch):
         config = yaml.safe_load(yaml_file)
         user = config.get('user', 'root')
         prefix = config.get('prefix', 'ovn-scale')
-        registry_node = config['registry-node']
         central_config = config['central-node']
         tester_config = config['tester-node']
         internal_iface = config['internal-iface']
@@ -84,7 +83,6 @@ def generate(input_file, target, repo, branch):
         print('ovn_fake_multinode_path=' + target + '/ovn-fake-multinode')
         print('ovn_fake_multinode_repo=' + repo)
         print('ovn_fake_multinode_branch=' + branch)
-        print('registry_node=' + registry_node)
         print('rundir=' + target)
 
 

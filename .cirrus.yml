@@ -8,16 +8,34 @@ low_scale_task:
         image: family/ubuntu-2210-amd64
     platform: linux
     memory: 8G
-    disk: 20
+    disk: 40
 
   env:
-    DEPENDENCIES: git ansible podman podman-docker
+    DEPENDENCIES: git ansible podman
     FEDORA_DEP: ansible-collection-ansible-posix
                 ansible-collection-ansible-utils
+    CIRRUS_WORKING_DIR: /root/ovn-heater
     PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/ci.yml
 
   runtime_cache:
     folder: runtime-cache
+
+  # Make sure we use all the disk available to us.  Similar to the steps
+  # described at:
+  # https://cloud.google.com/compute/docs/disks/resize-persistent-disk
+  #
+  # Use "findmnt -n -o SOURCE /" and parse outputs of the form:
+  # /dev/<device><partition-number>
+  # OR
+  # /dev/<device><partition-number>[text]
+  resize_disk_script:
+    - d=$(findmnt -n -o SOURCE / | cut -f 1 -d '[' | cut -f 3 -d '/' | grep -oE '[a-zA-Z]+')
+    - p=$(findmnt -n -o SOURCE / | cut -f 1 -d '[' | cut -f 3 -d '/' | grep -oE '[0-9]+')
+    - t=$(df --output=fstype /root | grep -v Type)
+    - growpart /dev/$d $p || true
+    - '[ "$t" = "ext4" ] && resize2fs /dev/$d$p || true'
+    - '[ "$t" = "xfs" ] && xfs_growfs -d /root || true'
+    - '[ "$t" = "btrfs" ] && btrfs filesystem resize max /root || true'
 
   configure_ssh_script:
     - mkdir -p /root/.ssh/
@@ -37,8 +55,8 @@ low_scale_task:
 
   unpack_caches_script:
     - mkdir -p runtime runtime-cache
-    - docker load -i runtime-cache/ovn-multi-node.tar || true
     - tar -xzf runtime-cache/runtime.tar.gz || true
+    - podman load -i runtime/ovn-fake-multinode/ovn-multi-node-image.tar || true
 
   install_script:
     - 'sed -i "s/<host>/$(hostname)/g" ${PHYS_DEPLOYMENT}'
@@ -46,7 +64,6 @@ low_scale_task:
 
   pack_caches_script:
     - rm -rf runtime-cache/*
-    - docker save -o runtime-cache/ovn-multi-node.tar ovn/ovn-multi-node:latest
     - tar -czf runtime-cache/runtime.tar.gz runtime
 
   upload_caches:

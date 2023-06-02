@@ -1,5 +1,7 @@
 - name: Prepare the setup
   hosts: all
+  environment:
+    RUNC_CMD: podman
   tasks:
   - name: Start openvswitch
     ansible.builtin.systemd:
@@ -13,24 +15,24 @@
       state: started
     when: ansible_os_family == "Debian"
 
-  - name: Delete old docker volumes
+  - name: Delete old container volumes
     shell: |
-      docker volume prune -f
+      podman volume prune -f
 
   - name: Stop tester container if running
     when: ovn_tester is defined
     ignore_errors: yes
     shell: |
-      docker rm -f --volumes ovn-tester
+      podman rm -f --volumes ovn-tester
 
-  - name: Delete old docker containers if any
+  - name: Delete old containers if any
     shell: |
       set -e
       cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
       export CHASSIS_PREFIX={{ node_name }}
       export CHASSIS_COUNT=100
       ./ovn_cluster.sh stop
-      docker system prune -f
+      podman system prune -f
 
   - name: Ensure number of inotify instances for containers
     shell: |

@@ -38,5 +38,4 @@
       ansible.builtin.package:
         name:
           - podman
-          - podman-docker
         state: present

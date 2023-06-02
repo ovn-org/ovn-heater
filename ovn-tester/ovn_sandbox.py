@@ -72,7 +72,7 @@ class Sandbox(object):
             width=10000, height=10000
         )
         if self.container:
-            dcmd = 'docker exec -it ' + self.container + ' bash'
+            dcmd = 'podman exec -it ' + self.container + ' bash'
             self.channel.sendall(f"{dcmd}\n".encode())
 
         stdout = StringIO()

@@ -79,7 +79,7 @@ class CentralNode(Node):
         log.info(f'Configuring northd to use {n_threads} threads')
         for container in self.db_containers:
             self.phys_node.run(
-                f'docker exec {container} ovn-appctl -t '
+                f'podman exec {container} ovn-appctl -t '
                 f'ovn-northd parallel-build/set-n-threads '
                 f'{n_threads}'
             )
@@ -103,18 +103,18 @@ class CentralNode(Node):
         log.info('Setting DB trim-on-compaction')
         for db_container in self.db_containers:
             self.phys_node.run(
-                f'docker exec {db_container} ovs-appctl -t '
+                f'podman exec {db_container} ovs-appctl -t '
                 f'/run/ovn/ovnnb_db.ctl '
                 f'ovsdb-server/memory-trim-on-compaction on'
             )
             self.phys_node.run(
-                f'docker exec {db_container} ovs-appctl -t '
+                f'podman exec {db_container} ovs-appctl -t '
                 f'/run/ovn/ovnsb_db.ctl '
                 f'ovsdb-server/memory-trim-on-compaction on'
             )
         for relay_container in self.relay_containers:
             self.phys_node.run(
-                f'docker exec {relay_container} ovs-appctl -t '
+                f'podman exec {relay_container} ovs-appctl -t '
                 f'/run/ovn/ovnsb_db.ctl '
                 f'ovsdb-server/memory-trim-on-compaction on'
             )

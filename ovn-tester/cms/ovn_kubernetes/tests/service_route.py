@@ -16,8 +16,8 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class ServiceRoute(ExtCmd):
-    def __init__(self, config, cluster, global_cfg):
-        super().__init__(config, cluster)
+    def __init__(self, config, clusters, global_cfg):
+        super().__init__(config, clusters)
         test_config = config.get('service_route', dict())
         self.config = ServiceRouteCfg(
             n_lb=test_config.get('n_lb', 16),
@@ -49,7 +49,8 @@ class ServiceRoute(ExtCmd):
         load_balancer.add_to_routers([node.gw_router.name])
         load_balancer.add_to_switches([node.switch.name])
 
-    def run(self, ovn, global_cfg):
+    def run(self, clusters, global_cfg):
+        ovn = clusters[0]
         ns = Namespace(ovn, 'ns_service_route', global_cfg)
         with Context(ovn, 'service_route', self.config.n_lb, test=self) as ctx:
             for i in ctx:

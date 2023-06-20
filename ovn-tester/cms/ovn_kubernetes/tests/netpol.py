@@ -8,8 +8,8 @@ NpCfg = namedtuple('NpCfg', ['n_ns', 'n_labels', 'pods_ns_ratio'])
 
 
 class NetPol(ExtCmd):
-    def __init__(self, name, config, cluster):
-        super().__init__(config, cluster)
+    def __init__(self, name, config, clusters):
+        super().__init__(config, clusters)
         test_config = config.get(name, dict())
         self.config = NpCfg(
             n_ns=test_config.get('n_ns', 0),
@@ -25,7 +25,8 @@ class NetPol(ExtCmd):
         self.all_ns = []
         self.ports = []
 
-    def init(self, ovn, global_cfg):
+    def init(self, clusters, global_cfg):
+        ovn = clusters[0]
         with Context(ovn, f'{self.name}_startup', brief_report=True) as _:
             self.ports = ovn.provision_ports(
                 self.config.pods_ns_ratio * self.config.n_ns
@@ -47,7 +48,8 @@ class NetPol(ExtCmd):
                 ns.default_deny(4)
                 self.all_ns.append(ns)
 
-    def run(self, ovn, global_cfg, exclude=False):
+    def run(self, clusters, global_cfg, exclude=False):
+        ovn = clusters[0]
         with Context(ovn, self.name, self.config.n_ns, test=self) as ctx:
             for i in ctx:
                 ns = self.all_ns[i]

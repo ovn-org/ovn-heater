@@ -73,6 +73,7 @@ def read_config(config):
         raft_election_to=cluster_args['raft_election_to'],
         node_net=netaddr.IPNetwork(cluster_args['node_net']),
         n_relays=cluster_args['n_relays'],
+        n_az=cluster_args['n_az'],
         enable_ssl=cluster_args['enable_ssl'],
         northd_probe_interval=cluster_args['northd_probe_interval'],
         db_inactivity_probe=cluster_args['db_inactivity_probe'],
@@ -172,7 +173,7 @@ def load_cms(cms_name):
     return cls()
 
 
-def configure_tests(yaml, cluster, global_cfg):
+def configure_tests(yaml, clusters, global_cfg):
     tests = []
     for section, cfg in yaml.items():
         if section in RESERVED:
@@ -183,30 +184,42 @@ def configure_tests(yaml, cluster, global_cfg):
         )
         class_name = ''.join(s.title() for s in section.split('_'))
         cls = getattr(mod, class_name)
-        tests.append(cls(yaml, cluster, global_cfg))
+        tests.append(cls(yaml, clusters, global_cfg))
     return tests
 
 
-def create_cluster(cluster_cfg, central, brex_cfg):
+def create_cluster(cluster_cfg, central, workers, brex_cfg, cms, az):
     protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-    mgmt_ip = cluster_cfg.node_net.ip + 2
     db_containers = (
-        ['ovn-central-1', 'ovn-central-2', 'ovn-central-3']
+        [
+            f'ovn-central-az{az+1}-1',
+            f'ovn-central-az{az+1}-2',
+            f'ovn-central-az{az+1}-3',
+        ]
         if cluster_cfg.clustered_db
-        else ['ovn-central']
+        else [f'ovn-central-az{az+1}-1']
     )
 
+    mgmt_ip = cluster_cfg.node_net.ip + 2 + az * len(db_containers)
     central_nodes = [
         CentralNode(central, c, mgmt_ip + i, protocol)
         for i, c in enumerate(db_containers)
     ]
-    mgmt_ip += len(central_nodes)
 
+    mgmt_ip = (
+        cluster_cfg.node_net.ip
+        + 2
+        + cluster_cfg.n_az * len(central_nodes)
+        + az * cluster_cfg.n_relays
+    )
     relay_nodes = [
-        RelayNode(central, f'ovn-relay-{i + 1}', mgmt_ip + i, protocol)
+        RelayNode(central, f'ovn-relay-az{az+1}-{i+1}', mgmt_ip + i, protocol)
         for i in range(cluster_cfg.n_relays)
     ]
-    return Cluster(central_nodes, relay_nodes, cluster_cfg, brex_cfg)
+
+    cluster = Cluster(central_nodes, relay_nodes, cluster_cfg, brex_cfg, az)
+    cms.add_cluster_worker_nodes(cluster, workers, az)
+    return cluster
 
 
 def set_ssl_keys(cluster_cfg):
@@ -233,16 +246,18 @@ if __name__ == '__main__':
         raise ovn_exceptions.OvnInvalidConfigException()
 
     cms = load_cms(global_cfg.cms_name)
-
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
-    cluster = create_cluster(cluster_cfg, central, brex_cfg)
-    cms.add_cluster_worker_nodes(cluster, workers)
-    tests = configure_tests(config, cluster, global_cfg)
+    clusters = [
+        create_cluster(cluster_cfg, central, workers, brex_cfg, cms, i)
+        for i in range(cluster_cfg.n_az)
+    ]
+
+    tests = configure_tests(config, clusters, global_cfg)
 
     if cluster_cfg.enable_ssl:
         set_ssl_keys(cluster_cfg)
 
-    cms.prepare_test(cluster)
+    cms.prepare_test(clusters)
     for test in tests:
-        test.run(cluster, global_cfg)
+        test.run(clusters, global_cfg)
     sys.exit(0)

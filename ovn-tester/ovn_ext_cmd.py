@@ -1,10 +1,11 @@
 from collections import defaultdict
 from fnmatch import fnmatch
 from io import StringIO
+from itertools import chain
 
 
 class ExtCmdUnit:
-    def __init__(self, conf, cluster):
+    def __init__(self, conf, clusters):
         self.iteration = conf.get('iteration')
         self.cmd = conf.get('cmd')
         self.test = conf.get('test')
@@ -13,11 +14,20 @@ class ExtCmdUnit:
         self.pid_opt = conf.get('pid_opt', '')
 
         node = conf.get('node')
+
+        central_nodes = [c.central_nodes for c in clusters]
+        worker_nodes = [c.worker_nodes for c in clusters]
         self.nodes = [
-            n for n in cluster.worker_nodes if fnmatch(n.container, node)
+            n
+            for n in list(chain.from_iterable(worker_nodes))
+            if fnmatch(n.container, node)
         ]
         self.nodes.extend(
-            [n for n in cluster.central_nodes if fnmatch(n.container, node)]
+            [
+                n
+                for n in list(chain.from_iterable(central_nodes))
+                if fnmatch(n.container, node)
+            ]
         )
 
     def is_valid(self):
@@ -48,10 +58,10 @@ class ExtCmdUnit:
 
 
 class ExtCmd:
-    def __init__(self, config, cluster):
+    def __init__(self, config, clusters):
         self.cmd_map = defaultdict(list)
         for ext_cmd in config.get('ext_cmd', list()):
-            cmd_unit = ExtCmdUnit(ext_cmd, cluster)
+            cmd_unit = ExtCmdUnit(ext_cmd, clusters)
             if cmd_unit.is_valid():
                 self.cmd_map[(cmd_unit.iteration, cmd_unit.test)].append(
                     cmd_unit

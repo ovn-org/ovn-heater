@@ -17,8 +17,8 @@ ClusterDensityCfg = namedtuple('ClusterDensityCfg', ['n_runs', 'n_startup'])
 
 
 class ClusterDensity(ExtCmd):
-    def __init__(self, config, cluster, global_cfg):
-        super().__init__(config, cluster)
+    def __init__(self, config, clusters, global_cfg):
+        super().__init__(config, clusters)
         test_config = config.get('cluster_density', dict())
         self.config = ClusterDensityCfg(
             n_runs=test_config.get('n_runs', 0),
@@ -56,7 +56,8 @@ class ClusterDensity(ExtCmd):
             ns.unprovision_ports(build_ports)
         return ns
 
-    def run(self, ovn, global_cfg):
+    def run(self, clusters, global_cfg):
+        ovn = clusters[0]
         all_ns = []
         with Context(ovn, 'cluster_density_startup', brief_report=True) as ctx:
             for index in range(self.config.n_startup):

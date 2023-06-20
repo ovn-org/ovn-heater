@@ -110,6 +110,7 @@ class ClusterConfig:
     cluster_net6: str = "16::/32"
     n_workers: int = 2
     n_relays: int = 0
+    n_az: int = 1
     vips: Dict = None
     vips6: Dict = None
     vip_subnet: str = "4.0.0.0/8"

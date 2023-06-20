@@ -454,7 +454,7 @@ function run_test() {
 
     cluster_vars=""
     for var in enable_ssl clustered_db monitor_all use_ovsdb_etcd \
-               node_net datapath_type n_relays n_workers; do
+               node_net datapath_type n_relays n_workers n_az; do
         cluster_vars="${cluster_vars} $(get_cluster_var ${test_file} ${var})"
     done
     echo "-- Cluster vars: ${cluster_vars}"

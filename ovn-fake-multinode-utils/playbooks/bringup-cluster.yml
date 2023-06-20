@@ -20,8 +20,19 @@
 - name: Bring up central nodes
   hosts: central_hosts
   tasks:
+  - name: Compute central facts (standalone)
+    when: clustered_db == "no"
+    ansible.builtin.set_fact:
+      n_ips: '{{ n_relays|int + 1 }}'
+
+  - name: Compute central facts (clustered)
+    when: clustered_db == "yes"
+    ansible.builtin.set_fact:
+      n_ips: '{{ n_relays|int + 3 }}'
+
   - name: Start central containers
     environment:
+      CENTRAL_COUNT: '{{ n_az }}'
       CHASSIS_COUNT: 0
       CREATE_FAKE_VMS: no
       ENABLE_ETCD: '{{ use_ovsdb_etcd }}'
@@ -46,6 +57,7 @@
   tasks:
   - name: Start worker containers
     environment:
+      CENTRAL_COUNT: '{{ n_az }}'
       CHASSIS_COUNT: 0
       CREATE_FAKE_VMS: no
       ENABLE_ETCD: '{{ use_ovsdb_etcd }}'
@@ -53,7 +65,7 @@
       GW_COUNT: 0
       IP_CIDR:  "{{ node_net|ansible.utils.ipaddr('prefix') }}"
       IP_HOST:  "{{ node_net|ansible.utils.ipaddr('network') }}"
-      IP_START: "{{ node_net|ansible.utils.ipmath(2 + item|int) }}"
+      IP_START: "{{ node_net|ansible.utils.ipmath(2 + n_az|int * n_ips|int + item|int) }}"
       OVN_DB_CLUSTER:  '{{ clustered_db }}'
       OVN_DP_TYPE:     '{{ datapath_type }}'
       OVN_MONITOR_ALL: '{{ monitor_all }}'

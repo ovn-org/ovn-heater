@@ -35,6 +35,7 @@ ClusterConfig = namedtuple(
         'cluster_net',
         'n_workers',
         'n_relays',
+        'n_az',
         'vips',
         'vips6',
         'vip_subnet',
@@ -738,7 +739,7 @@ class Namespace:
 
 
 class Cluster:
-    def __init__(self, central_nodes, relay_nodes, cluster_cfg, brex_cfg):
+    def __init__(self, central_nodes, relay_nodes, cluster_cfg, brex_cfg, az):
         # In clustered mode use the first node for provisioning.
         self.central_nodes = central_nodes
         self.relay_nodes = relay_nodes
@@ -748,6 +749,11 @@ class Cluster:
         self.nbctl = None
         self.sbctl = None
         self.net = cluster_cfg.cluster_net
+        self.gw_net = ovn_utils.DualStackSubnet.next(
+            cluster_cfg.gw_net,
+            az * (cluster_cfg.n_workers // cluster_cfg.n_az),
+        )
+        self.az = az
         self.router = None
         self.load_balancer = None
         self.load_balancer6 = None
@@ -831,18 +837,16 @@ class Cluster:
             self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
     def create_cluster_join_switch(self, sw_name):
-        self.join_switch = self.nbctl.ls_add(
-            sw_name, net_s=self.cluster_cfg.gw_net
-        )
+        self.join_switch = self.nbctl.ls_add(sw_name, net_s=self.gw_net)
 
         self.join_rp = self.nbctl.lr_port_add(
             self.router,
-            'rtr-to-join',
+            f'rtr-to-{sw_name}',
             RandMac(),
-            self.cluster_cfg.gw_net.reverse(),
+            self.gw_net.reverse(),
         )
         self.join_ls_rp = self.nbctl.ls_port_add(
-            self.join_switch, 'join-to-rtr', self.join_rp
+            self.join_switch, f'{sw_name}-to-rtr', self.join_rp
         )
 
     def provision_ports(self, n_ports, passive=False):
@@ -889,8 +893,8 @@ class Cluster:
         self.last_selected_worker %= len(self.worker_nodes)
         return self.worker_nodes[self.last_selected_worker]
 
-    def provision_lb_group(self):
-        self.lb_group = lb.OvnLoadBalancerGroup('cluster-lb-group', self.nbctl)
+    def provision_lb_group(self, name='cluster-lb-group'):
+        self.lb_group = lb.OvnLoadBalancerGroup(name, self.nbctl)
         for w in self.worker_nodes:
             self.nbctl.ls_add_lbg(w.switch, self.lb_group.lbg)
             self.nbctl.lr_add_lbg(w.gw_router, self.lb_group.lbg)

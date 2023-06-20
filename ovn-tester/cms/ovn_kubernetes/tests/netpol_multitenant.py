@@ -15,8 +15,8 @@ NsMultitenantCfg = namedtuple(
 
 
 class NetpolMultitenant(ExtCmd):
-    def __init__(self, config, cluster, global_cfg):
-        super().__init__(config, cluster)
+    def __init__(self, config, clusters, global_cfg):
+        super().__init__(config, clusters)
         test_config = config.get('netpol_multitenant', dict())
         ranges = [
             NsRange(
@@ -33,7 +33,7 @@ class NetpolMultitenant(ExtCmd):
             ranges=ranges,
         )
 
-    def run(self, ovn, global_cfg):
+    def run(self, clusters, global_cfg):
         """
         Run a multitenant network policy test, for example:
 
@@ -60,6 +60,7 @@ class NetpolMultitenant(ExtCmd):
         to-lport, ip.src == {ip1, ..., ip20} && outport == @PG_ns_i,
                   allow-related
         """
+        ovn = clusters[0]
         if global_cfg.run_ipv4:
             external_ips1 = [
                 netaddr.IPAddress('42.42.42.1') + i

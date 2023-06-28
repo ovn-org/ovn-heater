@@ -32,6 +32,7 @@ ClusterConfig = namedtuple(
         'internal_net',
         'external_net',
         'gw_net',
+        'ts_net',
         'cluster_net',
         'n_workers',
         'n_relays',
@@ -748,6 +749,7 @@ class Cluster:
         self.brex_cfg = brex_cfg
         self.nbctl = None
         self.sbctl = None
+        self.icnbctl = None
         self.net = cluster_cfg.cluster_net
         self.gw_net = ovn_utils.DualStackSubnet.next(
             cluster_cfg.gw_net,
@@ -760,6 +762,7 @@ class Cluster:
         self.join_switch = None
         self.last_selected_worker = 0
         self.n_ns = 0
+        self.ts_switch = None
 
     def add_workers(self, worker_nodes):
         self.worker_nodes.extend(worker_nodes)
@@ -781,6 +784,15 @@ class Cluster:
             self.central_nodes[0], sb_conn, inactivity_probe
         )
 
+        # ovn-ic configuration
+        self.icnbctl = ovn_utils.OvnIcNbctl(
+            None,
+            f'tcp:{self.cluster_cfg.node_net.ip + 2}:6645',
+            inactivity_probe,
+        )
+        self.nbctl.set_global('ic-route-learn', 'true')
+        self.nbctl.set_global('ic-route-adv', 'true')
+
         for r in self.relay_nodes:
             r.start()
 
@@ -794,6 +806,7 @@ class Cluster:
         self.nbctl.set_global(
             'northd_probe_interval', self.cluster_cfg.northd_probe_interval
         )
+        self.nbctl.set_global_name(f'az{self.az}')
         self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
         self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
 

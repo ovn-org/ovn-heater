@@ -106,6 +106,8 @@ class ClusterConfig:
     external_net6: str = "3::/64"
     gw_net: str = "2.0.0.0/16"
     gw_net6: str = "2::/64"
+    ts_net: str = "30.0.0.0/16"
+    ts_net6: str = "30::/64"
     cluster_net: str = "16.0.0.0/4"
     cluster_net6: str = "16::/32"
     n_workers: int = 2

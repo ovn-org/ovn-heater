@@ -110,6 +110,14 @@ def read_config(config):
             if global_cfg.run_ipv6
             else None,
         ),
+        ts_net=DualStackSubnet(
+            netaddr.IPNetwork(cluster_args['ts_net'])
+            if global_cfg.run_ipv4
+            else None,
+            netaddr.IPNetwork(cluster_args['ts_net6'])
+            if global_cfg.run_ipv6
+            else None,
+        ),
         n_workers=cluster_args['n_workers'],
         vips=cluster_args['vips'],
         vips6=cluster_args['vips6'],

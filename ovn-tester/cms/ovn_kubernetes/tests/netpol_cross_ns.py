@@ -27,7 +27,7 @@ class NetpolCrossNs(ExtCmd):
             )
             for i in range(self.config.n_ns):
                 ns = Namespace(
-                    ovn, f'NS_netpol_cross_ns_startup_{i}', global_cfg
+                    clusters, f'NS_netpol_cross_ns_startup_{i}', global_cfg
                 )
                 ns.add_ports(
                     ports[

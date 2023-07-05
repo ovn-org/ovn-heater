@@ -71,7 +71,7 @@ class DensityHeavy(ExtCmd):
             return
 
         ovn = clusters[0]
-        ns = Namespace(ovn, 'ns_density_heavy', global_cfg)
+        ns = Namespace(clusters, 'ns_density_heavy', global_cfg)
         with Context(
             clusters, 'density_heavy_startup', brief_report=True
         ) as ctx:

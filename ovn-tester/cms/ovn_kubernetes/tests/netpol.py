@@ -2,6 +2,7 @@ from collections import namedtuple
 from ovn_context import Context
 from ovn_workload import Namespace
 from ovn_ext_cmd import ExtCmd
+from itertools import chain
 import ovn_exceptions
 
 NpCfg = namedtuple('NpCfg', ['n_ns', 'n_labels', 'pods_ns_ratio'])
@@ -23,33 +24,26 @@ class NetPol(ExtCmd):
         self.name = name
         self.all_labels = dict()
         self.all_ns = []
-        self.ports = []
+        self.ports = [[] for _ in range(self.config.n_ns)]
 
     def init(self, clusters, global_cfg):
-        ovn = clusters[0]
         with Context(clusters, f'{self.name}_startup', brief_report=True) as _:
-            self.ports = ovn.provision_ports(
-                self.config.pods_ns_ratio * self.config.n_ns
-            )
-            for i in range(self.config.pods_ns_ratio * self.config.n_ns):
-                self.all_labels.setdefault(
-                    i % self.config.n_labels, []
-                ).append(self.ports[i])
-
             for i in range(self.config.n_ns):
+                az_index = i % len(clusters)
+                ovn = clusters[az_index]
+                self.ports[i] = ovn.provision_ports(self.config.pods_ns_ratio)
                 ns = Namespace(clusters, f'NS_{self.name}_{i}', global_cfg)
-                ns.add_ports(
-                    self.ports[
-                        i
-                        * self.config.pods_ns_ratio : (i + 1)
-                        * self.config.pods_ns_ratio
-                    ]
-                )
-                ns.default_deny(4)
+                ns.add_ports(self.ports[i], az_index)
+                ns.default_deny(4, az_index)
                 self.all_ns.append(ns)
+                for i, port in enumerate(
+                    list(chain.from_iterable(self.ports))
+                ):
+                    self.all_labels.setdefault(
+                        i % self.config.n_labels, []
+                    ).append(port)
 
     def run(self, clusters, global_cfg, exclude=False):
-        ovn = clusters[0]
         with Context(clusters, self.name, self.config.n_ns, test=self) as ctx:
             for i in ctx:
                 ns = self.all_ns[i]
@@ -60,7 +54,9 @@ class NetPol(ExtCmd):
                     n = (lbl + 1) % self.config.n_labels
                     if exclude:
                         ex_label = label + self.all_labels[n]
-                        nlabel = [p for p in self.ports if p not in ex_label]
+                        nlabel = [
+                            p for p in self.ports[i] if p not in ex_label
+                        ]
                     else:
                         nlabel = self.all_labels[n]
                     sub_ns_dst = ns.create_sub_ns(nlabel, global_cfg)
@@ -71,9 +67,9 @@ class NetPol(ExtCmd):
                         ns.allow_sub_namespace(sub_ns_src, sub_ns_dst, 6)
                     worker = label[0].metadata
                     if label[0].ip and nlabel[0].ip:
-                        worker.ping_port(ovn, label[0], nlabel[0].ip)
+                        worker.ping_port(clusters[0], label[0], nlabel[0].ip)
                     if label[0].ip6 and nlabel[0].ip6:
-                        worker.ping_port(ovn, label[0], nlabel[0].ip6)
+                        worker.ping_port(clusters[0], label[0], nlabel[0].ip6)
 
         if not global_cfg.cleanup:
             return

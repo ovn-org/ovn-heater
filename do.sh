@@ -108,16 +108,14 @@ function generate() {
 function install_deps_local_rpm() {
     echo "-- Installing local dependencies"
     yum install redhat-lsb-core datamash \
-        python3-pip python3-netaddr python3 python3-devel \
+        python3-netaddr python3 python3-devel \
         podman \
         --skip-broken -y
-    [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
-
 }
 
 function install_deps_local_deb() {
     echo "-- Installing local dependencies"
-    apt -y install datamash podman python3-pip \
+    apt -y install datamash podman \
            python3-netaddr python3 python3-all-dev python3-venv
 }
 
@@ -134,9 +132,7 @@ function install_venv() {
         python3 -m venv ${ovn_heater_venv}
     fi
     source ${ovn_heater_venv}/bin/activate
-    if is_rpm_based; then
-        python3 -m ensurepip
-    fi
+    python3 -m ensurepip --upgrade
     python3 -m pip install -r ${topdir}/utils/requirements.txt
     deactivate
     popd

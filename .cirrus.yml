@@ -5,7 +5,7 @@ low_scale_task:
       - image_project: fedora-cloud
         image: family/fedora-cloud-38
       - image_project: ubuntu-os-cloud
-        image: family/ubuntu-2210-amd64
+        image: family/ubuntu-2304-amd64
     platform: linux
     memory: 8G
     disk: 40

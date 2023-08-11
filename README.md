@@ -77,7 +77,9 @@ sudo apt -y install ansible
 
 # Installation
 
-## Ensure all nodes can be accessed passwordless via SSH
+All the following installation steps are run on ORCHESTRATOR.
+
+## Ensure all nodes can be accessed passwordless via SSH by ORCHESTRATOR and TESTER
 
 On Fedora 33 RSA keys are not considered secure enough, an alternative is:
 
@@ -142,7 +144,7 @@ worker nodes, all others are valid both for the `central-node` and also for
 
 ## Perform the installation step:
 
-This must be run on the TESTER node and generates a `runtime` directory, a
+This must be run on the ORCHESTRATOR node and generates a `runtime` directory, a
 `runtime/hosts` ansible inventory and installs all test components on
 all other nodes.
 
@@ -222,6 +224,8 @@ cd ~/ovn-heater
 ```
 
 # Running tests:
+
+Testing steps are executed on ORCHESTRATOR node.
 
 ## Scenario definitions
 

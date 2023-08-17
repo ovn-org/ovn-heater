@@ -5,6 +5,7 @@ global:
 
 cluster:
   clustered_db: true
+  log_txns_db: true
   monitor_all: true
   n_workers: 2
   n_relays: 3

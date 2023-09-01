@@ -112,6 +112,7 @@ class ClusterConfig:
     monitor_all: bool = True
     logical_dp_groups: bool = True
     clustered_db: bool = True
+    log_txns_db: bool = False
     datapath_type: str = "system"
     raft_election_to: int = 16
     northd_probe_interval: int = 5000

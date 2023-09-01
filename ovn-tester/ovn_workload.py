@@ -20,6 +20,7 @@ ClusterConfig = namedtuple(
         'monitor_all',
         'logical_dp_groups',
         'clustered_db',
+        'log_txns_db',
         'datapath_type',
         'raft_election_to',
         'northd_probe_interval',
@@ -74,6 +75,8 @@ class CentralNode(Node):
         self.set_raft_election_timeout(cluster_cfg.raft_election_to)
         self.enable_trim_on_compaction()
         self.set_northd_threads(cluster_cfg.northd_threads)
+        if cluster_cfg.log_txns_db:
+            self.enable_txns_db_logging()
 
     def set_northd_threads(self, n_threads):
         log.info(f'Configuring northd to use {n_threads} threads')
@@ -118,6 +121,25 @@ class CentralNode(Node):
                 f'/run/ovn/ovnsb_db.ctl '
                 f'ovsdb-server/memory-trim-on-compaction on'
             )
+
+    def enable_txns_db_logging(self):
+        log.info('Enable DB txn logging')
+        self.run(
+            cmd='ovs-appctl -t /run/ovn/ovnnb_db.ctl '
+            'ovsdb-server/tlog-set OVN_Northbound:Logical_Switch_Port on'
+        )
+        self.run(
+            cmd='ovs-appctl -t /run/ovn/ovnnb_db.ctl '
+            'vlog/disable-rate-limit transaction'
+        )
+        self.run(
+            cmd='ovs-appctl -t /run/ovn/ovnsb_db.ctl '
+            'ovsdb-server/tlog-set OVN_Southbound:Port_Binding on'
+        )
+        self.run(
+            cmd='ovs-appctl -t /run/ovn/ovnsb_db.ctl '
+            'vlog/disable-rate-limit transaction'
+        )
 
     def get_connection_string(self, cluster_cfg, port):
         protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"

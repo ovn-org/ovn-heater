@@ -66,6 +66,7 @@ def read_config(config):
         monitor_all=cluster_args['monitor_all'],
         logical_dp_groups=cluster_args['logical_dp_groups'],
         clustered_db=cluster_args['clustered_db'],
+        log_txns_db=cluster_args['log_txns_db'],
         datapath_type=cluster_args['datapath_type'],
         raft_election_to=cluster_args['raft_election_to'],
         node_net=netaddr.IPNetwork(cluster_args['node_net']),

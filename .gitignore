@@ -1,1 +1,3 @@
 /runtime
+/test_results
+__pycache__

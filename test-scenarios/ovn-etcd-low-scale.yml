@@ -1,5 +1,6 @@
 global:
   log_cmds: False
+  cms_name: ovn_kubernetes
 
 cluster:
   clustered_db: False

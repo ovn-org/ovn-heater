@@ -173,7 +173,9 @@ def configure_tests(yaml, central_node, worker_nodes, global_cfg):
         if section in RESERVED:
             continue
 
-        mod = importlib.import_module(f'tests.{section}')
+        mod = importlib.import_module(
+            f'cms.{global_cfg.cms_name}.tests.{section}'
+        )
         class_name = ''.join(s.title() for s in section.split('_'))
         cls = getattr(mod, class_name)
         tests.append(cls(yaml, central_node, worker_nodes, global_cfg))

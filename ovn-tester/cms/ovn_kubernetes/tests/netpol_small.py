@@ -1,4 +1,4 @@
-from tests.netpol import NetPol
+from cms.ovn_kubernetes.tests.netpol import NetPol
 
 
 class NetpolSmall(NetPol):

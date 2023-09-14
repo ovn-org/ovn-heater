@@ -34,7 +34,7 @@ The initial provisioning for all the nodes is performed by the `do.sh install`
 command. The simulated `OVN` chassis containers and central container are
 spawned by the test scripts in `ovn-tester/`.
 
-**NOTE**: `ovn-fake-multinode` assumes that all nodes (OVN-CENTRAL and
+**NOTE**: `ovn-fake-multinode` assumes that all nodes (OVN-CENTRAL, TESTER and
 OVN-WORKER-NODEs) have an additional Ethernet interface connected to a
 single L2 switch. This interface will be used for traffic to/from the
 `Northbound` and `Southbound` databases and for tunneled traffic.
@@ -46,12 +46,13 @@ secondary Ethernet interface to exist.
 
 ## Sample physical topology:
 * ORCHESTRATOR: `host01.mydomain.com`
-* OVN-CENTRAL: `host02.mydomain.com`
+* TESTER: `host02.mydomain.com`
+* OVN-CENTRAL: `host03.mydomain.com`
 * OVN-WORKER-NODEs:
-  - `host03.mydomain.com`
   - `host04.mydomain.com`
+  - `host05.mydomain.com`
 
-OVN-CENTRAL and OVN-WORKER-NODEs all have Ethernet interface `eno1`
+TESTER, OVN-CENTRAL and OVN-WORKER-NODEs all have Ethernet interface `eno1`
 connected to a physical switch in a separate VLAN, as untagged interfaces.
 
 **NOTE**: The hostnames specified in the physical topology are used by both

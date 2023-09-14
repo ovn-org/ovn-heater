@@ -15,11 +15,93 @@ from ovn_workload import (
     ChassisNode,
     Cluster,
     DEFAULT_BACKEND_PORT,
+    DEFAULT_VIP_PORT,
 )
 
 log = logging.getLogger(__name__)
 ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
 OVN_HEATER_CMS_PLUGIN = 'OVNKubernetes'
+
+
+class OVNKubernetesCluster(Cluster):
+    def __init__(self, central_node, worker_nodes, cluster_cfg, brex_cfg):
+        super(OVNKubernetesCluster, self).__init__(
+            central_node, worker_nodes, cluster_cfg, brex_cfg
+        )
+        self.net = cluster_cfg.cluster_net
+        self.router = None
+        self.load_balancer = None
+        self.load_balancer6 = None
+        self.join_switch = None
+        self.n_ns = 0
+
+    def create_cluster_router(self, rtr_name):
+        self.router = self.nbctl.lr_add(rtr_name)
+        self.nbctl.lr_set_options(
+            self.router,
+            {
+                'always_learn_from_arp_request': 'false',
+            },
+        )
+
+    def create_cluster_load_balancer(self, lb_name, global_cfg):
+        if global_cfg.run_ipv4:
+            self.load_balancer = lb.OvnLoadBalancer(
+                lb_name, self.nbctl, self.cluster_cfg.vips
+            )
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+
+        if global_cfg.run_ipv6:
+            self.load_balancer6 = lb.OvnLoadBalancer(
+                f'{lb_name}6', self.nbctl, self.cluster_cfg.vips6
+            )
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
+
+    def create_cluster_join_switch(self, sw_name):
+        self.join_switch = self.nbctl.ls_add(
+            sw_name, net_s=self.cluster_cfg.gw_net
+        )
+
+        self.join_rp = self.nbctl.lr_port_add(
+            self.router,
+            'rtr-to-join',
+            RandMac(),
+            self.cluster_cfg.gw_net.reverse(),
+        )
+        self.join_ls_rp = self.nbctl.ls_port_add(
+            self.join_switch, 'join-to-rtr', self.join_rp
+        )
+
+    @ovn_stats.timeit
+    def provision_vips_to_load_balancers(self, backend_lists):
+        n_vips = len(self.load_balancer.vips.keys())
+        vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
+
+        vips = {
+            f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
+                f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
+            ]
+            for i, ports in enumerate(backend_lists)
+        }
+        self.load_balancer.add_vips(vips)
+
+    def unprovision_vips(self):
+        if self.load_balancer:
+            self.load_balancer.clear_vips()
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+        if self.load_balancer6:
+            self.load_balancer6.clear_vips()
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
+
+    def provision_lb_group(self):
+        self.lb_group = lb.OvnLoadBalancerGroup('cluster-lb-group', self.nbctl)
+        for w in self.worker_nodes:
+            self.nbctl.ls_add_lbg(w.switch, self.lb_group.lbg)
+            self.nbctl.lr_add_lbg(w.gw_router, self.lb_group.lbg)
+
+    def provision_lb(self, lb):
+        log.info(f'Creating load balancer {lb.name}')
+        self.lb_group.add_lb(lb)
 
 
 class WorkerNode(ChassisNode):
@@ -241,7 +323,9 @@ class OVNKubernetes:
 
     @staticmethod
     def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
-        ovn = Cluster(central_node, worker_nodes, cluster_cfg, brex_cfg)
+        ovn = OVNKubernetesCluster(
+            central_node, worker_nodes, cluster_cfg, brex_cfg
+        )
         with Context(ovn, 'prepare_test'):
             ovn.start()
         return ovn

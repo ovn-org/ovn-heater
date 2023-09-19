@@ -585,9 +585,13 @@ class OvnNbctl:
         verdict="allow",
     ):
         if entity == "switch":
-            self.idl.acl_add(name, direction, priority, match, verdict)
+            self.idl.acl_add(
+                name, direction, priority, match, verdict
+            ).execute()
         else:  # "port-group"
-            self.idl.pg_acl_add(name, direction, priority, match, verdict)
+            self.idl.pg_acl_add(
+                name, direction, priority, match, verdict
+            ).execute()
 
     def route_add(self, router, network, gw, policy="dst-ip"):
         if network.n4 and gw.ip4:

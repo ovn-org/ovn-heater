@@ -13,7 +13,7 @@ class CentralNodeWrapper(Sandbox):
         )
 
 
-class ExtCmdUnit(object):
+class ExtCmdUnit:
     def __init__(self, conf, central_node, worker_nodes):
         self.iteration = conf.get('iteration')
         self.cmd = conf.get('cmd')
@@ -59,7 +59,7 @@ class ExtCmdUnit(object):
         return stdout.getvalue().strip()
 
 
-class ExtCmd(object):
+class ExtCmd:
     def __init__(self, config, central_node, worker_nodes):
         self.cmd_map = defaultdict(list)
         for ext_cmd in config.get('ext_cmd', list()):

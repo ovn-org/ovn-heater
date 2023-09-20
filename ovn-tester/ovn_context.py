@@ -10,7 +10,7 @@ active_context = None
 ITERATION_STAT_NAME = 'Iteration Total'
 
 
-class Context(object):
+class Context:
     def __init__(
         self,
         cluster,

@@ -456,7 +456,7 @@ DEFAULT_VIP_PORT = 80
 DEFAULT_BACKEND_PORT = 8080
 
 
-class Namespace(object):
+class Namespace:
     def __init__(self, cluster, name, global_cfg):
         self.cluster = cluster
         self.nbctl = cluster.nbctl
@@ -747,7 +747,7 @@ class Namespace(object):
             self.load_balancer.add_vips(vips)
 
 
-class Cluster(object):
+class Cluster:
     def __init__(self, central_node, worker_nodes, cluster_cfg, brex_cfg):
         # In clustered mode use the first node for provisioning.
         self.central_node = central_node

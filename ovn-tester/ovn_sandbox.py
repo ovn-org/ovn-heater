@@ -50,7 +50,7 @@ class SSH:
                 log.info(out)
 
 
-class PhysicalNode(object):
+class PhysicalNode:
     def __init__(self, hostname, log_cmds):
         self.ssh = SSH(hostname, log_cmds)
 
@@ -58,7 +58,7 @@ class PhysicalNode(object):
         self.ssh.run(cmd=cmd, stdout=stdout, raise_on_error=raise_on_error)
 
 
-class Sandbox(object):
+class Sandbox:
     def __init__(self, phys_node, container):
         self.phys_node = phys_node
         self.container = container

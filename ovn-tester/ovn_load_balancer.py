@@ -11,7 +11,7 @@ class InvalidProtocol(Exception):
         return f"Invalid Protocol: {self.args}"
 
 
-class OvnLoadBalancer(object):
+class OvnLoadBalancer:
     def __init__(self, lb_name, nbctl, vips=None, protocols=VALID_PROTOCOLS):
         '''
         Create load balancers with optional vips.
@@ -114,7 +114,7 @@ class OvnLoadBalancer(object):
             }
 
 
-class OvnLoadBalancerGroup(object):
+class OvnLoadBalancerGroup:
     def __init__(self, group_name, nbctl):
         self.nbctl = nbctl
         self.name = group_name

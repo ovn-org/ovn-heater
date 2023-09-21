@@ -8,9 +8,7 @@ from ovn_sandbox import Sandbox
 # matching central containers
 class CentralNodeWrapper(Sandbox):
     def __init__(self, central_node, container):
-        super(CentralNodeWrapper, self).__init__(
-            central_node.phys_node, container
-        )
+        super().__init__(central_node.phys_node, container)
 
 
 class ExtCmdUnit:

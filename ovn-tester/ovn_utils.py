@@ -164,7 +164,7 @@ class DualStackSubnet:
 # This override allows for us to connect to multiple DBs
 class Backend(ovs_idl.Backend):
     def __init__(self, connection):
-        super(Backend, self).__init__(connection)
+        super().__init__(connection)
 
     @property
     def ovsdb_connection(self):
@@ -178,7 +178,7 @@ class Backend(ovs_idl.Backend):
 
 class VSIdl(ovs_impl_idl.OvsdbIdl, Backend):
     def __init__(self, connection):
-        super(VSIdl, self).__init__(connection)
+        super().__init__(connection)
 
 
 class OvsVsctl:
@@ -271,7 +271,7 @@ class NBTransaction(transaction.Transaction):
         wait_type=None,
         **kwargs,
     ):
-        super(NBTransaction, self).__init__(
+        super().__init__(
             api,
             ovsdb_connection,
             timeout=timeout,
@@ -339,7 +339,7 @@ class NBTransaction(transaction.Transaction):
 
 class NBIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     def __init__(self, connection):
-        super(NBIdl, self).__init__(connection)
+        super().__init__(connection)
 
     def create_transaction(
         self,
@@ -710,7 +710,7 @@ class BaseOvnSbIdl(connection.OvsdbIdl):
 
 class SBIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def __init__(self, connection):
-        super(SBIdl, self).__init__(connection)
+        super().__init__(connection)
 
     @property
     def _connection(self):

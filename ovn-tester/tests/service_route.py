@@ -17,7 +17,7 @@ DEFAULT_BACKEND_PORT = 8080
 
 class ServiceRoute(ExtCmd):
     def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super(ServiceRoute, self).__init__(config, central_node, worker_nodes)
+        super().__init__(config, central_node, worker_nodes)
         test_config = config.get('service_route', dict())
         self.config = ServiceRouteCfg(
             n_lb=test_config.get('n_lb', 16),

@@ -211,6 +211,19 @@ cd ~/ovn-heater
 RPM_SELINUX=$rpm_url_openvswitch-selinux-extra-policy RPM_OVS=$rpm_url_openvswitch RPM_OVN_COMMON=$rpm_url_ovn RPM_OVN_HOST=$rpm_url_ovn-host RPM_OVN_CENTRAL=$rpm_url_ovn-central ./do.sh install
 ```
 
+## Update Tester code
+
+To update code in Tester container run:
+
+```
+cd ~/ovn-heater
+./do.sh refresh-tester
+```
+
+This is handy if you are just making changes to the code inside `ovn-tester`
+package, and you don't need to rebuild `OVN`/`OVS` packages or
+`fake-multinode` image.
+
 ## Regenerate the ansible inventory:
 
 If the physical topology has changed then update

@@ -316,6 +316,15 @@ function install() {
     popd
 }
 
+function refresh_tester() {
+    pushd ${rundir}
+
+    install_ovn_tester
+    pull_ovn_tester
+
+    popd
+}
+
 function translate_yaml() {
     local test_file=$1
 
@@ -492,7 +501,7 @@ function run_test() {
 }
 
 function usage() {
-    die "Usage: $0 install|generate|init|run <scenario> <out-dir>"
+    die "Usage: $0 install|generate|init|refresh-tester|run <scenario> <out-dir>"
 }
 
 do_lockfile=/tmp/do.sh.lock
@@ -508,6 +517,8 @@ case "${1:-"usage"}" in
     "generate")
         ;&
     "init")
+        ;&
+    "refresh-tester")
         ;&
     "run")
         take_lock $0
@@ -540,6 +551,9 @@ case "${1:-"usage"}" in
     "init")
         init_ovn_fake_multinode
         pull_ovn_fake_multinode
+        ;;
+    "refresh-tester")
+        refresh_tester
         ;;
     "run")
         cmd=$0

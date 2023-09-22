@@ -1,0 +1,11 @@
+global:
+  log_cmds: false
+  cms_name: openstack
+
+cluster:
+  clustered_db: true
+  log_txns_db: true
+  n_workers: 3
+
+base_openstack:
+  foo: bar

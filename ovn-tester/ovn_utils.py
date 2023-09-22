@@ -5,6 +5,7 @@ import ovn_exceptions
 import time
 from collections import namedtuple
 from functools import partial
+from typing import Dict, Optional
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
 import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
@@ -45,6 +46,7 @@ PortGroup = namedtuple('PortGroup', ['name'])
 AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
 LoadBalancerGroup = namedtuple('LoadBalancerGroup', ['name', 'uuid'])
+DhcpOptions = namedtuple("DhcpOptions", ["uuid", "cidr"])
 
 DEFAULT_CTL_TIMEOUT = 60
 
@@ -555,6 +557,23 @@ class OvnNbctl:
     def ls_port_set_set_type(self, port, lsp_type):
         self.idl.lsp_set_type(port.name, lsp_type).execute()
 
+    def ls_port_enable(self, port: LSPort) -> None:
+        """Set Logical Switch Port's state to 'enabled'."""
+        self.idl.lsp_set_enabled(port.name, True).execute()
+
+    def ls_port_set_ipv4_address(self, port: LSPort, addr: str) -> LSPort:
+        """Set Logical Switch Port's IPv4 address.
+
+        :param port: LSPort to modify
+        :param addr: IPv4 address to set
+        :return: Modified LSPort object with updated 'ip' attribute
+        """
+        addresses = [f"{port.mac} {addr}"]
+        log.info(f"Setting addresses for port {port.uuid}: {addresses}")
+        self.idl.lsp_set_addresses(port.uuid, addresses).execute()
+
+        return port._replace(ip=addr)
+
     def port_group_create(self, name):
         self.idl.pg_add(name).execute()
         return PortGroup(name=name)
@@ -707,6 +726,28 @@ class OvnNbctl:
         with self.idl.transaction(check_error=True) as txn:
             for s in switches:
                 txn.add(self.idl.ls_lb_del(s, lb.uuid, if_exists=True))
+
+    def create_dhcp_options(
+        self, cidr: str, ext_ids: Optional[Dict] = None
+    ) -> DhcpOptions:
+        """Create entry in DHCP_Options table.
+
+        :param cidr: DHCP address pool (i.e. '192.168.1.0/24')
+        :param ext_ids: Optional entries to 'external_ids' column
+        :return: DhcpOptions object
+        """
+        ext_ids = {} if ext_ids is None else ext_ids
+
+        log.info(f"Creating DHCP Options for {cidr}. External IDs: {ext_ids}")
+        add_command = self.idl.dhcp_options_add(cidr, **ext_ids)
+        add_command.execute()
+
+        return DhcpOptions(add_command.result.uuid, cidr)
+
+    def dhcp_options_set_options(self, uuid_: str, options: Dict) -> None:
+        """Set 'options' column for 'DHCP_Options' entry."""
+        log.info(f"Setting DHCP options for {uuid_}: {options}")
+        self.idl.dhcp_options_set_options(uuid_, **options).execute()
 
     def sync(self, wait="hv", timeout=DEFAULT_CTL_TIMEOUT):
         with self.idl.transaction(

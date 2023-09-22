@@ -5,7 +5,7 @@ import ovn_exceptions
 import time
 from collections import namedtuple
 from functools import partial
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
 import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
@@ -438,28 +438,53 @@ class OvnNbctl:
             ("inactivity_probe", value),
         ).execute()
 
-    def lr_add(self, name):
+    def lr_add(self, name, ext_ids: Optional[Dict] = None):
+        ext_ids = {} if ext_ids is None else ext_ids
+
         log.info(f'Creating lrouter {name}')
-        uuid = self.uuid_transaction(partial(self.idl.lr_add, name))
+        uuid = self.uuid_transaction(
+            partial(self.idl.lr_add, name, external_ids=ext_ids)
+        )
         return LRouter(name=name, uuid=uuid)
 
-    def lr_port_add(self, router, name, mac, dual_ip=None):
+    def lr_port_add(
+        self, router, name, mac, dual_ip=None, ext_ids: Optional[Dict] = None
+    ):
+        ext_ids = {} if ext_ids is None else ext_ids
         networks = []
         if dual_ip.ip4 and dual_ip.plen4:
             networks.append(f'{dual_ip.ip4}/{dual_ip.plen4}')
         if dual_ip.ip6 and dual_ip.plen6:
             networks.append(f'{dual_ip.ip6}/{dual_ip.plen6}')
 
-        self.idl.lrp_add(router.uuid, name, str(mac), networks).execute()
+        self.idl.lrp_add(
+            router.uuid, name, str(mac), networks, external_ids=ext_ids
+        ).execute()
         return LRPort(name=name, mac=mac, ip=dual_ip)
 
     def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
         log.info(f'Setting gw chassis {chassis} for router port {rp.name}')
         self.idl.lrp_set_gateway_chassis(rp.name, chassis, priority).execute()
 
-    def ls_add(self, name, net_s):
+    def ls_add(
+        self,
+        name: str,
+        net_s: DualStackSubnet,
+        ext_ids: Optional[Dict] = None,
+        other_config: Optional[Dict] = None,
+    ) -> LSwitch:
+        ext_ids = {} if ext_ids is None else ext_ids
+        other_config = {} if other_config is None else other_config
+
         log.info(f'Creating lswitch {name}')
-        uuid = self.uuid_transaction(partial(self.idl.ls_add, name))
+        uuid = self.uuid_transaction(
+            partial(
+                self.idl.ls_add,
+                name,
+                external_ids=ext_ids,
+                other_config=other_config,
+            )
+        )
         return LSwitch(
             name=name,
             cidr=net_s.n4,
@@ -480,17 +505,18 @@ class OvnNbctl:
 
     def ls_port_add(
         self,
-        lswitch,
-        name,
-        router_port=None,
-        mac=None,
-        ip=None,
-        gw=None,
-        ext_gw=None,
-        metadata=None,
-        passive=False,
-        security=False,
-        localnet=False,
+        lswitch: LSwitch,
+        name: str,
+        router_port: Optional[LRPort] = None,
+        mac: Optional[str] = None,
+        ip: Optional[DualStackIP] = None,
+        gw: Optional[DualStackIP] = None,
+        ext_gw: Optional[DualStackIP] = None,
+        metadata=None,  # typehint: ovn_workload.ChassisNode
+        passive: bool = False,
+        security: bool = False,
+        localnet: bool = False,
+        ext_ids: Optional[Dict] = None,
     ):
         columns = dict()
         if router_port:
@@ -513,6 +539,9 @@ class OvnNbctl:
             columns["addresses"] = addresses
             if security:
                 columns["port_security"] = addresses
+
+        if ext_ids is not None:
+            columns["external_ids"] = ext_ids
 
         uuid = self.uuid_transaction(
             partial(self.idl.lsp_add, lswitch.uuid, name, **columns)
@@ -547,7 +576,15 @@ class OvnNbctl:
     def ls_port_del(self, port):
         self.idl.lsp_del(port.name).execute()
 
-    def ls_port_set_set_options(self, port, options):
+    def ls_port_set_set_options(self, port: LSPort, options: str):
+        """Set 'options' column for Logical Switch Port.
+
+        :param port: Logical Switch Port to modify
+        :param options: Space-separated key-value pairs that are set as
+                        options. Keys and values are separated by '='.
+                        i.e.: 'opt1=val1 opt2=val2'
+        :return: None
+        """
         opts = dict(
             (k, v)
             for k, v in (element.split("=") for element in options.split())
@@ -574,14 +611,15 @@ class OvnNbctl:
 
         return port._replace(ip=addr)
 
-    def port_group_create(self, name):
-        self.idl.pg_add(name).execute()
+    def port_group_create(self, name, ext_ids: Optional[Dict] = None):
+        ext_ids = {} if ext_ids is None else ext_ids
+        self.idl.pg_add(name, external_ids=ext_ids).execute()
         return PortGroup(name=name)
 
     def port_group_add(self, pg, lport):
         self.idl.pg_add_ports(pg.name, lport.uuid).execute()
 
-    def port_group_add_ports(self, pg, lports):
+    def port_group_add_ports(self, pg: PortGroup, lports: List[LSPort]):
         MAX_PORTS_IN_BATCH = 500
         for i in range(0, len(lports), MAX_PORTS_IN_BATCH):
             lports_slice = lports[i : i + MAX_PORTS_IN_BATCH]
@@ -620,14 +658,16 @@ class OvnNbctl:
         entity="switch",
         match="",
         verdict="allow",
+        ext_ids: Optional[Dict] = None,
     ):
+        ext_ids = {} if ext_ids is None else ext_ids
         if entity == "switch":
             self.idl.acl_add(
-                name, direction, priority, match, verdict
+                name, direction, priority, match, verdict, **ext_ids
             ).execute()
         else:  # "port-group"
             self.idl.pg_acl_add(
-                name, direction, priority, match, verdict
+                name, direction, priority, match, verdict, **ext_ids
             ).execute()
 
     def route_add(self, router, network, gw, policy="dst-ip"):

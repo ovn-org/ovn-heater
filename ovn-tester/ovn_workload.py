@@ -8,6 +8,7 @@ import netaddr
 from collections import namedtuple
 from collections import defaultdict
 from datetime import datetime
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -282,9 +283,9 @@ class Cluster:
         self.worker_nodes = []
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
-        self.nbctl = None
-        self.sbctl = None
-        self.icnbctl = None
+        self.nbctl: Optional[ovn_utils.OvnNbctl] = None
+        self.sbctl: Optional[ovn_utils.OvnSbctl] = None
+        self.icnbctl: Optional[ovn_utils.OvnIcNbctl] = None
         self.az = az
 
         protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"

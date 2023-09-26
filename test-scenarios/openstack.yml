@@ -8,4 +8,4 @@ cluster:
   n_workers: 3
 
 base_openstack:
-  foo: bar
+  n_projects: 3

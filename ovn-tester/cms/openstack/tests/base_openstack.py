@@ -1,5 +1,6 @@
 import logging
 
+from dataclasses import dataclass
 from typing import List
 
 from ovn_ext_cmd import ExtCmd
@@ -11,9 +12,17 @@ from cms.openstack import OpenStackCloud
 log = logging.getLogger(__name__)
 
 
+@dataclass
+class BaseOpenstackConfig:
+
+    n_projects: int = 1
+
+
 class BaseOpenstack(ExtCmd):
     def __init__(self, config, cluster, global_cfg):
         super().__init__(config, cluster)
+        test_config = config.get("base_openstack")
+        self.config = BaseOpenstackConfig(**test_config)
 
     def run(self, clouds: List[OpenStackCloud], global_cfg):
         # create ovn topology
@@ -29,4 +38,5 @@ class BaseOpenstack(ExtCmd):
                     )
                     worker_node.provision(ovn)
 
-            _ = ovn.new_project(gw_nodes=ovn.worker_nodes)
+            for _ in range(self.config.n_projects):
+                _ = ovn.new_project(gw_nodes=ovn.worker_nodes)

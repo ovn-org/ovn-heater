@@ -9,3 +9,4 @@ cluster:
 
 base_openstack:
   n_projects: 3
+  n_gws_per_project: 3

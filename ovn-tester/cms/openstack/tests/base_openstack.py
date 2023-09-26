@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 class BaseOpenstackConfig:
 
     n_projects: int = 1
+    n_gws_per_project: int = 1
 
 
 class BaseOpenstack(ExtCmd):
@@ -39,4 +40,4 @@ class BaseOpenstack(ExtCmd):
                     worker_node.provision(ovn)
 
             for _ in range(self.config.n_projects):
-                _ = ovn.new_project(gw_nodes=ovn.worker_nodes)
+                _ = ovn.new_project(gw_nodes=self.config.n_gws_per_project)

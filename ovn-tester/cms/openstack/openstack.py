@@ -1,5 +1,7 @@
 import logging
+import random
 import uuid
+
 from dataclasses import dataclass
 from typing import List, Optional, Dict
 
@@ -63,6 +65,8 @@ class Project:
 
 class OpenStackCloud(Cluster):
     """Representation of Openstack cloud/deployment."""
+
+    MAX_GW_PER_ROUTER = 5
 
     def __init__(self, cluster_cfg, central, brex_cfg, az):
         super().__init__(cluster_cfg, central, brex_cfg, az)
@@ -128,19 +132,19 @@ class OpenStackCloud(Cluster):
 
         return network
 
-    def new_project(
-        self, gw_nodes: Optional[List[ChassisNode]] = None
-    ) -> Project:
+    def new_project(self, gw_nodes: int = 0) -> Project:
         """Create new Project/Tenant in the Openstack cloud.
 
         Following things are provisioned for the Project:
           * Project router
           * Internal network
 
-        If 'gw_nodes' are provided, external network is also provisioned
-        with default route through the gateway nodes.
+        If 'gw_nodes' count is more than 0, external network is also
+        provisioned with default route through the gateway nodes. Gateway
+        nodes and their priority are selected at random from all
+        available 'worker_nodes'.
 
-        :param gw_nodes: Optional list of Chassis that act like gateways.
+        :param gw_nodes: Number of gateway chassis to use.
         :return: New Project object that is automatically also added
                  to 'self.projects' list.
         """
@@ -151,7 +155,10 @@ class OpenStackCloud(Cluster):
         )
 
         if gw_nodes:
-            self.add_external_network_to_project(project, gw_nodes)
+            self.add_external_network_to_project(
+                project,
+                self._get_gateway_chassis(gw_nodes),
+            )
 
         self.add_internal_network_to_project(project, self.external_port)
         self._projects.append(project)
@@ -233,6 +240,38 @@ class OpenStackCloud(Cluster):
         snated_network = DualStackSubnet(int_net.cidr)
         if snat_port is not None:
             self.nbctl.nat_add(project.router, snat_port.ip, snated_network)
+
+    def _get_gateway_chassis(self, count: int = 1) -> List[ChassisNode]:
+        """Return list of Gateway Chassis with size defined by 'count'.
+
+        Chassis are picked at random from all available 'worker_nodes' to
+        attempt to evenly distribute gateway loads.
+
+        Parameter 'count' can't be larger than number of all available gateways
+        or larger than 5 which is hardcoded maximum of gateways per router in
+        Neutron.
+        """
+        warn = ""
+        worker_count = len(self.worker_nodes)
+        if count > worker_count:
+            count = worker_count
+            warn += (
+                f"{count} Gateway chassis requested but only "
+                f"{worker_count} available.\n"
+            )
+
+        if count > self.MAX_GW_PER_ROUTER:
+            count = self.MAX_GW_PER_ROUTER
+            warn += (
+                f"Maximum number of gateways per router "
+                f"is {self.MAX_GW_PER_ROUTER}\n"
+            )
+
+        if warn:
+            warn += f"Using only {count} Gateways per router."
+            log.warning(warn)
+
+        return random.sample(self.worker_nodes, count)
 
     def _create_project_net(self, net_name: str, mtu: int = 1500) -> LSwitch:
         """Create Logical Switch that represents neutron network.

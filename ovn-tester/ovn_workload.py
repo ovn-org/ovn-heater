@@ -28,7 +28,6 @@ ClusterConfig = namedtuple(
         'db_inactivity_probe',
         'node_net',
         'enable_ssl',
-        'node_remote',
         'node_timeout_s',
         'internal_net',
         'external_net',
@@ -60,10 +59,9 @@ class Node(ovn_sandbox.Sandbox):
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, db_containers, relay_containers, mgmt_ip):
+    def __init__(self, phys_node, db_containers, mgmt_ip):
         super().__init__(phys_node, db_containers[0], mgmt_ip)
         self.db_containers = db_containers
-        self.relay_containers = relay_containers
 
     def start(self, cluster_cfg):
         log.info('Configuring central node')
@@ -110,12 +108,6 @@ class CentralNode(Node):
                 f'/run/ovn/ovnsb_db.ctl '
                 f'ovsdb-server/memory-trim-on-compaction on'
             )
-        for relay_container in self.relay_containers:
-            self.phys_node.run(
-                f'podman exec {relay_container} ovs-appctl -t '
-                f'/run/ovn/ovnsb_db.ctl '
-                f'ovsdb-server/memory-trim-on-compaction on'
-            )
 
     def enable_txns_db_logging(self):
         log.info('Enable DB txn logging')
@@ -145,6 +137,27 @@ class CentralNode(Node):
 
     def central_containers(self):
         return self.db_containers
+
+
+class RelayNode(Node):
+    def __init__(self, phys_node, container, mgmt_ip):
+        super().__init__(phys_node, container, mgmt_ip)
+
+    def start(self):
+        log.info(f'Configuring relay node {self.container}')
+        self.enable_trim_on_compaction()
+
+    def get_connection_string(self, cluster_cfg, port):
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        return f'{protocol}:{self.mgmt_ip}:{port}'
+
+    def enable_trim_on_compaction(self):
+        log.info('Setting DB trim-on-compaction')
+        self.phys_node.run(
+            f'podman exec {self.container} ovs-appctl -t '
+            f'/run/ovn/ovnsb_db.ctl '
+            f'ovsdb-server/memory-trim-on-compaction on'
+        )
 
 
 class WorkerNode(Node):
@@ -178,14 +191,11 @@ class WorkerNode(Node):
         )
 
     @ovn_stats.timeit
-    def connect(self, cluster_cfg):
+    def connect(self, remote):
         log.info(
-            f'Connecting worker {self.container}: '
-            f'ovn-remote = {cluster_cfg.node_remote}'
+            f'Connecting worker {self.container}: ' f'ovn-remote = {remote}'
         )
-        self.vsctl.set_global_external_id(
-            'ovn-remote', f'{cluster_cfg.node_remote}'
-        )
+        self.vsctl.set_global_external_id('ovn-remote', f'{remote}')
 
     def configure_localnet(self, physical_net):
         log.info(f'Creating localnet on {self.container}')
@@ -210,7 +220,7 @@ class WorkerNode(Node):
 
     @ovn_stats.timeit
     def provision(self, cluster):
-        self.connect(cluster.cluster_cfg)
+        self.connect(cluster.get_relay_connection_string())
         self.wait(cluster.sbctl, cluster.cluster_cfg.node_timeout_s)
 
         # Create a node switch and connect it to the cluster router.
@@ -737,9 +747,12 @@ class Namespace:
 
 
 class Cluster:
-    def __init__(self, central_node, worker_nodes, cluster_cfg, brex_cfg):
+    def __init__(
+        self, central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+    ):
         # In clustered mode use the first node for provisioning.
         self.central_node = central_node
+        self.relay_nodes = relay_nodes
         self.worker_nodes = worker_nodes
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
@@ -769,6 +782,10 @@ class Cluster:
         self.sbctl = ovn_utils.OvnSbctl(
             self.central_node, sb_conn, inactivity_probe
         )
+
+        for r in self.relay_nodes:
+            r.start()
+
         for w in self.worker_nodes:
             w.start(self.cluster_cfg)
             w.configure(self.brex_cfg.physical_net)
@@ -781,6 +798,16 @@ class Cluster:
         )
         self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
         self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
+
+    def get_relay_connection_string(self):
+        if len(self.relay_nodes) > 0:
+            return ','.join(
+                [
+                    db.get_connection_string(self.cluster_cfg, 6642)
+                    for db in self.relay_nodes
+                ]
+            )
+        return self.central_node.get_connection_string(self.cluster_cfg, 6642)
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)

@@ -32,8 +32,12 @@ class OVNKubernetes:
         return worker_nodes
 
     @staticmethod
-    def prepare_test(central_node, worker_nodes, cluster_cfg, brex_cfg):
-        ovn = Cluster(central_node, worker_nodes, cluster_cfg, brex_cfg)
+    def prepare_test(
+        central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+    ):
+        ovn = Cluster(
+            central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+        )
         with Context(ovn, 'prepare_test'):
             ovn.start()
         return ovn

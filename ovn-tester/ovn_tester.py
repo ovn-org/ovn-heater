@@ -166,7 +166,7 @@ def load_cms(cms_name):
     return cls()
 
 
-def configure_tests(yaml, central_node, worker_nodes, global_cfg):
+def configure_tests(yaml, central_nodes, worker_nodes, global_cfg):
     tests = []
     for section, cfg in yaml.items():
         if section in RESERVED:
@@ -177,7 +177,7 @@ def configure_tests(yaml, central_node, worker_nodes, global_cfg):
         )
         class_name = ''.join(s.title() for s in section.split('_'))
         cls = getattr(mod, class_name)
-        tests.append(cls(yaml, central_node, worker_nodes, global_cfg))
+        tests.append(cls(yaml, central_nodes, worker_nodes, global_cfg))
     return tests
 
 
@@ -188,14 +188,18 @@ def create_central_nodes(cluster_cfg, central):
         if cluster_cfg.clustered_db
         else ['ovn-central']
     )
-    central_node = CentralNode(central, db_containers, mgmt_ip)
-    mgmt += 1
+
+    central_nodes = [
+        CentralNode(central, c, mgmt_ip + i)
+        for i, c in enumerate(db_containers)
+    ]
+    mgmt_ip += len(central_nodes)
 
     relay_nodes = [
         RelayNode(central, f'ovn-relay-{i + 1}', mgmt_ip + i)
         for i in range(cluster_cfg.n_relays)
     ]
-    return central_node, relay_nodes
+    return central_nodes, relay_nodes
 
 
 def set_ssl_keys(cluster_cfg):
@@ -224,15 +228,15 @@ if __name__ == '__main__':
     cms = load_cms(global_cfg.cms_name)
 
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
-    central_node, relay_nodes = create_central_nodes(cluster_cfg, central)
+    central_nodes, relay_nodes = create_central_nodes(cluster_cfg, central)
     worker_nodes = cms.create_nodes(cluster_cfg, workers)
-    tests = configure_tests(config, central_node, worker_nodes, global_cfg)
+    tests = configure_tests(config, central_nodes, worker_nodes, global_cfg)
 
     if cluster_cfg.enable_ssl:
         set_ssl_keys(cluster_cfg)
 
     ovn = cms.prepare_test(
-        central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+        central_nodes, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
     )
     for test in tests:
         test.run(ovn, global_cfg)

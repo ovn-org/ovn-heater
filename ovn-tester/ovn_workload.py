@@ -59,13 +59,13 @@ class Node(ovn_sandbox.Sandbox):
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, db_containers, mgmt_ip):
-        super().__init__(phys_node, db_containers[0], mgmt_ip)
-        self.db_containers = db_containers
+    def __init__(self, phys_node, container, mgmt_ip):
+        super().__init__(phys_node, container, mgmt_ip)
 
-    def start(self, cluster_cfg):
+    def start(self, cluster_cfg, update_election_timeout=False):
         log.info('Configuring central node')
-        self.set_raft_election_timeout(cluster_cfg.raft_election_to)
+        if cluster_cfg.clustered_db and update_election_timeout:
+            self.set_raft_election_timeout(cluster_cfg.raft_election_to)
         self.enable_trim_on_compaction()
         self.set_northd_threads(cluster_cfg.northd_threads)
         if cluster_cfg.log_txns_db:
@@ -73,12 +73,11 @@ class CentralNode(Node):
 
     def set_northd_threads(self, n_threads):
         log.info(f'Configuring northd to use {n_threads} threads')
-        for container in self.db_containers:
-            self.phys_node.run(
-                f'podman exec {container} ovn-appctl -t '
-                f'ovn-northd parallel-build/set-n-threads '
-                f'{n_threads}'
-            )
+        self.phys_node.run(
+            f'podman exec {self.container} ovn-appctl -t '
+            f'ovn-northd parallel-build/set-n-threads '
+            f'{n_threads}'
+        )
 
     def set_raft_election_timeout(self, timeout_s):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
@@ -97,17 +96,16 @@ class CentralNode(Node):
 
     def enable_trim_on_compaction(self):
         log.info('Setting DB trim-on-compaction')
-        for db_container in self.db_containers:
-            self.phys_node.run(
-                f'podman exec {db_container} ovs-appctl -t '
-                f'/run/ovn/ovnnb_db.ctl '
-                f'ovsdb-server/memory-trim-on-compaction on'
-            )
-            self.phys_node.run(
-                f'podman exec {db_container} ovs-appctl -t '
-                f'/run/ovn/ovnsb_db.ctl '
-                f'ovsdb-server/memory-trim-on-compaction on'
-            )
+        self.phys_node.run(
+            f'podman exec {self.container} ovs-appctl -t '
+            f'/run/ovn/ovnnb_db.ctl '
+            f'ovsdb-server/memory-trim-on-compaction on'
+        )
+        self.phys_node.run(
+            f'podman exec {self.container} ovs-appctl -t '
+            f'/run/ovn/ovnsb_db.ctl '
+            f'ovsdb-server/memory-trim-on-compaction on'
+        )
 
     def enable_txns_db_logging(self):
         log.info('Enable DB txn logging')
@@ -130,13 +128,7 @@ class CentralNode(Node):
 
     def get_connection_string(self, cluster_cfg, port):
         protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-        ip = self.mgmt_ip
-        num_conns = 3 if cluster_cfg.clustered_db else 1
-        conns = [f"{protocol}:{ip + idx}:{port}" for idx in range(num_conns)]
-        return ",".join(conns)
-
-    def central_containers(self):
-        return self.db_containers
+        return f'{protocol}:{self.mgmt_ip}:{port}'
 
 
 class RelayNode(Node):
@@ -748,10 +740,10 @@ class Namespace:
 
 class Cluster:
     def __init__(
-        self, central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+        self, central_nodes, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
     ):
         # In clustered mode use the first node for provisioning.
-        self.central_node = central_node
+        self.central_nodes = central_nodes
         self.relay_nodes = relay_nodes
         self.worker_nodes = worker_nodes
         self.cluster_cfg = cluster_cfg
@@ -767,20 +759,20 @@ class Cluster:
         self.n_ns = 0
 
     def start(self):
-        self.central_node.start(self.cluster_cfg)
-        nb_conn = self.central_node.get_connection_string(
-            self.cluster_cfg, 6641
-        )
+        for c in self.central_nodes:
+            c.start(
+                self.cluster_cfg,
+                update_election_timeout=(c is self.central_nodes[0]),
+            )
+        nb_conn = self.get_nb_connection_string()
         inactivity_probe = self.cluster_cfg.db_inactivity_probe // 1000
         self.nbctl = ovn_utils.OvnNbctl(
-            self.central_node, nb_conn, inactivity_probe
+            self.central_nodes[0], nb_conn, inactivity_probe
         )
 
-        sb_conn = self.central_node.get_connection_string(
-            self.cluster_cfg, 6642
-        )
+        sb_conn = self.get_sb_connection_string()
         self.sbctl = ovn_utils.OvnSbctl(
-            self.central_node, sb_conn, inactivity_probe
+            self.central_nodes[0], sb_conn, inactivity_probe
         )
 
         for r in self.relay_nodes:
@@ -799,6 +791,22 @@ class Cluster:
         self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
         self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
 
+    def get_nb_connection_string(self):
+        return ','.join(
+            [
+                db.get_connection_string(self.cluster_cfg, 6641)
+                for db in self.central_nodes
+            ]
+        )
+
+    def get_sb_connection_string(self):
+        return ','.join(
+            [
+                db.get_connection_string(self.cluster_cfg, 6642)
+                for db in self.central_nodes
+            ]
+        )
+
     def get_relay_connection_string(self):
         if len(self.relay_nodes) > 0:
             return ','.join(
@@ -807,7 +815,7 @@ class Cluster:
                     for db in self.relay_nodes
                 ]
             )
-        return self.central_node.get_connection_string(self.cluster_cfg, 6642)
+        return self.get_sb_connection_string
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)

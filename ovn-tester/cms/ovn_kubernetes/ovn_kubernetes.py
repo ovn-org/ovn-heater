@@ -33,10 +33,10 @@ class OVNKubernetes:
 
     @staticmethod
     def prepare_test(
-        central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+        central_nodes, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
     ):
         ovn = Cluster(
-            central_node, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
+            central_nodes, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
         )
         with Context(ovn, 'prepare_test'):
             ovn.start()

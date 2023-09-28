@@ -182,6 +182,7 @@ def configure_tests(yaml, central_nodes, worker_nodes, global_cfg):
 
 
 def create_central_nodes(cluster_cfg, central):
+    protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
     mgmt_ip = cluster_cfg.node_net.ip + 2
     db_containers = (
         ['ovn-central-1', 'ovn-central-2', 'ovn-central-3']
@@ -190,13 +191,13 @@ def create_central_nodes(cluster_cfg, central):
     )
 
     central_nodes = [
-        CentralNode(central, c, mgmt_ip + i)
+        CentralNode(central, c, mgmt_ip + i, protocol)
         for i, c in enumerate(db_containers)
     ]
     mgmt_ip += len(central_nodes)
 
     relay_nodes = [
-        RelayNode(central, f'ovn-relay-{i + 1}', mgmt_ip + i)
+        RelayNode(central, f'ovn-relay-{i + 1}', mgmt_ip + i, protocol)
         for i in range(cluster_cfg.n_relays)
     ]
     return central_nodes, relay_nodes

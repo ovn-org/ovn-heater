@@ -14,6 +14,7 @@ class OVNKubernetes:
         mgmt_ip += 3 if cluster_cfg.clustered_db else 1
         mgmt_ip += cluster_cfg.n_relays
 
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
         internal_net = cluster_cfg.internal_net
         external_net = cluster_cfg.external_net
         gw_net = cluster_cfg.gw_net
@@ -22,6 +23,7 @@ class OVNKubernetes:
                 workers[i % len(workers)],
                 f'ovn-scale-{i}',
                 mgmt_ip + i,
+                protocol,
                 DualStackSubnet.next(internal_net, i),
                 DualStackSubnet.next(external_net, i),
                 gw_net,

@@ -52,15 +52,16 @@ BrExConfig = namedtuple('BrExConfig', ['physical_net'])
 
 
 class Node(ovn_sandbox.Sandbox):
-    def __init__(self, phys_node, container, mgmt_ip):
+    def __init__(self, phys_node, container, mgmt_ip, protocol):
         super().__init__(phys_node, container)
         self.container = container
         self.mgmt_ip = netaddr.IPAddress(mgmt_ip)
+        self.protocol = protocol
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, container, mgmt_ip):
-        super().__init__(phys_node, container, mgmt_ip)
+    def __init__(self, phys_node, container, mgmt_ip, protocol):
+        super().__init__(phys_node, container, mgmt_ip, protocol)
 
     def start(self, cluster_cfg, update_election_timeout=False):
         log.info('Configuring central node')
@@ -126,22 +127,20 @@ class CentralNode(Node):
             'vlog/disable-rate-limit transaction'
         )
 
-    def get_connection_string(self, cluster_cfg, port):
-        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-        return f'{protocol}:{self.mgmt_ip}:{port}'
+    def get_connection_string(self, port):
+        return f'{self.protocol}:{self.mgmt_ip}:{port}'
 
 
 class RelayNode(Node):
-    def __init__(self, phys_node, container, mgmt_ip):
-        super().__init__(phys_node, container, mgmt_ip)
+    def __init__(self, phys_node, container, mgmt_ip, protocol):
+        super().__init__(phys_node, container, mgmt_ip, protocol)
 
     def start(self):
         log.info(f'Configuring relay node {self.container}')
         self.enable_trim_on_compaction()
 
-    def get_connection_string(self, cluster_cfg, port):
-        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-        return f'{protocol}:{self.mgmt_ip}:{port}'
+    def get_connection_string(self, port):
+        return f'{self.protocol}:{self.mgmt_ip}:{port}'
 
     def enable_trim_on_compaction(self):
         log.info('Setting DB trim-on-compaction')
@@ -158,12 +157,13 @@ class WorkerNode(Node):
         phys_node,
         container,
         mgmt_ip,
+        protocol,
         int_net,
         ext_net,
         gw_net,
         unique_id,
     ):
-        super().__init__(phys_node, container, mgmt_ip)
+        super().__init__(phys_node, container, mgmt_ip, protocol)
         self.int_net = int_net
         self.ext_net = ext_net
         self.gw_net = gw_net
@@ -178,7 +178,7 @@ class WorkerNode(Node):
     def start(self, cluster_cfg):
         self.vsctl = ovn_utils.OvsVsctl(
             self,
-            self.get_connection_string(cluster_cfg, 6640),
+            self.get_connection_string(6640),
             cluster_cfg.db_inactivity_probe // 1000,
         )
 
@@ -433,9 +433,8 @@ class WorkerNode(Node):
             if port.ip6:
                 self.ping_port(cluster, port, dest=port.ext_gw6)
 
-    def get_connection_string(self, cluster_cfg, port):
-        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-        return f"{protocol}:{self.mgmt_ip}:{port}"
+    def get_connection_string(self, port):
+        return f"{self.protocol}:{self.mgmt_ip}:{port}"
 
 
 ACL_DEFAULT_DENY_PRIO = 1
@@ -793,29 +792,20 @@ class Cluster:
 
     def get_nb_connection_string(self):
         return ','.join(
-            [
-                db.get_connection_string(self.cluster_cfg, 6641)
-                for db in self.central_nodes
-            ]
+            [db.get_connection_string(6641) for db in self.central_nodes]
         )
 
     def get_sb_connection_string(self):
         return ','.join(
-            [
-                db.get_connection_string(self.cluster_cfg, 6642)
-                for db in self.central_nodes
-            ]
+            [db.get_connection_string(6642) for db in self.central_nodes]
         )
 
     def get_relay_connection_string(self):
         if len(self.relay_nodes) > 0:
             return ','.join(
-                [
-                    db.get_connection_string(self.cluster_cfg, 6642)
-                    for db in self.relay_nodes
-                ]
+                [db.get_connection_string(6642) for db in self.relay_nodes]
             )
-        return self.get_sb_connection_string
+        return self.get_sb_connection_string()
 
     def create_cluster_router(self, rtr_name):
         self.router = self.nbctl.lr_add(rtr_name)

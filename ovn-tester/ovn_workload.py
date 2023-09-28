@@ -56,7 +56,7 @@ class Node(ovn_sandbox.Sandbox):
     def __init__(self, phys_node, container, mgmt_ip):
         super().__init__(phys_node, container)
         self.container = container
-        self.mgmt_ip = mgmt_ip
+        self.mgmt_ip = netaddr.IPAddress(mgmt_ip)
 
 
 class CentralNode(Node):

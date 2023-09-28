@@ -11,7 +11,13 @@ import time
 
 from collections import namedtuple
 from ovn_sandbox import PhysicalNode
-from ovn_workload import BrExConfig, CentralNode, ClusterConfig, RelayNode
+from ovn_workload import (
+    BrExConfig,
+    CentralNode,
+    Cluster,
+    ClusterConfig,
+    RelayNode,
+)
 from ovn_utils import DualStackSubnet
 from ovs.stream import Stream
 
@@ -166,7 +172,7 @@ def load_cms(cms_name):
     return cls()
 
 
-def configure_tests(yaml, central_nodes, worker_nodes, global_cfg):
+def configure_tests(yaml, cluster, global_cfg):
     tests = []
     for section, cfg in yaml.items():
         if section in RESERVED:
@@ -177,11 +183,11 @@ def configure_tests(yaml, central_nodes, worker_nodes, global_cfg):
         )
         class_name = ''.join(s.title() for s in section.split('_'))
         cls = getattr(mod, class_name)
-        tests.append(cls(yaml, central_nodes, worker_nodes, global_cfg))
+        tests.append(cls(yaml, cluster, global_cfg))
     return tests
 
 
-def create_central_nodes(cluster_cfg, central):
+def create_cluster(cluster_cfg, central, brex_cfg):
     protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
     mgmt_ip = cluster_cfg.node_net.ip + 2
     db_containers = (
@@ -200,7 +206,7 @@ def create_central_nodes(cluster_cfg, central):
         RelayNode(central, f'ovn-relay-{i + 1}', mgmt_ip + i, protocol)
         for i in range(cluster_cfg.n_relays)
     ]
-    return central_nodes, relay_nodes
+    return Cluster(central_nodes, relay_nodes, cluster_cfg, brex_cfg)
 
 
 def set_ssl_keys(cluster_cfg):
@@ -229,16 +235,14 @@ if __name__ == '__main__':
     cms = load_cms(global_cfg.cms_name)
 
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
-    central_nodes, relay_nodes = create_central_nodes(cluster_cfg, central)
-    worker_nodes = cms.create_nodes(cluster_cfg, workers)
-    tests = configure_tests(config, central_nodes, worker_nodes, global_cfg)
+    cluster = create_cluster(cluster_cfg, central, brex_cfg)
+    cms.add_cluster_worker_nodes(cluster, workers)
+    tests = configure_tests(config, cluster, global_cfg)
 
     if cluster_cfg.enable_ssl:
         set_ssl_keys(cluster_cfg)
 
-    ovn = cms.prepare_test(
-        central_nodes, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
-    )
+    cms.prepare_test(cluster)
     for test in tests:
-        test.run(ovn, global_cfg)
+        test.run(cluster, global_cfg)
     sys.exit(0)

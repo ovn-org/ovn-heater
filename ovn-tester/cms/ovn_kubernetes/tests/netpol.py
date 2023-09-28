@@ -8,8 +8,8 @@ NpCfg = namedtuple('NpCfg', ['n_ns', 'n_labels', 'pods_ns_ratio'])
 
 
 class NetPol(ExtCmd):
-    def __init__(self, name, config, central_node, worker_nodes):
-        super().__init__(config, central_node, worker_nodes)
+    def __init__(self, name, config, cluster):
+        super().__init__(config, cluster)
         test_config = config.get(name, dict())
         self.config = NpCfg(
             n_ns=test_config.get('n_ns', 0),

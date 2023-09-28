@@ -4,7 +4,7 @@ from io import StringIO
 
 
 class ExtCmdUnit:
-    def __init__(self, conf, central_node, worker_nodes):
+    def __init__(self, conf, cluster):
         self.iteration = conf.get('iteration')
         self.cmd = conf.get('cmd')
         self.test = conf.get('test')
@@ -13,9 +13,11 @@ class ExtCmdUnit:
         self.pid_opt = conf.get('pid_opt', '')
 
         node = conf.get('node')
-        self.nodes = [n for n in worker_nodes if fnmatch(n.container, node)]
+        self.nodes = [
+            n for n in cluster.worker_nodes if fnmatch(n.container, node)
+        ]
         self.nodes.extend(
-            [n for n in central_nodes if fnmatch(n.container, node)]
+            [n for n in cluster.central_nodes if fnmatch(n.container, node)]
         )
 
     def is_valid(self):
@@ -46,10 +48,10 @@ class ExtCmdUnit:
 
 
 class ExtCmd:
-    def __init__(self, config, central_node, worker_nodes):
+    def __init__(self, config, cluster):
         self.cmd_map = defaultdict(list)
         for ext_cmd in config.get('ext_cmd', list()):
-            cmd_unit = ExtCmdUnit(ext_cmd, central_node, worker_nodes)
+            cmd_unit = ExtCmdUnit(ext_cmd, cluster)
             if cmd_unit.is_valid():
                 self.cmd_map[(cmd_unit.iteration, cmd_unit.test)].append(
                     cmd_unit

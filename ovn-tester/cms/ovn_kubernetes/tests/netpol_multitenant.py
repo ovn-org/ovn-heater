@@ -15,8 +15,8 @@ NsMultitenantCfg = namedtuple(
 
 
 class NetpolMultitenant(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super().__init__(config, central_node, worker_nodes)
+    def __init__(self, config, cluster, global_cfg):
+        super().__init__(config, cluster)
         test_config = config.get('netpol_multitenant', dict())
         ranges = [
             NsRange(

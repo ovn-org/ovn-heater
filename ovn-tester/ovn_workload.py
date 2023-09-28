@@ -738,13 +738,11 @@ class Namespace:
 
 
 class Cluster:
-    def __init__(
-        self, central_nodes, relay_nodes, worker_nodes, cluster_cfg, brex_cfg
-    ):
+    def __init__(self, central_nodes, relay_nodes, cluster_cfg, brex_cfg):
         # In clustered mode use the first node for provisioning.
         self.central_nodes = central_nodes
         self.relay_nodes = relay_nodes
-        self.worker_nodes = worker_nodes
+        self.worker_nodes = []
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
         self.nbctl = None
@@ -756,6 +754,9 @@ class Cluster:
         self.join_switch = None
         self.last_selected_worker = 0
         self.n_ns = 0
+
+    def add_workers(self, worker_nodes):
+        self.worker_nodes.extend(worker_nodes)
 
     def start(self):
         for c in self.central_nodes:

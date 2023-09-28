@@ -23,8 +23,8 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class DensityHeavy(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super().__init__(config, central_node, worker_nodes)
+    def __init__(self, config, cluster, global_cfg):
+        super().__init__(config, cluster)
         test_config = config.get('density_heavy', dict())
         pods_vip_ratio = test_config.get(
             'pods_vip_ratio', DENSITY_PODS_VIP_RATIO

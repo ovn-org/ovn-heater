@@ -7,8 +7,8 @@ NpCrossNsCfg = namedtuple('NpCrossNsCfg', ['n_ns', 'pods_ns_ratio'])
 
 
 class NetpolCrossNs(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super().__init__(config, central_node, worker_nodes)
+    def __init__(self, config, cluster, global_cfg):
+        super().__init__(config, cluster)
         test_config = config.get('netpol_cross', dict())
         self.config = NpCrossNsCfg(
             n_ns=test_config.get('n_ns', 0),

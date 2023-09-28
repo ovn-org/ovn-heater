@@ -8,11 +8,11 @@ OVN_HEATER_CMS_PLUGIN = 'OVNKubernetes'
 
 class OVNKubernetes:
     @staticmethod
-    def create_nodes(cluster_config, workers):
-        mgmt_ip = cluster_config.node_net.ip + 2
-        internal_net = cluster_config.internal_net
-        external_net = cluster_config.external_net
-        gw_net = cluster_config.gw_net
+    def create_nodes(cluster_cfg, workers):
+        mgmt_ip = cluster_cfg.node_net.ip + 2
+        internal_net = cluster_cfg.internal_net
+        external_net = cluster_cfg.external_net
+        gw_net = cluster_cfg.gw_net
         worker_nodes = [
             WorkerNode(
                 workers[i % len(workers)],
@@ -23,7 +23,7 @@ class OVNKubernetes:
                 gw_net,
                 i,
             )
-            for i in range(cluster_config.n_workers)
+            for i in range(cluster_cfg.n_workers)
         ]
         return worker_nodes
 

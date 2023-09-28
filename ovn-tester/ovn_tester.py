@@ -182,15 +182,15 @@ def configure_tests(yaml, central_node, worker_nodes, global_cfg):
     return tests
 
 
-def create_central_nodes(cluster_config, central):
-    mgmt_ip = cluster_config.node_net.ip + 2
+def create_central_nodes(cluster_cfg, central):
+    mgmt_ip = cluster_cfg.node_net.ip + 2
     db_containers = (
         ['ovn-central-1', 'ovn-central-2', 'ovn-central-3']
-        if cluster_config.clustered_db
+        if cluster_cfg.clustered_db
         else ['ovn-central']
     )
     relay_containers = [
-        f'ovn-relay-{i + 1}' for i in range(cluster_config.n_relays)
+        f'ovn-relay-{i + 1}' for i in range(cluster_cfg.n_relays)
     ]
     central_node = CentralNode(
         central, db_containers, relay_containers, mgmt_ip

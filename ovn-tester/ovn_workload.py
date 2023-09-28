@@ -54,7 +54,7 @@ BrExConfig = namedtuple('BrExConfig', ['physical_net'])
 
 class Node(ovn_sandbox.Sandbox):
     def __init__(self, phys_node, container, mgmt_net, mgmt_ip):
-        super(Node, self).__init__(phys_node, container)
+        super().__init__(phys_node, container)
         self.container = container
         self.mgmt_net = mgmt_net
         self.mgmt_ip = mgmt_ip
@@ -64,9 +64,7 @@ class CentralNode(Node):
     def __init__(
         self, phys_node, db_containers, relay_containers, mgmt_net, mgmt_ip
     ):
-        super(CentralNode, self).__init__(
-            phys_node, db_containers[0], mgmt_net, mgmt_ip
-        )
+        super().__init__(phys_node, db_containers[0], mgmt_net, mgmt_ip)
         self.db_containers = db_containers
         self.relay_containers = relay_containers
 
@@ -164,9 +162,7 @@ class WorkerNode(Node):
         gw_net,
         unique_id,
     ):
-        super(WorkerNode, self).__init__(
-            phys_node, container, mgmt_net, mgmt_ip
-        )
+        super().__init__(phys_node, container, mgmt_net, mgmt_ip)
         self.int_net = int_net
         self.ext_net = ext_net
         self.gw_net = gw_net

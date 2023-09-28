@@ -23,6 +23,7 @@ class GlobalConfig:
     cleanup: bool = False
     run_ipv4: bool = True
     run_ipv6: bool = False
+    cms_name: str = ''
 
 
 def calculate_node_remotes(

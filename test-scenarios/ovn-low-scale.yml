@@ -2,6 +2,7 @@ global:
   log_cmds: False
   run_ipv4: True
   run_ipv6: True
+  cms_name: ovn_kubernetes
 
 cluster:
   clustered_db: true

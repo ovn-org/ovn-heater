@@ -18,9 +18,7 @@ ClusterDensityCfg = namedtuple('ClusterDensityCfg', ['n_runs', 'n_startup'])
 
 class ClusterDensity(ExtCmd):
     def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super(ClusterDensity, self).__init__(
-            config, central_node, worker_nodes
-        )
+        super().__init__(config, central_node, worker_nodes)
         test_config = config.get('cluster_density', dict())
         self.config = ClusterDensityCfg(
             n_runs=test_config.get('n_runs', 0),

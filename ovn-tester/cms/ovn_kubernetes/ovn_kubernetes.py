@@ -9,8 +9,7 @@ OVN_HEATER_CMS_PLUGIN = 'OVNKubernetes'
 class OVNKubernetes:
     @staticmethod
     def create_nodes(cluster_config, workers):
-        mgmt_net = cluster_config.node_net
-        mgmt_ip = mgmt_net.ip + 2
+        mgmt_ip = cluster_config.node_net.ip + 2
         internal_net = cluster_config.internal_net
         external_net = cluster_config.external_net
         gw_net = cluster_config.gw_net
@@ -18,7 +17,6 @@ class OVNKubernetes:
             WorkerNode(
                 workers[i % len(workers)],
                 f'ovn-scale-{i}',
-                mgmt_net,
                 mgmt_ip + i,
                 DualStackSubnet.next(internal_net, i),
                 DualStackSubnet.next(external_net, i),

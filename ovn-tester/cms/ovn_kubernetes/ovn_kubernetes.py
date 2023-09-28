@@ -9,7 +9,11 @@ OVN_HEATER_CMS_PLUGIN = 'OVNKubernetes'
 class OVNKubernetes:
     @staticmethod
     def create_nodes(cluster_cfg, workers):
+        # Allocate worker IPs after central and relay IPs.
         mgmt_ip = cluster_cfg.node_net.ip + 2
+        mgmt_ip += 3 if cluster_cfg.clustered_db else 1
+        mgmt_ip += cluster_cfg.n_relays
+
         internal_net = cluster_cfg.internal_net
         external_net = cluster_cfg.external_net
         gw_net = cluster_cfg.gw_net

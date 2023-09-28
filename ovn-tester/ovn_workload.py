@@ -433,10 +433,7 @@ class WorkerNode(Node):
 
     def get_connection_string(self, cluster_cfg, port):
         protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-        offset = 0
-        offset += 3 if cluster_cfg.clustered_db else 1
-        offset += cluster_cfg.n_relays
-        return f"{protocol}:{self.mgmt_ip + offset}:{port}"
+        return f"{protocol}:{self.mgmt_ip}:{port}"
 
 
 ACL_DEFAULT_DENY_PRIO = 1

@@ -14,9 +14,9 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class BaseOpenstackConfig:
-
     n_projects: int = 1
     n_gws_per_project: int = 1
+    n_vms_per_project: int = 3
 
 
 class BaseOpenstack(ExtCmd):
@@ -27,7 +27,7 @@ class BaseOpenstack(ExtCmd):
 
     def run(self, clouds: List[OpenStackCloud], global_cfg):
         # create ovn topology
-        with Context(clouds, "base_cluster_bringup", len(clouds)) as ctx:
+        with Context(clouds, "base_openstack_bringup", len(clouds)) as ctx:
             for i in ctx:
                 ovn = clouds[i]
                 worker_count = len(ovn.worker_nodes)
@@ -39,5 +39,20 @@ class BaseOpenstack(ExtCmd):
                     )
                     worker_node.provision(ovn)
 
-            for _ in range(self.config.n_projects):
-                _ = ovn.new_project(gw_nodes=self.config.n_gws_per_project)
+        with Context(clouds, "base_openstack_provision", len(clouds)) as ctx:
+            for i in ctx:
+                ovn = clouds[i]
+                for _ in range(self.config.n_projects):
+                    _ = ovn.new_project(gw_nodes=self.config.n_gws_per_project)
+
+                for project in ovn.projects:
+                    for index in range(self.config.n_vms_per_project):
+                        ovn.add_vm_to_project(
+                            project, f"{project.uuid[:6]}-{index}"
+                        )
+
+        with Context(clouds, "base_openstack", len(clouds)) as ctx:
+            for i in ctx:
+                ovn = clouds[i]
+                for project in ovn.projects:
+                    ovn.mesh_ping_ports(project.vm_ports)

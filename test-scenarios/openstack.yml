@@ -8,5 +8,6 @@ cluster:
   n_workers: 3
 
 base_openstack:
-  n_projects: 3
+  n_projects: 20
   n_gws_per_project: 3
+  n_vms_per_project: 10

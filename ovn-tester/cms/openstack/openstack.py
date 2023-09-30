@@ -3,6 +3,7 @@ import random
 import uuid
 
 from dataclasses import dataclass
+from itertools import cycle
 from typing import List, Optional, Dict
 
 import netaddr
@@ -32,6 +33,7 @@ class NeutronNetwork:
 
     network: LSwitch
     ports: Dict[str, LSPort]
+    name: str
     security_group: Optional[PortGroup] = None
 
     def __post_init__(self):
@@ -48,13 +50,14 @@ class Project:
 
     def __init__(
         self,
-        networks: List[NeutronNetwork] = None,
+        int_net: NeutronNetwork = None,
+        ext_net: NeutronNetwork = None,
         router: Optional[LRouter] = None,
     ):
-        self.networks: List[NeutronNetwork] = (
-            [] if networks is None else networks
-        )
+        self.int_net = int_net
+        self.ext_net = ext_net
         self.router = router
+        self.vm_ports: List[LSPort] = []
         self._id = str(uuid.uuid4())
 
     @property
@@ -78,6 +81,17 @@ class OpenStackCloud(Cluster):
         self._int_net_offset = 0
 
         self._ext_net_pool_index = 0
+
+    def add_workers(self, workers: List[PhysicalNode]):
+        """Expand parent method to update cycled list."""
+        super().add_workers(workers)
+        self._compute_nodes = cycle(
+            [
+                node
+                for node in self.worker_nodes
+                if isinstance(node, ComputeNode)
+            ]
+        )
 
     def add_cluster_worker_nodes(self, workers: List[PhysicalNode]):
         """Add OpenStack flavored worker nodes as per configuration."""
@@ -132,6 +146,10 @@ class OpenStackCloud(Cluster):
 
         return network
 
+    def select_worker_for_port(self) -> 'ComputeNode':
+        """Cyclically return compute nodes available in cluster."""
+        return next(self._compute_nodes)
+
     def new_project(self, gw_nodes: int = 0) -> Project:
         """Create new Project/Tenant in the Openstack cloud.
 
@@ -177,8 +195,8 @@ class OpenStackCloud(Cluster):
         :param gw_nodes: List of chassis that act as network gateways.
         :return: None
         """
-
-        ext_net = self._create_project_net(f"ext_net_{project.uuid}", 1500)
+        ext_net_name = f"ext_net_{project.uuid}"
+        ext_net = self._create_project_net(ext_net_name, 1500)
         ext_net_port = self._add_metadata_port(ext_net, project.uuid)
         provider_port = self._add_provider_network_port(ext_net)
         neutron_ext_network = NeutronNetwork(
@@ -187,8 +205,9 @@ class OpenStackCloud(Cluster):
                 ext_net_port.uuid: ext_net_port,
                 provider_port.uuid: provider_port,
             },
+            name=ext_net_name,
         )
-        project.networks.append(neutron_ext_network)
+        project.ext_net = neutron_ext_network
 
         ls_port, lr_port = self._add_router_port_external_gw(
             neutron_ext_network, project.router
@@ -219,19 +238,21 @@ class OpenStackCloud(Cluster):
         :param snat_port: Gateway port that should SNAT outgoing traffic.
         :return: None
         """
-        int_net = self._create_project_net(f"int_net_{project.uuid}", 1442)
+        int_net_name = f"int_net_{project.uuid}"
+        int_net = self._create_project_net(int_net_name, 1442)
 
         int_net_port = self._add_metadata_port(int_net, project.uuid)
         security_group = self._create_default_security_group()
         neutron_int_network = NeutronNetwork(
             network=int_net,
             ports={int_net_port.uuid: int_net_port},
+            name=int_net_name,
             security_group=security_group,
         )
 
         self._add_network_subnet(network=neutron_int_network)
         self._assign_port_ips(neutron_int_network)
-        project.networks.append(neutron_int_network)
+        project.int_net = neutron_int_network
 
         self._add_router_port_internal(
             neutron_int_network, project.router, project
@@ -240,6 +261,15 @@ class OpenStackCloud(Cluster):
         snated_network = DualStackSubnet(int_net.cidr)
         if snat_port is not None:
             self.nbctl.nat_add(project.router, snat_port.ip, snated_network)
+
+    def add_vm_to_project(self, project: Project, vm_name: str):
+        compute = self.select_worker_for_port()
+        vm_port = self._add_vm_port(
+            project.int_net, project.uuid, compute, vm_name
+        )
+        compute.bind_port(vm_port)
+
+        project.vm_ports.append(vm_port)
 
     def _get_gateway_chassis(self, count: int = 1) -> List[ChassisNode]:
         """Return list of Gateway Chassis with size defined by 'count'.
@@ -340,6 +370,65 @@ class OpenStackCloud(Cluster):
                 network.ports[uuid_] = updated_port
                 # XXX: Unable to update external_ids
 
+    def _add_vm_port(
+        self,
+        neutron_net: NeutronNetwork,
+        project_id: str,
+        chassis: 'ComputeNode',
+        vm_name: str,
+    ) -> LSPort:
+        """Create port that will represent interface of a VM.
+
+        :param neutron_net: Network in which the port will be created.
+        :param project_id: ID of a project to which the VM belongs.
+        :param chassis: Chassis on which the port will be provisioned.
+        :param vm_name: VM name that's used to derive port name. Beware that
+                        due to the port naming convention and limits on
+                        interface name length, this name can't be longer than
+                        12 characters.
+        :return: LSPort representing VM's network interface
+        """
+        port_name = f"lp-{vm_name}"
+        if len(port_name) > 15:
+            raise RuntimeError(
+                f"Maximum port name length is 15. Port {port_name} is too "
+                f"long. Consider using shorter VM name."
+            )
+        port_addr = neutron_net.next_host_ip()
+        net_addr: netaddr.IPNetwork = neutron_net.network.cidr
+        port_ext_ids = {
+            "neutron:cidrs": f"{port_addr}/{net_addr.prefixlen}",
+            "neutron:device_id": str(uuid.uuid4()),
+            "neutron:device_owner": "compute:nova",
+            "neutron:network_name": neutron_net.name,
+            "neutron:port_name": "",
+            "neutron:project_id": project_id,
+            "neutron:revision_number": "1",
+            "neutron:security_group_ids": neutron_net.security_group.name,
+            "neutron:subnet_pool_addr_scope4": "",
+            "neutron:subnet_pool_addr_scope6": "",
+        }
+        port_options = (
+            f"mcast_flood_reports=true "
+            f"requested-chassis={chassis.container}"
+        )
+        ls_port = self.nbctl.ls_port_add(
+            lswitch=neutron_net.network,
+            name=port_name,
+            mac=str(RandMac()),
+            ip=DualStackIP(port_addr, net_addr.prefixlen, None, None),
+            ext_ids=port_ext_ids,
+            gw=DualStackIP(neutron_net.gateway, None, None, None),
+            metadata=chassis,
+        )
+        self.nbctl.ls_port_set_set_options(ls_port, port_options)
+        self.nbctl.ls_port_enable(ls_port)
+        self.nbctl.port_group_add_ports(
+            pg=neutron_net.security_group, lports=[ls_port]
+        )
+
+        return ls_port
+
     def _add_metadata_port(self, network: LSwitch, project_id: str) -> LSPort:
         """Create metadata port in LSwitch with Neutron's external IDs."""
         port_ext_ids = {
@@ -370,7 +459,7 @@ class OpenStackCloud(Cluster):
     def _add_provider_network_port(self, network: LSwitch) -> LSPort:
         """Add port to Logical Switch that represents connection to ext. net"""
         options = (
-            "mcast_flood=false, mcast_flood_reports=true, "
+            "mcast_flood=false mcast_flood_reports=true "
             "network_name=physnet1"
         )
         port = self.nbctl.ls_port_add(

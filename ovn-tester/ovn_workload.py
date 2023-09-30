@@ -8,7 +8,7 @@ import netaddr
 from collections import namedtuple
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 log = logging.getLogger(__name__)
 
@@ -407,6 +407,24 @@ class Cluster:
             ports_per_worker[p.metadata].append(p)
         for w, ports in ports_per_worker.items():
             w.ping_ports(self, ports)
+
+    def mesh_ping_ports(self, ports: List[ovn_utils.LSPort]) -> None:
+        """Perform full-mesh ping test between ports."""
+        all_ips = [port.ip for port in ports]
+
+        for port in ports:
+            chassis: Optional[ChassisNode] = port.metadata
+            if chassis is None:
+                log.error(
+                    f"Port {port.name} is missing 'metadata' attribute. "
+                    f"Can't perform ping."
+                )
+                continue
+
+            for dest_ip in all_ips:
+                if dest_ip == port.ip:
+                    continue
+                chassis.ping_port(self, port, dest_ip)
 
     def select_worker_for_port(self):
         self.last_selected_worker += 1

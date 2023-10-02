@@ -45,6 +45,20 @@ class NeutronNetwork:
         return next(self._ip_pool)
 
 
+@dataclass
+class ExternalNetworkSpec:
+    """Information required to connect external network to Project's router.
+    :param neutron_net: Object of already provisioned NeutronNetwork
+    :param num_gw_nodes: Number of Chassis to use as gateways for this
+                         network. Note that the number can't be greater than 5
+                         and can't be greater than total number of Chassis
+                         available in the system.
+    """
+
+    neutron_net: NeutronNetwork
+    num_gw_nodes: int
+
+
 class Project:
     """Represent network components of an OpenStack Project aka. Tenant."""
 
@@ -74,7 +88,6 @@ class OpenStackCloud(Cluster):
     def __init__(self, cluster_cfg, central, brex_cfg, az):
         super().__init__(cluster_cfg, central, brex_cfg, az)
         self.router = None
-        self.external_port: Optional[LRPort] = None
         self._projects: List[Project] = []
 
         self._int_net_base = DualStackSubnet(cluster_cfg.node_net)
@@ -150,56 +163,53 @@ class OpenStackCloud(Cluster):
         """Cyclically return compute nodes available in cluster."""
         return next(self._compute_nodes)
 
-    def new_project(self, gw_nodes: int = 0) -> Project:
+    def new_project(self, ext_net: Optional[ExternalNetworkSpec]) -> Project:
         """Create new Project/Tenant in the Openstack cloud.
 
         Following things are provisioned for the Project:
           * Project router
           * Internal network
 
-        If 'gw_nodes' count is more than 0, external network is also
-        provisioned with default route through the gateway nodes. Gateway
-        nodes and their priority are selected at random from all
-        available 'worker_nodes'.
+        If 'ext_net' is provided, this external network will be connected
+        to the project's router and default gateway route will be configured
+        through this network.
 
-        :param gw_nodes: Number of gateway chassis to use.
+        :param ext_net: External network to be connected to the Project.
         :return: New Project object that is automatically also added
                  to 'self.projects' list.
         """
         project = Project()
+        gateway_port = None
 
         project.router = self._create_project_router(
             f"provider-router-{project.uuid}"
         )
-
-        if gw_nodes:
-            self.add_external_network_to_project(
-                project,
-                self._get_gateway_chassis(gw_nodes),
+        if ext_net is not None:
+            gateway_port = self.connect_external_network_to_project(
+                project, ext_net
             )
 
-        self.add_internal_network_to_project(project, self.external_port)
+        self.add_internal_network_to_project(project, gateway_port)
         self._projects.append(project)
         return project
 
-    def add_external_network_to_project(
-        self, project: Project, gw_nodes: List[ChassisNode]
-    ) -> None:
-        """Provision external net to Project that adds external connectivity.
+    def new_external_network(
+        self, provider_network: str = "physnet1"
+    ) -> NeutronNetwork:
+        """Provision external network that can be added as gw to Projects.
 
-        This method adds new network to project with prefix 'ext_net',
-        adds it to the Project's router and configures default route on the
-        router to go through this network.
-
-        :param project: Project to which external network will be added
-        :param gw_nodes: List of chassis that act as network gateways.
-        :return: None
+        :param provider_network: Name of the provider network used when
+                                 creating provider port.
+        :return: NeutronNetwork object representing external network.
         """
-        ext_net_name = f"ext_net_{project.uuid}"
-        ext_net = self._create_project_net(ext_net_name, 1500)
-        ext_net_port = self._add_metadata_port(ext_net, project.uuid)
-        provider_port = self._add_provider_network_port(ext_net)
-        neutron_ext_network = NeutronNetwork(
+        ext_net_uuid = uuid.uuid4()
+        ext_net_name = f"ext_net_{ext_net_uuid}"
+        ext_net = self._create_project_net(f"ext_net_{ext_net_uuid}", 1500)
+        ext_net_port = self._add_metadata_port(ext_net, str(ext_net_uuid))
+        provider_port = self._add_provider_network_port(
+            ext_net, provider_network
+        )
+        return NeutronNetwork(
             network=ext_net,
             ports={
                 ext_net_port.uuid: ext_net_port,
@@ -207,10 +217,28 @@ class OpenStackCloud(Cluster):
             },
             name=ext_net_name,
         )
-        project.ext_net = neutron_ext_network
+
+    def connect_external_network_to_project(
+        self,
+        project: Project,
+        external_network: ExternalNetworkSpec,
+    ) -> LRPort:
+        """Connect external net to Project that adds external connectivity.
+        This method takes existing Neutron network, connects it to the
+        Project's router and configures default route on the router to go
+        through this network.
+
+        Gateway Chassis will be picked at random from available Chassis
+        nodes based on the number of gateways specified in 'external_network'
+        specification.
+
+        :param project: Project to which external network will be added
+        :param external_network: External network that will be connected.
+        :return: Logical Router Port that connects to the external network.
+        """
 
         ls_port, lr_port = self._add_router_port_external_gw(
-            neutron_ext_network, project.router
+            external_network.neutron_net, project.router
         )
         self.external_port = lr_port
         gw_net = DualStackSubnet(netaddr.IPNetwork("0.0.0.0/0"))
@@ -221,10 +249,16 @@ class OpenStackCloud(Cluster):
         #      However, the route itself is created successfully with no
         #      policy, the same way Neutron does it.
         self.nbctl.route_add(project.router, gw_net, lr_port.ip, "")
+
+        gw_nodes = self._get_gateway_chassis(external_network.num_gw_nodes)
         for index, chassis in enumerate(gw_nodes):
             self.nbctl.lr_port_set_gw_chassis(
                 lr_port, chassis.container, index + 1
             )
+
+        project.ext_net = external_network
+
+        return lr_port
 
     def add_internal_network_to_project(
         self, project: Project, snat_port: Optional[LRPort] = None
@@ -456,11 +490,18 @@ class OpenStackCloud(Cluster):
 
         return port
 
-    def _add_provider_network_port(self, network: LSwitch) -> LSPort:
-        """Add port to Logical Switch that represents connection to ext. net"""
+    def _add_provider_network_port(
+        self, network: LSwitch, network_name: str
+    ) -> LSPort:
+        """Add port to Logical Switch that represents connection to ext. net
+        :param network: Network (LSwitch) in which the port will be created.
+        :param network_name: Name of the provider network (used when setting
+                              provider port options)
+        :return: LSPort representing provider port
+        """
         options = (
             "mcast_flood=false mcast_flood_reports=true "
-            "network_name=physnet1"
+            f"network_name={network_name}"
         )
         port = self.nbctl.ls_port_add(
             lswitch=network,

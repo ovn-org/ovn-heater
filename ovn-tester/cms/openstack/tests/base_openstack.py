@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class BaseOpenstackConfig:
     n_projects: int = 1
-    n_gws_per_project: int = 1
+    n_chassis_per_gw_lrp: int = 1
     n_vms_per_project: int = 3
 
 
@@ -44,7 +44,7 @@ class BaseOpenstack(ExtCmd):
                 ovn = clouds[i]
                 ext_net = ExternalNetworkSpec(
                     neutron_net=ovn.new_external_network(),
-                    num_gw_nodes=self.config.n_gws_per_project,
+                    num_gw_nodes=self.config.n_chassis_per_gw_lrp,
                 )
 
                 for _ in range(self.config.n_projects):

@@ -9,5 +9,5 @@ cluster:
 
 base_openstack:
   n_projects: 20
-  n_gws_per_project: 3
+  n_chassis_per_gw_lrp: 3
   n_vms_per_project: 10

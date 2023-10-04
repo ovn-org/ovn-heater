@@ -7,8 +7,8 @@ ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
 
 
 class BaseClusterBringup(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super().__init__(config, central_node, worker_nodes)
+    def __init__(self, config, cluster, global_cfg):
+        super().__init__(config, cluster)
         test_config = config.get('base_cluster_bringup', dict())
         self.config = ClusterBringupCfg(
             n_pods_per_node=test_config.get('n_pods_per_node', 0),

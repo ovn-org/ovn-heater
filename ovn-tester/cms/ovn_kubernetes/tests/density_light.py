@@ -10,8 +10,8 @@ DensityCfg = namedtuple(
 
 
 class DensityLight(ExtCmd):
-    def __init__(self, config, central_node, worker_nodes, global_cfg):
-        super().__init__(config, central_node, worker_nodes)
+    def __init__(self, config, cluster, global_cfg):
+        super().__init__(config, cluster)
         test_config = config.get('density_light', dict())
         self.config = DensityCfg(
             n_pods=test_config.get('n_pods', 0),

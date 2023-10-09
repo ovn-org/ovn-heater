@@ -42,6 +42,6 @@ class OVNKubernetes:
 
     @staticmethod
     def prepare_test(clusters):
-        for c in clusters:
-            with Context(c, 'prepare_test cluster'):
+        with Context(clusters, 'prepare_test clusters'):
+            for c in clusters:
                 c.start()

@@ -59,14 +59,16 @@ class ClusterDensity(ExtCmd):
     def run(self, clusters, global_cfg):
         ovn = clusters[0]
         all_ns = []
-        with Context(ovn, 'cluster_density_startup', brief_report=True) as ctx:
+        with Context(
+            clusters, 'cluster_density_startup', brief_report=True
+        ) as ctx:
             for index in range(self.config.n_startup):
                 all_ns.append(
                     self.run_iteration(ovn, index, global_cfg, passive=True)
                 )
 
         with Context(
-            ovn,
+            clusters,
             'cluster_density',
             self.config.n_runs - self.config.n_startup,
             test=self,
@@ -79,6 +81,8 @@ class ClusterDensity(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context(ovn, 'cluster_density_cleanup', brief_report=True) as ctx:
+        with Context(
+            clusters, 'cluster_density_cleanup', brief_report=True
+        ) as ctx:
             for ns in all_ns:
                 ns.unprovision()

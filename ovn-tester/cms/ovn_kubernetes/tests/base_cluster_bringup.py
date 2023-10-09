@@ -69,7 +69,7 @@ class BaseClusterBringup(ExtCmd):
         for c, cluster in enumerate(clusters):
             # create ovn topology
             with Context(
-                cluster, 'base_cluster_bringup', len(cluster.worker_nodes)
+                clusters, 'base_cluster_bringup', len(cluster.worker_nodes)
             ) as ctx:
                 cluster.create_cluster_router(f'lr-cluster{c+1}')
                 cluster.create_cluster_join_switch(f'ls-join{c+1}')

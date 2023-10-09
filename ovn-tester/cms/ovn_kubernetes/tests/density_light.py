@@ -23,13 +23,15 @@ class DensityLight(ExtCmd):
         ovn = clusters[0]
         ns = Namespace(ovn, 'ns_density_light', global_cfg)
         with Context(
-            ovn, 'density_light_startup', 1, brief_report=True
+            clusters, 'density_light_startup', 1, brief_report=True
         ) as ctx:
             ports = ovn.provision_ports(self.config.n_startup, passive=True)
             ns.add_ports(ports)
 
         n_iterations = self.config.n_pods - self.config.n_startup
-        with Context(ovn, 'density_light', n_iterations, test=self) as ctx:
+        with Context(
+            clusters, 'density_light', n_iterations, test=self
+        ) as ctx:
             for i in ctx:
                 ports = ovn.provision_ports(1)
                 ns.add_ports(ports[0:1])
@@ -37,5 +39,7 @@ class DensityLight(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context(ovn, 'density_light_cleanup', brief_report=True) as ctx:
+        with Context(
+            clusters, 'density_light_cleanup', brief_report=True
+        ) as ctx:
             ns.unprovision()

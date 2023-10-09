@@ -27,7 +27,7 @@ class NetPol(ExtCmd):
 
     def init(self, clusters, global_cfg):
         ovn = clusters[0]
-        with Context(ovn, f'{self.name}_startup', brief_report=True) as _:
+        with Context(clusters, f'{self.name}_startup', brief_report=True) as _:
             self.ports = ovn.provision_ports(
                 self.config.pods_ns_ratio * self.config.n_ns
             )
@@ -50,7 +50,7 @@ class NetPol(ExtCmd):
 
     def run(self, clusters, global_cfg, exclude=False):
         ovn = clusters[0]
-        with Context(ovn, self.name, self.config.n_ns, test=self) as ctx:
+        with Context(clusters, self.name, self.config.n_ns, test=self) as ctx:
             for i in ctx:
                 ns = self.all_ns[i]
                 for lbl in range(self.config.n_labels):
@@ -77,6 +77,8 @@ class NetPol(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context(ovn, f'{self.name}_cleanup', brief_report=True) as ctx:
+        with Context(
+            clusters, f'{self.name}_cleanup', brief_report=True
+        ) as ctx:
             for ns in self.all_ns:
                 ns.unprovision()

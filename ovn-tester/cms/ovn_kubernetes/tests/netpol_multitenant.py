@@ -60,7 +60,6 @@ class NetpolMultitenant(ExtCmd):
         to-lport, ip.src == {ip1, ..., ip20} && outport == @PG_ns_i,
                   allow-related
         """
-        ovn = clusters[0]
         if global_cfg.run_ipv4:
             external_ips1 = [
                 netaddr.IPAddress('42.42.42.1') + i
@@ -89,28 +88,37 @@ class NetpolMultitenant(ExtCmd):
                 # includes i.
                 ranges = self.config.ranges
                 n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
+                az_index = i % len(clusters)
+                ovn = clusters[az_index]
                 ns = Namespace(
                     clusters, f'ns_netpol_multitenant_{i}', global_cfg
                 )
                 for _ in range(n_ports):
                     worker = ovn.select_worker_for_port()
                     for p in worker.provision_ports(ovn, 1):
-                        ns.add_ports([p])
-                ns.default_deny(4)
+                        ns.add_ports([p], az_index)
+                ns.default_deny(4, az_index)
                 if global_cfg.run_ipv4:
-                    ns.allow_within_namespace(4)
+                    ns.allow_within_namespace(4, az_index)
                 if global_cfg.run_ipv6:
-                    ns.allow_within_namespace(6)
-                ns.check_enforcing_internal()
+                    ns.allow_within_namespace(6, az_index)
+                ns.check_enforcing_internal(az_index)
                 if global_cfg.run_ipv4:
-                    ns.allow_from_external(external_ips1)
-                    ns.allow_from_external(external_ips2, include_ext_gw=True)
-                if global_cfg.run_ipv6:
-                    ns.allow_from_external(external6_ips1, family=6)
+                    ns.allow_from_external(external_ips1, az=az_index)
                     ns.allow_from_external(
-                        external6_ips2, include_ext_gw=True, family=6
+                        external_ips2, include_ext_gw=True, az=az_index
                     )
-                ns.check_enforcing_external()
+                if global_cfg.run_ipv6:
+                    ns.allow_from_external(
+                        external6_ips1, family=6, az=az_index
+                    )
+                    ns.allow_from_external(
+                        external6_ips2,
+                        include_ext_gw=True,
+                        family=6,
+                        az=az_index,
+                    )
+                ns.check_enforcing_external(az_index)
                 all_ns.append(ns)
 
         if not global_cfg.cleanup:

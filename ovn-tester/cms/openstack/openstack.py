@@ -484,7 +484,6 @@ class OpenStackCloud(Cluster):
             ext_ids=port_ext_ids,
         )
         self.nbctl.ls_port_set_set_type(port, "localport")
-        self.nbctl.ls_port_set_set_options(port, "requested-chassis=")
         self.nbctl.ls_port_enable(port)
 
         return port

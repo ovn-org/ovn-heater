@@ -633,28 +633,32 @@ class Namespace:
         )
 
     @ovn_stats.timeit
-    def allow_cross_namespace(self, ns, family, az=0):
+    def allow_cross_namespace(self, ns, family):
         self.enforce()
 
-        addr_set = f'self.addr_set{family}.name'
-        self.nbctl[az].acl_add(
-            self.pg[az].name,
-            'to-lport',
-            ACL_NETPOL_ALLOW_PRIO,
-            'port-group',
-            f'ip4.src == \\${addr_set} && ' f'outport == @{ns.pg[az].name}',
-            'allow-related',
-        )
-        ns_addr_set = f'ns.addr_set{family}.name'
-        self.nbctl[az].acl_add(
-            self.pg[az].name,
-            'to-lport',
-            ACL_NETPOL_ALLOW_PRIO,
-            'port-group',
-            f'ip4.dst == \\${ns_addr_set} && '
-            f'inport == @{self.pg[az].name}',
-            'allow-related',
-        )
+        for az, nbctl in enumerate(self.nbctl):
+            if len(self.ports[az]) == 0:
+                continue
+            addr_set = f'self.addr_set{family}.name'
+            nbctl[az].acl_add(
+                self.pg[az].name,
+                'to-lport',
+                ACL_NETPOL_ALLOW_PRIO,
+                'port-group',
+                f'ip4.src == \\${addr_set} && '
+                f'outport == @{ns.pg[az].name}',
+                'allow-related',
+            )
+            ns_addr_set = f'ns.addr_set{family}.name'
+            nbctl[az].acl_add(
+                self.pg[az].name,
+                'to-lport',
+                ACL_NETPOL_ALLOW_PRIO,
+                'port-group',
+                f'ip4.dst == \\${ns_addr_set} && '
+                f'inport == @{self.pg[az].name}',
+                'allow-related',
+            )
 
     @ovn_stats.timeit
     def allow_sub_namespace(self, src, dst, family, az=0):

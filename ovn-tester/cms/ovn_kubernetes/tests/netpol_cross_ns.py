@@ -16,30 +16,26 @@ class NetpolCrossNs(ExtCmd):
         )
 
     def run(self, clusters, global_cfg):
-        ovn = clusters[0]
         all_ns = []
 
         with Context(
             clusters, 'netpol_cross_ns_startup', brief_report=True
         ) as ctx:
-            ports = ovn.provision_ports(
-                self.config.pods_ns_ratio * self.config.n_ns
-            )
             for i in range(self.config.n_ns):
+                az_index = i % len(clusters)
+                ovn = clusters[az_index]
+                ports = ovn.provision_ports(self.config.pods_ns_ratio)
                 ns = Namespace(
-                    clusters, f'NS_netpol_cross_ns_startup_{i}', global_cfg
+                    clusters,
+                    f'NS_netpol_cross_ns_startup_{i}',
+                    global_cfg,
+                    az_index,
                 )
-                ns.add_ports(
-                    ports[
-                        i
-                        * self.config.pods_ns_ratio : (i + 1)
-                        * self.config.pods_ns_ratio
-                    ]
-                )
+                ns.add_ports(ports[0 : self.config.pods_ns_ratio], az_index)
                 if global_cfg.run_ipv4:
-                    ns.default_deny(4)
+                    ns.default_deny(4, az_index)
                 if global_cfg.run_ipv6:
-                    ns.default_deny(6)
+                    ns.default_deny(6, az_index)
                 all_ns.append(ns)
 
         with Context(

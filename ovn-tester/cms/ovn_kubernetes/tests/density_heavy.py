@@ -53,9 +53,10 @@ class DensityHeavy(ExtCmd):
         )
         self.lb_list.append(load_balancer)
 
-    def run_iteration(self, ovn, ns, index, global_cfg, passive):
+    def run_iteration(self, clusters, ns, index, global_cfg, passive):
+        ovn = clusters[index % len(clusters)]
         ports = ovn.provision_ports(self.config.pods_vip_ratio, passive)
-        ns.add_ports(ports)
+        ns.add_ports(ports, index % len(clusters))
         backends = ports[0:1]
         if global_cfg.run_ipv4:
             name = f'density_heavy_{index}'
@@ -70,7 +71,6 @@ class DensityHeavy(ExtCmd):
         if self.config.pods_vip_ratio == 0:
             return
 
-        ovn = clusters[0]
         ns = Namespace(clusters, 'ns_density_heavy', global_cfg)
         with Context(
             clusters, 'density_heavy_startup', brief_report=True
@@ -78,7 +78,7 @@ class DensityHeavy(ExtCmd):
             for i in range(
                 0, self.config.n_startup, self.config.pods_vip_ratio
             ):
-                self.run_iteration(ovn, ns, i, global_cfg, passive=True)
+                self.run_iteration(clusters, ns, i, global_cfg, passive=True)
 
         with Context(
             clusters,
@@ -89,12 +89,15 @@ class DensityHeavy(ExtCmd):
         ) as ctx:
             for i in ctx:
                 index = i * self.config.pods_vip_ratio + self.config.n_startup
-                self.run_iteration(ovn, ns, index, global_cfg, passive=False)
+                self.run_iteration(
+                    clusters, ns, index, global_cfg, passive=False
+                )
 
         if not global_cfg.cleanup:
             return
         with Context(
-            clusters, 'density_heavy_cleanup', brief_report=True
+            clusters, 'density_heavy_cleanup', len(clusters), brief_report=True
         ) as ctx:
-            ovn.unprovision_vips()
+            for i in ctx:
+                clusters[i].unprovision_vips()
             ns.unprovision()

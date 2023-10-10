@@ -69,7 +69,7 @@ low_scale_task:
   upload_caches:
     - runtime
 
-  test_base_ovn_script:
+  test_ovn_kubernetes_script:
     - 'sed -i "s/^  log_cmds\: False/  log_cmds\: True/"
         test-scenarios/ovn-low-scale*.yml'
     - ./do.sh run test-scenarios/ovn-low-scale.yml low-scale

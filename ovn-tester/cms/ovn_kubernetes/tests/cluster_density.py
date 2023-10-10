@@ -28,33 +28,38 @@ class ClusterDensity(ExtCmd):
             raise ovn_exceptions.OvnInvalidConfigException()
 
     def run_iteration(self, clusters, index, global_cfg, passive):
-        ovn = clusters[0]
         ns = Namespace(clusters, f'NS_density_{index}', global_cfg)
+        az_index = index % len(clusters)
+        ovn = clusters[az_index]
         # Create DENSITY_N_BUILD_PODS short lived "build" pods.
         if not passive:
             build_ports = ovn.provision_ports(DENSITY_N_BUILD_PODS, passive)
-            ns.add_ports(build_ports)
+            ns.add_ports(build_ports, az_index)
             ovn.ping_ports(build_ports)
 
         # Add DENSITY_N_PODS test pods and provision them as backends
         # to the namespace load balancer.
         ports = ovn.provision_ports(DENSITY_N_PODS, passive)
-        ns.add_ports(ports)
-        ns.create_load_balancer()
+        ns.add_ports(ports, az_index)
+        ns.create_load_balancer(az_index)
         ovn.provision_lb(ns.load_balancer)
         if global_cfg.run_ipv4:
             ns.provision_vips_to_load_balancers(
-                [ports[0:2], ports[2:3], ports[3:4]], 4
+                [ports[0:2], ports[2:3], ports[3:4]],
+                4,
+                az_index,
             )
         if global_cfg.run_ipv6:
             ns.provision_vips_to_load_balancers(
-                [ports[0:2], ports[2:3], ports[3:4]], 6
+                [ports[0:2], ports[2:3], ports[3:4]],
+                6,
+                az_index,
             )
 
         # Ping the test pods and remove the short lived ones.
         if not passive:
             ovn.ping_ports(ports)
-            ns.unprovision_ports(build_ports)
+            ns.unprovision_ports(build_ports, az_index)
         return ns
 
     def run(self, clusters, global_cfg):

@@ -443,7 +443,6 @@ class OpenStackCloud(Cluster):
             "neutron:subnet_pool_addr_scope6": "",
         }
         port_options = (
-            f"mcast_flood_reports=true "
             f"requested-chassis={chassis.container}"
         )
         ls_port = self.nbctl.ls_port_add(

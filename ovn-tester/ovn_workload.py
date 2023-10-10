@@ -203,9 +203,15 @@ class ChassisNode(Node):
         self.lports.remove(port)
 
     @ovn_stats.timeit
-    def bind_port(self, port):
+    def bind_port(self, port, mtu_request: Optional[int] = None):
         log.info(f'Binding lport {port.name} on {self.container}')
-        self.vsctl.add_port(port, 'br-int', internal=True, ifaceid=port.name)
+        self.vsctl.add_port(
+            port,
+            'br-int',
+            internal=True,
+            ifaceid=port.name,
+            mtu_request=mtu_request,
+        )
         # Skip creating a netns for "passive" ports, we won't be sending
         # traffic on those.
         if not port.passive:

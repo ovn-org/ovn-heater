@@ -34,6 +34,7 @@ class NeutronNetwork:
     network: LSwitch
     ports: Dict[str, LSPort]
     name: str
+    mtu: int
     security_group: Optional[PortGroup] = None
 
     def __post_init__(self):
@@ -204,7 +205,8 @@ class OpenStackCloud(Cluster):
         """
         ext_net_uuid = uuid.uuid4()
         ext_net_name = f"ext_net_{ext_net_uuid}"
-        ext_net = self._create_project_net(f"ext_net_{ext_net_uuid}", 1500)
+        mtu = 1500
+        ext_net = self._create_project_net(f"ext_net_{ext_net_uuid}", mtu)
         ext_net_port = self._add_metadata_port(ext_net, str(ext_net_uuid))
         provider_port = self._add_provider_network_port(
             ext_net, provider_network
@@ -216,6 +218,7 @@ class OpenStackCloud(Cluster):
                 provider_port.uuid: provider_port,
             },
             name=ext_net_name,
+            mtu=mtu,
         )
 
     def connect_external_network_to_project(
@@ -273,7 +276,8 @@ class OpenStackCloud(Cluster):
         :return: None
         """
         int_net_name = f"int_net_{project.uuid}"
-        int_net = self._create_project_net(int_net_name, 1442)
+        mtu = 1442
+        int_net = self._create_project_net(int_net_name, mtu)
 
         int_net_port = self._add_metadata_port(int_net, project.uuid)
         security_group = self._create_default_security_group()
@@ -281,6 +285,7 @@ class OpenStackCloud(Cluster):
             network=int_net,
             ports={int_net_port.uuid: int_net_port},
             name=int_net_name,
+            mtu=mtu,
             security_group=security_group,
         )
 
@@ -301,7 +306,7 @@ class OpenStackCloud(Cluster):
         vm_port = self._add_vm_port(
             project.int_net, project.uuid, compute, vm_name
         )
-        compute.bind_port(vm_port)
+        compute.bind_port(vm_port, mtu_request=project.int_net.mtu)
 
         project.vm_ports.append(vm_port)
 
@@ -442,9 +447,7 @@ class OpenStackCloud(Cluster):
             "neutron:subnet_pool_addr_scope4": "",
             "neutron:subnet_pool_addr_scope6": "",
         }
-        port_options = (
-            f"requested-chassis={chassis.container}"
-        )
+        port_options = f"requested-chassis={chassis.container}"
         ls_port = self.nbctl.ls_port_add(
             lswitch=neutron_net.network,
             name=port_name,
@@ -543,7 +546,7 @@ class OpenStackCloud(Cluster):
         """
         port_ip = self.next_external_ip()
         return self._add_router_port(
-            neutron_net.network, router, port_ip, "", True
+            neutron_net.network, router, port_ip, "", True, neutron_net.mtu
         )
 
     def _add_router_port(
@@ -553,6 +556,7 @@ class OpenStackCloud(Cluster):
         port_ip: DualStackIP,
         project_id: str = "",
         is_gw: bool = False,
+        mtu: Optional[int] = None,
     ) -> (LSPort, LRPort):
         """Add a pair of ports that connect Logical Router and Logical Switch.
 
@@ -594,7 +598,12 @@ class OpenStackCloud(Cluster):
         }
 
         lr_port = self.nbctl.lr_port_add(
-            router, router_port_name, str(RandMac()), port_ip, lrp_external_ids
+            router,
+            router_port_name,
+            str(RandMac()),
+            port_ip,
+            lrp_external_ids,
+            {"gateway_mtu": str(mtu)} if mtu else None,
         )
 
         ls_port = self.nbctl.ls_port_add(

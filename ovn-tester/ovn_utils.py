@@ -209,7 +209,14 @@ class OvsVsctl:
             ("external_ids", {key: str(value)}),
         ).execute(check_error=True)
 
-    def add_port(self, port, bridge, internal=True, ifaceid=None):
+    def add_port(
+        self,
+        port,
+        bridge,
+        internal=True,
+        ifaceid=None,
+        mtu_request: Optional[int] = None,
+    ):
         name = port.name
         with self.idl.transaction(check_error=True) as txn:
             txn.add(self.idl.add_port(bridge, name))
@@ -220,6 +227,12 @@ class OvsVsctl:
             if ifaceid:
                 txn.add(
                     self.idl.iface_set_external_id(name, "iface-id", ifaceid)
+                )
+            if mtu_request:
+                txn.add(
+                    self.idl.db_set(
+                        "Interface", name, ("mtu_request", mtu_request)
+                    )
                 )
 
     def del_port(self, port):
@@ -448,9 +461,16 @@ class OvnNbctl:
         return LRouter(name=name, uuid=uuid)
 
     def lr_port_add(
-        self, router, name, mac, dual_ip=None, ext_ids: Optional[Dict] = None
+        self,
+        router,
+        name,
+        mac,
+        dual_ip=None,
+        ext_ids: Optional[Dict] = None,
+        options: Optional[Dict] = None,
     ):
         ext_ids = {} if ext_ids is None else ext_ids
+        options = {} if options is None else options
         networks = []
         if dual_ip.ip4 and dual_ip.plen4:
             networks.append(f'{dual_ip.ip4}/{dual_ip.plen4}')
@@ -458,7 +478,12 @@ class OvnNbctl:
             networks.append(f'{dual_ip.ip6}/{dual_ip.plen6}')
 
         self.idl.lrp_add(
-            router.uuid, name, str(mac), networks, external_ids=ext_ids
+            router.uuid,
+            name,
+            str(mac),
+            networks,
+            external_ids=ext_ids,
+            options=options,
         ).execute()
         return LRPort(name=name, mac=mac, ip=dual_ip)
 

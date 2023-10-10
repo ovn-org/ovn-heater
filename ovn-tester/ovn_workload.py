@@ -414,6 +414,7 @@ class Cluster:
         for w, ports in ports_per_worker.items():
             w.ping_ports(self, ports)
 
+    @ovn_stats.timeit
     def mesh_ping_ports(self, ports: List[ovn_utils.LSPort]) -> None:
         """Perform full-mesh ping test between ports."""
         all_ips = [port.ip for port in ports]

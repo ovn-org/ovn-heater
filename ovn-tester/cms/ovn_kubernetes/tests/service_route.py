@@ -50,14 +50,14 @@ class ServiceRoute(ExtCmd):
         load_balancer.add_to_switches([node.switch.name])
 
     def run(self, clusters, global_cfg):
-        ovn = clusters[0]
         ns = Namespace(clusters, 'ns_service_route', global_cfg)
         with Context(
             clusters, 'service_route', self.config.n_lb, test=self
         ) as ctx:
             for i in ctx:
+                ovn = clusters[i % len(clusters)]
                 ports = ovn.provision_ports(self.config.n_backends + 1)
-                ns.add_ports(ports)
+                ns.add_ports(ports, i % len(clusters))
 
                 if ports[1].ip:
                     self.provide_cluster_lb(

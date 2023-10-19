@@ -32,9 +32,11 @@ ClusterConfig = namedtuple(
         'internal_net',
         'external_net',
         'gw_net',
+        'ts_net',
         'cluster_net',
         'n_workers',
         'n_relays',
+        'n_az',
         'vips',
         'vips6',
         'vip_subnet',
@@ -447,165 +449,184 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class Namespace:
-    def __init__(self, cluster, name, global_cfg):
-        self.cluster = cluster
-        self.nbctl = cluster.nbctl
-        self.ports = []
+    def __init__(self, clusters, name, global_cfg):
+        self.clusters = clusters
+        self.nbctl = [cluster.nbctl for cluster in clusters]
+        self.ports = [[] for _ in range(len(clusters))]
         self.enforcing = False
-        self.pg_def_deny_igr = self.nbctl.port_group_create(
-            f'pg_deny_igr_{name}'
-        )
-        self.pg_def_deny_egr = self.nbctl.port_group_create(
-            f'pg_deny_egr_{name}'
-        )
-        self.pg = self.nbctl.port_group_create(f'pg_{name}')
-        self.addr_set4 = (
-            self.nbctl.address_set_create(f'as_{name}')
-            if global_cfg.run_ipv4
-            else None
-        )
-        self.addr_set6 = (
-            self.nbctl.address_set_create(f'as6_{name}')
-            if global_cfg.run_ipv6
-            else None
-        )
-        self.sub_as = []
-        self.sub_pg = []
+        self.pg_def_deny_igr = [
+            nbctl.port_group_create(f'pg_deny_igr_{name}')
+            for nbctl in self.nbctl
+        ]
+        self.pg_def_deny_egr = [
+            nbctl.port_group_create(f'pg_deny_egr_{name}')
+            for nbctl in self.nbctl
+        ]
+        self.pg = [
+            nbctl.port_group_create(f'pg_{name}') for nbctl in self.nbctl
+        ]
+        self.addr_set4 = [
+            (
+                nbctl.address_set_create(f'as_{name}')
+                if global_cfg.run_ipv4
+                else None
+            )
+            for nbctl in self.nbctl
+        ]
+        self.addr_set6 = [
+            (
+                nbctl.address_set_create(f'as6_{name}')
+                if global_cfg.run_ipv6
+                else None
+            )
+            for nbctl in self.nbctl
+        ]
+        self.sub_as = [[] for _ in range(len(clusters))]
+        self.sub_pg = [[] for _ in range(len(clusters))]
         self.load_balancer = None
-        self.cluster.n_ns += 1
+        for cluster in self.clusters:
+            cluster.n_ns += 1
         self.name = name
 
     @ovn_stats.timeit
-    def add_ports(self, ports):
-        self.ports.extend(ports)
+    def add_ports(self, ports, az=0):
+        self.ports[az].extend(ports)
         # Always add port IPs to the address set but not to the PGs.
         # Simulate what OpenShift does, which is: create the port groups
         # when the first network policy is applied.
         if self.addr_set4:
-            self.nbctl.address_set_add_addrs(
-                self.addr_set4, [str(p.ip) for p in ports]
-            )
+            for i, nbctl in enumerate(self.nbctl):
+                nbctl.address_set_add_addrs(
+                    self.addr_set4[i], [str(p.ip) for p in ports]
+                )
         if self.addr_set6:
-            self.nbctl.address_set_add_addrs(
-                self.addr_set6, [str(p.ip6) for p in ports]
-            )
+            for i, nbctl in enumerate(self.nbctl):
+                nbctl.address_set_add_addrs(
+                    self.addr_set6[i], [str(p.ip6) for p in ports]
+                )
         if self.enforcing:
-            self.nbctl.port_group_add_ports(self.pg_def_deny_igr, ports)
-            self.nbctl.port_group_add_ports(self.pg_def_deny_egr, ports)
-            self.nbctl.port_group_add_ports(self.pg, ports)
+            self.nbctl[az].port_group_add_ports(
+                self.pg_def_deny_igr[az], ports
+            )
+            self.nbctl[az].port_group_add_ports(
+                self.pg_def_deny_egr[az], ports
+            )
+            self.nbctl[az].port_group_add_ports(self.pg[az], ports)
 
     def unprovision(self):
         # ACLs are garbage collected by OVSDB as soon as all the records
         # referencing them are removed.
-        self.cluster.unprovision_ports(self.ports)
-        self.nbctl.port_group_del(self.pg_def_deny_igr)
-        self.nbctl.port_group_del(self.pg_def_deny_egr)
-        self.nbctl.port_group_del(self.pg)
-        if self.addr_set4:
-            self.nbctl.address_set_del(self.addr_set4)
-        if self.addr_set6:
-            self.nbctl.address_set_del(self.addr_set6)
-        for pg in self.sub_pg:
-            self.nbctl.port_group_del(pg)
-        for addr_set in self.sub_as:
-            self.nbctl.address_set_del(addr_set)
+        for i, cluster in enumerate(self.clusters):
+            cluster.unprovision_ports(self.ports[i])
+        for i, nbctl in enumerate(self.nbctl):
+            nbctl.port_group_del(self.pg_def_deny_igr[i])
+            nbctl.port_group_del(self.pg_def_deny_egr[i])
+            nbctl.port_group_del(self.pg[i])
+            if self.addr_set4:
+                nbctl.address_set_del(self.addr_set4[i])
+            if self.addr_set6:
+                nbctl.address_set_del(self.addr_set6[i])
+            nbctl.port_group_del(self.sub_pg[i])
+            nbctl.address_set_del(self.sub_as[i])
 
-    def unprovision_ports(self, ports):
+    def unprovision_ports(self, ports, az=0):
         '''Unprovision a subset of ports in the namespace without having to
         unprovision the entire namespace or any of its network policies.'''
 
         for port in ports:
-            self.ports.remove(port)
+            self.ports[az].remove(port)
 
-        self.cluster.unprovision_ports(ports)
+        self.clusters[az].unprovision_ports(ports)
 
     def enforce(self):
         if self.enforcing:
             return
         self.enforcing = True
-        self.nbctl.port_group_add_ports(self.pg_def_deny_igr, self.ports)
-        self.nbctl.port_group_add_ports(self.pg_def_deny_egr, self.ports)
-        self.nbctl.port_group_add_ports(self.pg, self.ports)
+        for i, nbctl in enumerate(self.nbctl):
+            nbctl.port_group_add_ports(self.pg_def_deny_igr[i], self.ports[i])
+            nbctl.port_group_add_ports(self.pg_def_deny_egr[i], self.ports[i])
+            nbctl.port_group_add_ports(self.pg[i], self.ports[i])
 
-    def create_sub_ns(self, ports, global_cfg):
-        n_sub_pgs = len(self.sub_pg)
+    def create_sub_ns(self, ports, global_cfg, az=0):
+        n_sub_pgs = len(self.sub_pg[az])
         suffix = f'{self.name}_{n_sub_pgs}'
-        pg = self.nbctl.port_group_create(f'sub_pg_{suffix}')
-        self.nbctl.port_group_add_ports(pg, ports)
-        self.sub_pg.append(pg)
-        if global_cfg.run_ipv4:
-            addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}')
-            self.nbctl.address_set_add_addrs(
-                addr_set, [str(p.ip) for p in ports]
-            )
-            self.sub_as.append(addr_set)
-        if global_cfg.run_ipv6:
-            addr_set = self.nbctl.address_set_create(f'sub_as_{suffix}6')
-            self.nbctl.address_set_add_addrs(
-                addr_set, [str(p.ip6) for p in ports]
-            )
-            self.sub_as.append(addr_set)
+        pg = self.nbctl[az].port_group_create(f'sub_pg_{suffix}')
+        self.nbctl[az].port_group_add_ports(pg, ports)
+        self.sub_pg[az].append(pg)
+        for i, nbctl in enumerate(self.nbctl):
+            if global_cfg.run_ipv4:
+                addr_set = nbctl.address_set_create(f'sub_as_{suffix}')
+                nbctl.address_set_add_addrs(
+                    addr_set, [str(p.ip) for p in ports]
+                )
+                self.sub_as[i].append(addr_set)
+            if global_cfg.run_ipv6:
+                addr_set = nbctl.address_set_create(f'sub_as_{suffix}6')
+                nbctl.address_set_add_addrs(
+                    addr_set, [str(p.ip6) for p in ports]
+                )
+                self.sub_as[i].append(addr_set)
         return n_sub_pgs
 
     @ovn_stats.timeit
-    def default_deny(self, family):
+    def default_deny(self, family, az=0):
         self.enforce()
 
         addr_set = f'self.addr_set{family}.name'
-        self.nbctl.acl_add(
-            self.pg_def_deny_igr.name,
+        self.nbctl[az].acl_add(
+            self.pg_def_deny_igr[az].name,
             'to-lport',
             ACL_DEFAULT_DENY_PRIO,
             'port-group',
             f'ip4.src == \\${addr_set} && '
-            f'outport == @{self.pg_def_deny_igr.name}',
+            f'outport == @{self.pg_def_deny_igr[az].name}',
             'drop',
         )
-        self.nbctl.acl_add(
-            self.pg_def_deny_egr.name,
+        self.nbctl[az].acl_add(
+            self.pg_def_deny_egr[az].name,
             'to-lport',
             ACL_DEFAULT_DENY_PRIO,
             'port-group',
             f'ip4.dst == \\${addr_set} && '
-            f'inport == @{self.pg_def_deny_egr.name}',
+            f'inport == @{self.pg_def_deny_egr[az].name}',
             'drop',
         )
-        self.nbctl.acl_add(
-            self.pg_def_deny_igr.name,
+        self.nbctl[az].acl_add(
+            self.pg_def_deny_igr[az].name,
             'to-lport',
             ACL_DEFAULT_ALLOW_ARP_PRIO,
             'port-group',
-            f'outport == @{self.pg_def_deny_igr.name} && arp',
+            f'outport == @{self.pg_def_deny_igr[az].name} && arp',
             'allow',
         )
-        self.nbctl.acl_add(
-            self.pg_def_deny_egr.name,
+        self.nbctl[az].acl_add(
+            self.pg_def_deny_egr[az].name,
             'to-lport',
             ACL_DEFAULT_ALLOW_ARP_PRIO,
             'port-group',
-            f'inport == @{self.pg_def_deny_egr.name} && arp',
+            f'inport == @{self.pg_def_deny_egr[az].name} && arp',
             'allow',
         )
 
     @ovn_stats.timeit
-    def allow_within_namespace(self, family):
+    def allow_within_namespace(self, family, az=0):
         self.enforce()
 
         addr_set = f'self.addr_set{family}.name'
-        self.nbctl.acl_add(
-            self.pg.name,
+        self.nbctl[az].acl_add(
+            self.pg[az].name,
             'to-lport',
             ACL_NETPOL_ALLOW_PRIO,
             'port-group',
-            f'ip4.src == \\${addr_set} && outport == @{self.pg.name}',
+            f'ip4.src == \\${addr_set} && ' f'outport == @{self.pg[az].name}',
             'allow-related',
         )
-        self.nbctl.acl_add(
-            self.pg.name,
+        self.nbctl[az].acl_add(
+            self.pg[az].name,
             'to-lport',
             ACL_NETPOL_ALLOW_PRIO,
             'port-group',
-            f'ip4.dst == \\${addr_set} && inport == @{self.pg.name}',
+            f'ip4.dst == \\${addr_set} && ' f'inport == @{self.pg[az].name}',
             'allow-related',
         )
 
@@ -613,109 +634,116 @@ class Namespace:
     def allow_cross_namespace(self, ns, family):
         self.enforce()
 
-        addr_set = f'self.addr_set{family}.name'
-        self.nbctl.acl_add(
-            self.pg.name,
-            'to-lport',
-            ACL_NETPOL_ALLOW_PRIO,
-            'port-group',
-            f'ip4.src == \\${addr_set} && outport == @{ns.pg.name}',
-            'allow-related',
-        )
-        ns_addr_set = f'ns.addr_set{family}.name'
-        self.nbctl.acl_add(
-            self.pg.name,
-            'to-lport',
-            ACL_NETPOL_ALLOW_PRIO,
-            'port-group',
-            f'ip4.dst == \\${ns_addr_set} && inport == @{self.pg.name}',
-            'allow-related',
-        )
+        for az, nbctl in enumerate(self.nbctl):
+            if len(self.ports[az]) == 0:
+                continue
+            addr_set = f'self.addr_set{family}.name'
+            nbctl[az].acl_add(
+                self.pg[az].name,
+                'to-lport',
+                ACL_NETPOL_ALLOW_PRIO,
+                'port-group',
+                f'ip4.src == \\${addr_set} && '
+                f'outport == @{ns.pg[az].name}',
+                'allow-related',
+            )
+            ns_addr_set = f'ns.addr_set{family}.name'
+            nbctl[az].acl_add(
+                self.pg[az].name,
+                'to-lport',
+                ACL_NETPOL_ALLOW_PRIO,
+                'port-group',
+                f'ip4.dst == \\${ns_addr_set} && '
+                f'inport == @{self.pg[az].name}',
+                'allow-related',
+            )
 
     @ovn_stats.timeit
-    def allow_sub_namespace(self, src, dst, family):
-        self.nbctl.acl_add(
-            self.pg.name,
+    def allow_sub_namespace(self, src, dst, family, az=0):
+        self.nbctl[az].acl_add(
+            self.pg[az].name,
             'to-lport',
             ACL_NETPOL_ALLOW_PRIO,
             'port-group',
-            f'ip{family}.src == \\${self.sub_as[src].name} && '
-            f'outport == @{self.sub_pg[dst].name}',
+            f'ip{family}.src == \\${self.sub_as[az][src].name} && '
+            f'outport == @{self.sub_pg[az][dst].name}',
             'allow-related',
         )
-        self.nbctl.acl_add(
-            self.pg.name,
+        self.nbctl[az].acl_add(
+            self.pg[az].name,
             'to-lport',
             ACL_NETPOL_ALLOW_PRIO,
             'port-group',
-            f'ip{family}.dst == \\${self.sub_as[dst].name} && '
-            f'inport == @{self.sub_pg[src].name}',
+            f'ip{family}.dst == \\${self.sub_as[az][dst].name} && '
+            f'inport == @{self.sub_pg[az][src].name}',
             'allow-related',
         )
 
     @ovn_stats.timeit
     def allow_from_external(
-        self, external_ips, include_ext_gw=False, family=4
+        self, external_ips, include_ext_gw=False, family=4, az=0
     ):
         self.enforce()
         # If requested, include the ext-gw of the first port in the namespace
         # so we can check that this rule is enforced.
         if include_ext_gw:
             assert len(self.ports) > 0
-            if family == 4 and self.ports[0].ext_gw:
-                external_ips.append(self.ports[0].ext_gw)
-            elif family == 6 and self.ports[0].ext_gw6:
-                external_ips.append(self.ports[0].ext_gw6)
+            if family == 4 and self.ports[az][0].ext_gw:
+                external_ips.append(self.ports[az][0].ext_gw)
+            elif family == 6 and self.ports[az][0].ext_gw6:
+                external_ips.append(self.ports[az][0].ext_gw6)
         ips = [str(ip) for ip in external_ips]
-        self.nbctl.acl_add(
-            self.pg.name,
+        self.nbctl[az].acl_add(
+            self.pg[az].name,
             'to-lport',
             ACL_NETPOL_ALLOW_PRIO,
             'port-group',
             f'ip.{family} == {{{",".join(ips)}}} && '
-            f'outport == @{self.pg.name}',
+            f'outport == @{self.pg[az].name}',
             'allow-related',
         )
 
     @ovn_stats.timeit
-    def check_enforcing_internal(self):
+    def check_enforcing_internal(self, az=0):
         # "Random" check that first pod can reach last pod in the namespace.
-        if len(self.ports) > 1:
-            src = self.ports[0]
-            dst = self.ports[-1]
+        if len(self.ports[az]) > 1:
+            src = self.ports[az][0]
+            dst = self.ports[az][-1]
             worker = src.metadata
             if src.ip:
-                worker.ping_port(self.cluster, src, dst.ip)
+                worker.ping_port(self.clusters[az], src, dst.ip)
             if src.ip6:
-                worker.ping_port(self.cluster, src, dst.ip6)
+                worker.ping_port(self.clusters[az], src, dst.ip6)
 
     @ovn_stats.timeit
-    def check_enforcing_external(self):
-        if len(self.ports) > 0:
-            dst = self.ports[0]
+    def check_enforcing_external(self, az=0):
+        if len(self.ports[az]) > 0:
+            dst = self.ports[az][0]
             worker = dst.metadata
-            worker.ping_external(self.cluster, dst)
+            worker.ping_external(self.clusters[az], dst)
 
     @ovn_stats.timeit
-    def check_enforcing_cross_ns(self, ns):
-        if len(self.ports) > 0 and len(ns.ports) > 0:
-            dst = ns.ports[0]
-            src = self.ports[0]
+    def check_enforcing_cross_ns(self, ns, az=0):
+        if len(self.ports[az]) > 0 and len(ns.ports[az]) > 0:
+            dst = ns.ports[az][0]
+            src = self.ports[az][0]
             worker = src.metadata
             if src.ip and dst.ip:
-                worker.ping_port(self.cluster, src, dst.ip)
+                worker.ping_port(self.clusters[az], src, dst.ip)
             if src.ip6 and dst.ip6:
-                worker.ping_port(self.cluster, src, dst.ip6)
+                worker.ping_port(self.clusters[az], src, dst.ip6)
 
-    def create_load_balancer(self):
-        self.load_balancer = lb.OvnLoadBalancer(f'lb_{self.name}', self.nbctl)
+    def create_load_balancer(self, az=0):
+        self.load_balancer = lb.OvnLoadBalancer(
+            f'lb_{self.name}', self.nbctl[az]
+        )
 
     @ovn_stats.timeit
-    def provision_vips_to_load_balancers(self, backend_lists, version):
+    def provision_vips_to_load_balancers(self, backend_lists, version, az=0):
         vip_ns_subnet = DEFAULT_NS_VIP_SUBNET
         if version == 6:
             vip_ns_subnet = DEFAULT_NS_VIP_SUBNET6
-        vip_net = vip_ns_subnet.next(self.cluster.n_ns)
+        vip_net = vip_ns_subnet.next(self.clusters[az].n_ns)
         n_vips = len(self.load_balancer.vips.keys())
         vip_ip = vip_net.ip.__add__(n_vips + 1)
 
@@ -738,7 +766,7 @@ class Namespace:
 
 
 class Cluster:
-    def __init__(self, central_nodes, relay_nodes, cluster_cfg, brex_cfg):
+    def __init__(self, central_nodes, relay_nodes, cluster_cfg, brex_cfg, az):
         # In clustered mode use the first node for provisioning.
         self.central_nodes = central_nodes
         self.relay_nodes = relay_nodes
@@ -747,13 +775,20 @@ class Cluster:
         self.brex_cfg = brex_cfg
         self.nbctl = None
         self.sbctl = None
+        self.icnbctl = None
         self.net = cluster_cfg.cluster_net
+        self.gw_net = ovn_utils.DualStackSubnet.next(
+            cluster_cfg.gw_net,
+            az * (cluster_cfg.n_workers // cluster_cfg.n_az),
+        )
+        self.az = az
         self.router = None
         self.load_balancer = None
         self.load_balancer6 = None
         self.join_switch = None
         self.last_selected_worker = 0
         self.n_ns = 0
+        self.ts_switch = None
 
     def add_workers(self, worker_nodes):
         self.worker_nodes.extend(worker_nodes)
@@ -775,6 +810,15 @@ class Cluster:
             self.central_nodes[0], sb_conn, inactivity_probe
         )
 
+        # ovn-ic configuration
+        self.icnbctl = ovn_utils.OvnIcNbctl(
+            None,
+            f'tcp:{self.cluster_cfg.node_net.ip + 2}:6645',
+            inactivity_probe,
+        )
+        self.nbctl.set_global('ic-route-learn', 'true')
+        self.nbctl.set_global('ic-route-adv', 'true')
+
         for r in self.relay_nodes:
             r.start()
 
@@ -788,6 +832,7 @@ class Cluster:
         self.nbctl.set_global(
             'northd_probe_interval', self.cluster_cfg.northd_probe_interval
         )
+        self.nbctl.set_global_name(f'az{self.az}')
         self.nbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
         self.sbctl.set_inactivity_probe(self.cluster_cfg.db_inactivity_probe)
 
@@ -831,18 +876,16 @@ class Cluster:
             self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
     def create_cluster_join_switch(self, sw_name):
-        self.join_switch = self.nbctl.ls_add(
-            sw_name, net_s=self.cluster_cfg.gw_net
-        )
+        self.join_switch = self.nbctl.ls_add(sw_name, net_s=self.gw_net)
 
         self.join_rp = self.nbctl.lr_port_add(
             self.router,
-            'rtr-to-join',
+            f'rtr-to-{sw_name}',
             RandMac(),
-            self.cluster_cfg.gw_net.reverse(),
+            self.gw_net.reverse(),
         )
         self.join_ls_rp = self.nbctl.ls_port_add(
-            self.join_switch, 'join-to-rtr', self.join_rp
+            self.join_switch, f'{sw_name}-to-rtr', self.join_rp
         )
 
     def provision_ports(self, n_ports, passive=False):
@@ -889,8 +932,8 @@ class Cluster:
         self.last_selected_worker %= len(self.worker_nodes)
         return self.worker_nodes[self.last_selected_worker]
 
-    def provision_lb_group(self):
-        self.lb_group = lb.OvnLoadBalancerGroup('cluster-lb-group', self.nbctl)
+    def provision_lb_group(self, name='cluster-lb-group'):
+        self.lb_group = lb.OvnLoadBalancerGroup(name, self.nbctl)
         for w in self.worker_nodes:
             self.nbctl.ls_add_lbg(w.switch, self.lb_group.lbg)
             self.nbctl.lr_add_lbg(w.gw_router, self.lb_group.lbg)

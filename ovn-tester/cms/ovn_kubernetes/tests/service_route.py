@@ -16,8 +16,8 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class ServiceRoute(ExtCmd):
-    def __init__(self, config, cluster, global_cfg):
-        super().__init__(config, cluster)
+    def __init__(self, config, clusters, global_cfg):
+        super().__init__(config, clusters)
         test_config = config.get('service_route', dict())
         self.config = ServiceRouteCfg(
             n_lb=test_config.get('n_lb', 16),
@@ -49,12 +49,15 @@ class ServiceRoute(ExtCmd):
         load_balancer.add_to_routers([node.gw_router.name])
         load_balancer.add_to_switches([node.switch.name])
 
-    def run(self, ovn, global_cfg):
-        ns = Namespace(ovn, 'ns_service_route', global_cfg)
-        with Context(ovn, 'service_route', self.config.n_lb, test=self) as ctx:
+    def run(self, clusters, global_cfg):
+        ns = Namespace(clusters, 'ns_service_route', global_cfg)
+        with Context(
+            clusters, 'service_route', self.config.n_lb, test=self
+        ) as ctx:
             for i in ctx:
+                ovn = clusters[i % len(clusters)]
                 ports = ovn.provision_ports(self.config.n_backends + 1)
-                ns.add_ports(ports)
+                ns.add_ports(ports, i % len(clusters))
 
                 if ports[1].ip:
                     self.provide_cluster_lb(
@@ -86,5 +89,7 @@ class ServiceRoute(ExtCmd):
 
         if not global_cfg.cleanup:
             return
-        with Context(ovn, 'service_route_cleanup', brief_report=True) as ctx:
+        with Context(
+            clusters, 'service_route_cleanup', brief_report=True
+        ) as ctx:
             ns.unprovision()

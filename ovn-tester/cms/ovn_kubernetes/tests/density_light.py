@@ -10,8 +10,8 @@ DensityCfg = namedtuple(
 
 
 class DensityLight(ExtCmd):
-    def __init__(self, config, cluster, global_cfg):
-        super().__init__(config, cluster)
+    def __init__(self, config, clusters, global_cfg):
+        super().__init__(config, clusters)
         test_config = config.get('density_light', dict())
         self.config = DensityCfg(
             n_pods=test_config.get('n_pods', 0),
@@ -19,22 +19,30 @@ class DensityLight(ExtCmd):
             pods_vip_ratio=0,
         )
 
-    def run(self, ovn, global_cfg):
-        ns = Namespace(ovn, 'ns_density_light', global_cfg)
+    def run(self, clusters, global_cfg):
+        ns = Namespace(clusters, 'ns_density_light', global_cfg)
         with Context(
-            ovn, 'density_light_startup', 1, brief_report=True
+            clusters, 'density_light_startup', len(clusters), brief_report=True
         ) as ctx:
-            ports = ovn.provision_ports(self.config.n_startup, passive=True)
-            ns.add_ports(ports)
+            for i in ctx:
+                ports = clusters[i].provision_ports(
+                    self.config.n_startup, passive=True
+                )
+                ns.add_ports(ports, i)
 
         n_iterations = self.config.n_pods - self.config.n_startup
-        with Context(ovn, 'density_light', n_iterations, test=self) as ctx:
+        with Context(
+            clusters, 'density_light', n_iterations, test=self
+        ) as ctx:
             for i in ctx:
+                ovn = clusters[i % len(clusters)]
                 ports = ovn.provision_ports(1)
-                ns.add_ports(ports[0:1])
+                ns.add_ports(ports[0:1], i % len(clusters))
                 ovn.ping_ports(ports)
 
         if not global_cfg.cleanup:
             return
-        with Context(ovn, 'density_light_cleanup', brief_report=True) as ctx:
+        with Context(
+            clusters, 'density_light_cleanup', brief_report=True
+        ) as ctx:
             ns.unprovision()

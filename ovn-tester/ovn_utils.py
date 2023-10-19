@@ -2,11 +2,13 @@ import logging
 import netaddr
 import select
 import ovn_exceptions
+import time
 from collections import namedtuple
 from functools import partial
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
 import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
+import ovsdbapp.schema.ovn_ic_northbound.impl_idl as nb_ic_impl_idl
 from ovsdbapp.backend import ovs_idl
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
@@ -422,6 +424,11 @@ class OvnNbctl:
             "NB_Global", self.idl._nb.uuid, ("options", {option: str(value)})
         ).execute()
 
+    def set_global_name(self, value):
+        self.idl.db_set(
+            "NB_Global", self.idl._nb.uuid, ("name", str(value))
+        ).execute()
+
     def set_inactivity_probe(self, value):
         self.idl.db_set(
             "Connection",
@@ -457,6 +464,17 @@ class OvnNbctl:
             cidr6=net_s.n6,
             uuid=uuid,
         )
+
+    def ls_get_uuid(self, name, timeout):
+        for _ in range(timeout):
+            uuid = self.idl.db_get(
+                "Logical_Switch", str(name), '_uuid'
+            ).execute()
+            if uuid is not None:
+                return uuid
+            time.sleep(1)
+
+        return None
 
     def ls_port_add(
         self,
@@ -737,3 +755,37 @@ class OvnSbctl:
         cmd = self.idl.db_find_rows("Chassis", ("name", "=", chassis))
         cmd.execute()
         return len(cmd.result) == 1
+
+
+class NBIcIdl(nb_ic_impl_idl.OvnIcNbApiIdlImpl, Backend):
+    def __init__(self, connection):
+        super(NBIcIdl, self).__init__(connection)
+
+    @property
+    def _connection(self):
+        return next(iter(self.db_list_rows('Connection').execute()))
+
+
+class OvnIcNbctl:
+    def __init__(self, sb, connection_string, inactivity_probe):
+        log.info(f'OvnIcNbctl: {connection_string}, probe: {inactivity_probe}')
+        i = connection.OvsdbIdl.from_server(
+            connection_string, "OVN_IC_Northbound"
+        )
+        c = connection.Connection(i, inactivity_probe)
+        self.idl = NBIcIdl(c)
+
+    def uuid_transaction(self, func):
+        for _ in range(MAX_RETRY):
+            cmd = func(may_exist=True)
+            cmd.execute()
+            try:
+                return cmd.result.uuid
+            except AttributeError:
+                continue
+
+        raise UUIDTransactionError("Failed to get UUID from transaction")
+
+    def ts_add(self):
+        log.info('Creating transit switch')
+        self.uuid_transaction(partial(self.idl.ts_add, 'ts'))

@@ -1,0 +1,88 @@
+global:
+  log_cmds: False
+  run_ipv4: True
+  run_ipv6: True
+  cms_name: ovn_kubernetes
+
+cluster:
+  clustered_db: true
+  monitor_all: true
+  n_az: 2
+  n_workers: 4
+  n_relays: 2
+
+ext_cmd:
+  - c0:
+    iteration: 1
+    node: "ovn-scale-*"
+    cmd: "perf record -a -g -q -F 99 -o perf.data"
+    pid_name: "ovn-controller"
+    pid_opt: "-p"
+    background_opt: True
+    test: "density_light"
+  - c1:
+    iteration: 9
+    node: "ovn-scale-*"
+    cmd: "kill"
+    pid_name: "perf"
+    test: "density_light"
+  - c2:
+    iteration: 1
+    node: "ovn-central*"
+    cmd: "perf record -a -g -q -F 99 -o perf.data"
+    pid_name: "ovn-northd"
+    pid_opt: "-p"
+    background_opt: True
+    test: "density_light"
+  - c3:
+    iteration: 9
+    node: "ovn-central*"
+    cmd: "kill"
+    pid_name: "perf"
+    test: "density_light"
+
+base_cluster_bringup:
+  n_pods_per_node: 2
+
+density_light:
+  n_pods: 10
+
+density_heavy:
+  n_startup: 10
+  pods_vip_ratio: 2
+  n_pods: 20
+
+cluster_density:
+  n_startup: 6
+  n_runs: 10
+
+netpol_multitenant:
+  n_namespaces: 5
+  ranges:
+    - r1:
+      start:   2
+      n_pods:  2
+    - r2:
+      start:   3
+      n_pods:  5
+    - r3:
+      start:   4
+      n_pods: 10
+
+netpol_cross_ns:
+  n_ns: 10
+  pods_ns_ratio: 5
+
+netpol_small:
+  n_ns: 2
+  pods_ns_ratio: 16
+  n_labels: 4
+
+netpol_large:
+  n_ns: 2
+  pods_ns_ratio: 16
+  n_labels: 4
+
+service_route:
+  n_lb: 16
+  n_backends: 4

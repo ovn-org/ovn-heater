@@ -15,8 +15,8 @@ NsMultitenantCfg = namedtuple(
 
 
 class NetpolMultitenant(ExtCmd):
-    def __init__(self, config, cluster, global_cfg):
-        super().__init__(config, cluster)
+    def __init__(self, config, clusters, global_cfg):
+        super().__init__(config, clusters)
         test_config = config.get('netpol_multitenant', dict())
         ranges = [
             NsRange(
@@ -33,7 +33,7 @@ class NetpolMultitenant(ExtCmd):
             ranges=ranges,
         )
 
-    def run(self, ovn, global_cfg):
+    def run(self, clusters, global_cfg):
         """
         Run a multitenant network policy test, for example:
 
@@ -81,39 +81,50 @@ class NetpolMultitenant(ExtCmd):
 
         all_ns = []
         with Context(
-            ovn, 'netpol_multitenant', self.config.n_namespaces, test=self
+            clusters, 'netpol_multitenant', self.config.n_namespaces, test=self
         ) as ctx:
             for i in ctx:
                 # Get the number of pods from the "highest" range that
                 # includes i.
                 ranges = self.config.ranges
                 n_ports = next((r.n_pods for r in ranges if i >= r.start), 1)
-                ns = Namespace(ovn, f'ns_netpol_multitenant_{i}', global_cfg)
+                az_index = i % len(clusters)
+                ovn = clusters[az_index]
+                ns = Namespace(
+                    clusters, f'ns_netpol_multitenant_{i}', global_cfg
+                )
                 for _ in range(n_ports):
                     worker = ovn.select_worker_for_port()
                     for p in worker.provision_ports(ovn, 1):
-                        ns.add_ports([p])
-                ns.default_deny(4)
+                        ns.add_ports([p], az_index)
+                ns.default_deny(4, az_index)
                 if global_cfg.run_ipv4:
-                    ns.allow_within_namespace(4)
+                    ns.allow_within_namespace(4, az_index)
                 if global_cfg.run_ipv6:
-                    ns.allow_within_namespace(6)
-                ns.check_enforcing_internal()
+                    ns.allow_within_namespace(6, az_index)
+                ns.check_enforcing_internal(az_index)
                 if global_cfg.run_ipv4:
-                    ns.allow_from_external(external_ips1)
-                    ns.allow_from_external(external_ips2, include_ext_gw=True)
-                if global_cfg.run_ipv6:
-                    ns.allow_from_external(external6_ips1, family=6)
+                    ns.allow_from_external(external_ips1, az=az_index)
                     ns.allow_from_external(
-                        external6_ips2, include_ext_gw=True, family=6
+                        external_ips2, include_ext_gw=True, az=az_index
                     )
-                ns.check_enforcing_external()
+                if global_cfg.run_ipv6:
+                    ns.allow_from_external(
+                        external6_ips1, family=6, az=az_index
+                    )
+                    ns.allow_from_external(
+                        external6_ips2,
+                        include_ext_gw=True,
+                        family=6,
+                        az=az_index,
+                    )
+                ns.check_enforcing_external(az_index)
                 all_ns.append(ns)
 
         if not global_cfg.cleanup:
             return
         with Context(
-            ovn, 'netpol_multitenant_cleanup', brief_report=True
+            clusters, 'netpol_multitenant_cleanup', brief_report=True
         ) as ctx:
             for ns in all_ns:
                 ns.unprovision()

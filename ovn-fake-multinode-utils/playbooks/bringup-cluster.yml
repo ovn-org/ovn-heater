@@ -17,8 +17,8 @@
       chdir: "{{ ovn_fake_multinode_target_path }}/ovn-fake-multinode"
 
 
-- name: Bring up central nodes
-  hosts: central_hosts
+- name: Compute central facts
+  hosts: central_hosts, worker_hosts
   tasks:
   - name: Compute central facts (standalone)
     when: clustered_db == "no"
@@ -30,6 +30,10 @@
     ansible.builtin.set_fact:
       n_ips: '{{ n_relays|int + 3 }}'
 
+
+- name: Bring up central nodes
+  hosts: central_hosts
+  tasks:
   - name: Start central containers
     environment:
       CENTRAL_COUNT: '{{ n_az }}'

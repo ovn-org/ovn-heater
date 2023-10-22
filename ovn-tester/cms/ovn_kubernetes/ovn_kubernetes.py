@@ -70,13 +70,13 @@ class Namespace:
         # Always add port IPs to the address set but not to the PGs.
         # Simulate what OpenShift does, which is: create the port groups
         # when the first network policy is applied.
-        if self.addr_set4:
-            for i, nbctl in enumerate(self.nbctl):
+        for i, nbctl in enumerate(self.nbctl):
+            if self.addr_set4[i]:
                 nbctl.address_set_add_addrs(
                     self.addr_set4[i], [str(p.ip) for p in ports]
                 )
-        if self.addr_set6:
-            for i, nbctl in enumerate(self.nbctl):
+        for i, nbctl in enumerate(self.nbctl):
+            if self.addr_set6[i]:
                 nbctl.address_set_add_addrs(
                     self.addr_set6[i], [str(p.ip6) for p in ports]
                 )
@@ -98,9 +98,9 @@ class Namespace:
             nbctl.port_group_del(self.pg_def_deny_igr[i])
             nbctl.port_group_del(self.pg_def_deny_egr[i])
             nbctl.port_group_del(self.pg[i])
-            if self.addr_set4:
+            if self.addr_set4[i]:
                 nbctl.address_set_del(self.addr_set4[i])
-            if self.addr_set6:
+            if self.addr_set6[i]:
                 nbctl.address_set_del(self.addr_set6[i])
             nbctl.port_group_del(self.sub_pg[i])
             nbctl.address_set_del(self.sub_as[i])

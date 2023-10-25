@@ -9,16 +9,134 @@ import ovn_load_balancer as lb
 import ovn_utils
 import ovn_stats
 
-from ovn_context import Context
 from ovn_utils import DualStackSubnet
 from ovn_workload import (
     ChassisNode,
+    Cluster,
     DEFAULT_BACKEND_PORT,
+    DEFAULT_VIP_PORT,
 )
 
 log = logging.getLogger(__name__)
 ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
-OVN_HEATER_CMS_PLUGIN = 'OVNKubernetes'
+OVN_HEATER_CMS_PLUGIN = 'OVNKubernetesCluster'
+
+
+class OVNKubernetesCluster(Cluster):
+    def __init__(self, cluster_cfg, central, brex_cfg, az):
+        super().__init__(cluster_cfg, central, brex_cfg, az)
+        self.net = cluster_cfg.cluster_net
+        self.gw_net = ovn_utils.DualStackSubnet.next(
+            cluster_cfg.gw_net,
+            az * (cluster_cfg.n_workers // cluster_cfg.n_az),
+        )
+        self.router = None
+        self.load_balancer = None
+        self.load_balancer6 = None
+        self.join_switch = None
+        self.last_selected_worker = 0
+        self.n_ns = 0
+        self.ts_switch = None
+
+    def add_cluster_worker_nodes(self, workers):
+        cluster_cfg = self.cluster_cfg
+
+        # Allocate worker IPs after central and relay IPs.
+        mgmt_ip = (
+            cluster_cfg.node_net.ip
+            + 2
+            + cluster_cfg.n_az
+            * (len(self.central_nodes) + len(self.relay_nodes))
+        )
+
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        internal_net = cluster_cfg.internal_net
+        external_net = cluster_cfg.external_net
+        # Number of workers for each az
+        n_az_workers = cluster_cfg.n_workers // cluster_cfg.n_az
+        self.add_workers(
+            [
+                WorkerNode(
+                    workers[i % len(workers)],
+                    f'ovn-scale-{i}',
+                    mgmt_ip + i,
+                    protocol,
+                    DualStackSubnet.next(internal_net, i),
+                    DualStackSubnet.next(external_net, i),
+                    self.gw_net,
+                    i,
+                )
+                for i in range(
+                    self.az * n_az_workers, (self.az + 1) * n_az_workers
+                )
+            ]
+        )
+
+    def create_cluster_router(self, rtr_name):
+        self.router = self.nbctl.lr_add(rtr_name)
+        self.nbctl.lr_set_options(
+            self.router,
+            {
+                'always_learn_from_arp_request': 'false',
+            },
+        )
+
+    def create_cluster_load_balancer(self, lb_name, global_cfg):
+        if global_cfg.run_ipv4:
+            self.load_balancer = lb.OvnLoadBalancer(
+                lb_name, self.nbctl, self.cluster_cfg.vips
+            )
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+
+        if global_cfg.run_ipv6:
+            self.load_balancer6 = lb.OvnLoadBalancer(
+                f'{lb_name}6', self.nbctl, self.cluster_cfg.vips6
+            )
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
+
+    def create_cluster_join_switch(self, sw_name):
+        self.join_switch = self.nbctl.ls_add(sw_name, net_s=self.gw_net)
+
+        self.join_rp = self.nbctl.lr_port_add(
+            self.router,
+            f'rtr-to-{sw_name}',
+            RandMac(),
+            self.gw_net.reverse(),
+        )
+        self.join_ls_rp = self.nbctl.ls_port_add(
+            self.join_switch, f'{sw_name}-to-rtr', self.join_rp
+        )
+
+    @ovn_stats.timeit
+    def provision_vips_to_load_balancers(self, backend_lists):
+        n_vips = len(self.load_balancer.vips.keys())
+        vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
+
+        vips = {
+            f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
+                f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
+            ]
+            for i, ports in enumerate(backend_lists)
+        }
+        self.load_balancer.add_vips(vips)
+
+    def unprovision_vips(self):
+        if self.load_balancer:
+            self.load_balancer.clear_vips()
+            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
+        if self.load_balancer6:
+            self.load_balancer6.clear_vips()
+            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
+
+    def provision_lb_group(self, name='cluster-lb-group'):
+        self.lb_group = lb.OvnLoadBalancerGroup(name, self.nbctl)
+        for w in self.worker_nodes:
+            self.nbctl.ls_add_lbg(w.switch, self.lb_group.lbg)
+            self.nbctl.lr_add_lbg(w.gw_router, self.lb_group.lbg)
+
+    def provision_lb(self, lb):
+        log.info(f'Creating load balancer {lb.name}')
+        self.lb_group.add_lb(lb)
 
 
 class WorkerNode(ChassisNode):
@@ -206,44 +324,3 @@ class WorkerNode(ChassisNode):
             self.run_ping(cluster, 'ext-ns', port.ip)
         if port.ip6:
             self.run_ping(cluster, 'ext-ns', port.ip6)
-
-
-class OVNKubernetes:
-    @staticmethod
-    def add_cluster_worker_nodes(cluster, workers, az):
-        cluster_cfg = cluster.cluster_cfg
-
-        # Allocate worker IPs after central and relay IPs.
-        mgmt_ip = (
-            cluster_cfg.node_net.ip
-            + 2
-            + cluster_cfg.n_az
-            * (len(cluster.central_nodes) + len(cluster.relay_nodes))
-        )
-
-        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-        internal_net = cluster_cfg.internal_net
-        external_net = cluster_cfg.external_net
-        # Number of workers for each az
-        n_az_workers = cluster_cfg.n_workers // cluster_cfg.n_az
-        cluster.add_workers(
-            [
-                WorkerNode(
-                    workers[i % len(workers)],
-                    f'ovn-scale-{i}',
-                    mgmt_ip + i,
-                    protocol,
-                    DualStackSubnet.next(internal_net, i),
-                    DualStackSubnet.next(external_net, i),
-                    cluster.gw_net,
-                    i,
-                )
-                for i in range(az * n_az_workers, (az + 1) * n_az_workers)
-            ]
-        )
-
-    @staticmethod
-    def prepare_test(clusters):
-        with Context(clusters, 'prepare_test clusters'):
-            for c in clusters:
-                c.start()

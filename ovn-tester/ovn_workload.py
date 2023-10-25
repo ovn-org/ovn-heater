@@ -8,7 +8,6 @@ import time
 import netaddr
 from collections import namedtuple
 from collections import defaultdict
-from randmac import RandMac
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -605,32 +604,57 @@ class Namespace:
 
 
 class Cluster:
-    def __init__(self, central_nodes, relay_nodes, cluster_cfg, brex_cfg, az):
+    def __init__(self, cluster_cfg, central, brex_cfg, az):
         # In clustered mode use the first node for provisioning.
-        self.central_nodes = central_nodes
-        self.relay_nodes = relay_nodes
         self.worker_nodes = []
         self.cluster_cfg = cluster_cfg
         self.brex_cfg = brex_cfg
         self.nbctl = None
         self.sbctl = None
         self.icnbctl = None
-        self.net = cluster_cfg.cluster_net
-        self.gw_net = ovn_utils.DualStackSubnet.next(
-            cluster_cfg.gw_net,
-            az * (cluster_cfg.n_workers // cluster_cfg.n_az),
-        )
         self.az = az
-        self.router = None
-        self.load_balancer = None
-        self.load_balancer6 = None
-        self.join_switch = None
-        self.last_selected_worker = 0
-        self.n_ns = 0
-        self.ts_switch = None
+
+        protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
+        db_containers = (
+            [
+                f'ovn-central-az{self.az+1}-1',
+                f'ovn-central-az{self.az+1}-2',
+                f'ovn-central-az{self.az+1}-3',
+            ]
+            if cluster_cfg.clustered_db
+            else [f'ovn-central-az{self.az+1}-1']
+        )
+
+        mgmt_ip = cluster_cfg.node_net.ip + 2 + self.az * len(db_containers)
+        self.central_nodes = [
+            CentralNode(central, c, mgmt_ip + i, protocol)
+            for i, c in enumerate(db_containers)
+        ]
+
+        mgmt_ip = (
+            cluster_cfg.node_net.ip
+            + 2
+            + cluster_cfg.n_az * len(self.central_nodes)
+            + self.az * cluster_cfg.n_relays
+        )
+        self.relay_nodes = [
+            RelayNode(
+                central,
+                f'ovn-relay-az{self.az+1}-{i+1}',
+                mgmt_ip + i,
+                protocol,
+            )
+            for i in range(cluster_cfg.n_relays)
+        ]
+
+    def add_cluster_worker_nodes(self, workers):
+        raise NotImplementedError
 
     def add_workers(self, worker_nodes):
         self.worker_nodes.extend(worker_nodes)
+
+    def prepare_test(self):
+        self.start()
 
     def start(self):
         for c in self.central_nodes:
@@ -692,41 +716,6 @@ class Cluster:
             )
         return self.get_sb_connection_string()
 
-    def create_cluster_router(self, rtr_name):
-        self.router = self.nbctl.lr_add(rtr_name)
-        self.nbctl.lr_set_options(
-            self.router,
-            {
-                'always_learn_from_arp_request': 'false',
-            },
-        )
-
-    def create_cluster_load_balancer(self, lb_name, global_cfg):
-        if global_cfg.run_ipv4:
-            self.load_balancer = lb.OvnLoadBalancer(
-                lb_name, self.nbctl, self.cluster_cfg.vips
-            )
-            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
-
-        if global_cfg.run_ipv6:
-            self.load_balancer6 = lb.OvnLoadBalancer(
-                f'{lb_name}6', self.nbctl, self.cluster_cfg.vips6
-            )
-            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
-
-    def create_cluster_join_switch(self, sw_name):
-        self.join_switch = self.nbctl.ls_add(sw_name, net_s=self.gw_net)
-
-        self.join_rp = self.nbctl.lr_port_add(
-            self.router,
-            f'rtr-to-{sw_name}',
-            RandMac(),
-            self.gw_net.reverse(),
-        )
-        self.join_ls_rp = self.nbctl.ls_port_add(
-            self.join_switch, f'{sw_name}-to-rtr', self.join_rp
-        )
-
     def provision_ports(self, n_ports, passive=False):
         return [
             self.select_worker_for_port().provision_ports(self, 1, passive)[0]
@@ -745,38 +734,7 @@ class Cluster:
         for w, ports in ports_per_worker.items():
             w.ping_ports(self, ports)
 
-    @ovn_stats.timeit
-    def provision_vips_to_load_balancers(self, backend_lists):
-        n_vips = len(self.load_balancer.vips.keys())
-        vip_ip = self.cluster_cfg.vip_subnet.ip.__add__(n_vips + 1)
-
-        vips = {
-            f'{vip_ip + i}:{DEFAULT_VIP_PORT}': [
-                f'{p.ip}:{DEFAULT_BACKEND_PORT}' for p in ports
-            ]
-            for i, ports in enumerate(backend_lists)
-        }
-        self.load_balancer.add_vips(vips)
-
-    def unprovision_vips(self):
-        if self.load_balancer:
-            self.load_balancer.clear_vips()
-            self.load_balancer.add_vips(self.cluster_cfg.static_vips)
-        if self.load_balancer6:
-            self.load_balancer6.clear_vips()
-            self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
-
     def select_worker_for_port(self):
         self.last_selected_worker += 1
         self.last_selected_worker %= len(self.worker_nodes)
         return self.worker_nodes[self.last_selected_worker]
-
-    def provision_lb_group(self, name='cluster-lb-group'):
-        self.lb_group = lb.OvnLoadBalancerGroup(name, self.nbctl)
-        for w in self.worker_nodes:
-            self.nbctl.ls_add_lbg(w.switch, self.lb_group.lbg)
-            self.nbctl.lr_add_lbg(w.gw_router, self.lb_group.lbg)
-
-    def provision_lb(self, lb):
-        log.info(f'Creating load balancer {lb.name}')
-        self.lb_group.add_lb(lb)

@@ -1,7 +1,7 @@
 from collections import namedtuple
 import netaddr
 from ovn_context import Context
-from ovn_workload import Namespace
+from cms.ovn_kubernetes import Namespace
 from ovn_ext_cmd import ExtCmd
 
 

@@ -5,6 +5,7 @@ import ovn_exceptions
 import time
 from collections import namedtuple
 from functools import partial
+from typing import Dict, List, Optional
 import ovsdbapp.schema.open_vswitch.impl_idl as ovs_impl_idl
 import ovsdbapp.schema.ovn_northbound.impl_idl as nb_impl_idl
 import ovsdbapp.schema.ovn_southbound.impl_idl as sb_impl_idl
@@ -45,6 +46,7 @@ PortGroup = namedtuple('PortGroup', ['name'])
 AddressSet = namedtuple('AddressSet', ['name'])
 LoadBalancer = namedtuple('LoadBalancer', ['name', 'uuid'])
 LoadBalancerGroup = namedtuple('LoadBalancerGroup', ['name', 'uuid'])
+DhcpOptions = namedtuple("DhcpOptions", ["uuid", "cidr"])
 
 DEFAULT_CTL_TIMEOUT = 60
 
@@ -207,7 +209,14 @@ class OvsVsctl:
             ("external_ids", {key: str(value)}),
         ).execute(check_error=True)
 
-    def add_port(self, port, bridge, internal=True, ifaceid=None):
+    def add_port(
+        self,
+        port,
+        bridge,
+        internal=True,
+        ifaceid=None,
+        mtu_request: Optional[int] = None,
+    ):
         name = port.name
         with self.idl.transaction(check_error=True) as txn:
             txn.add(self.idl.add_port(bridge, name))
@@ -218,6 +227,12 @@ class OvsVsctl:
             if ifaceid:
                 txn.add(
                     self.idl.iface_set_external_id(name, "iface-id", ifaceid)
+                )
+            if mtu_request:
+                txn.add(
+                    self.idl.db_set(
+                        "Interface", name, ("mtu_request", mtu_request)
+                    )
                 )
 
     def del_port(self, port):
@@ -436,28 +451,65 @@ class OvnNbctl:
             ("inactivity_probe", value),
         ).execute()
 
-    def lr_add(self, name):
+    def lr_add(self, name, ext_ids: Optional[Dict] = None):
+        ext_ids = {} if ext_ids is None else ext_ids
+
         log.info(f'Creating lrouter {name}')
-        uuid = self.uuid_transaction(partial(self.idl.lr_add, name))
+        uuid = self.uuid_transaction(
+            partial(self.idl.lr_add, name, external_ids=ext_ids)
+        )
         return LRouter(name=name, uuid=uuid)
 
-    def lr_port_add(self, router, name, mac, dual_ip=None):
+    def lr_port_add(
+        self,
+        router,
+        name,
+        mac,
+        dual_ip=None,
+        ext_ids: Optional[Dict] = None,
+        options: Optional[Dict] = None,
+    ):
+        ext_ids = {} if ext_ids is None else ext_ids
+        options = {} if options is None else options
         networks = []
         if dual_ip.ip4 and dual_ip.plen4:
             networks.append(f'{dual_ip.ip4}/{dual_ip.plen4}')
         if dual_ip.ip6 and dual_ip.plen6:
             networks.append(f'{dual_ip.ip6}/{dual_ip.plen6}')
 
-        self.idl.lrp_add(router.uuid, name, str(mac), networks).execute()
+        self.idl.lrp_add(
+            router.uuid,
+            name,
+            str(mac),
+            networks,
+            external_ids=ext_ids,
+            options=options,
+        ).execute()
         return LRPort(name=name, mac=mac, ip=dual_ip)
 
     def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
         log.info(f'Setting gw chassis {chassis} for router port {rp.name}')
         self.idl.lrp_set_gateway_chassis(rp.name, chassis, priority).execute()
 
-    def ls_add(self, name, net_s):
+    def ls_add(
+        self,
+        name: str,
+        net_s: DualStackSubnet,
+        ext_ids: Optional[Dict] = None,
+        other_config: Optional[Dict] = None,
+    ) -> LSwitch:
+        ext_ids = {} if ext_ids is None else ext_ids
+        other_config = {} if other_config is None else other_config
+
         log.info(f'Creating lswitch {name}')
-        uuid = self.uuid_transaction(partial(self.idl.ls_add, name))
+        uuid = self.uuid_transaction(
+            partial(
+                self.idl.ls_add,
+                name,
+                external_ids=ext_ids,
+                other_config=other_config,
+            )
+        )
         return LSwitch(
             name=name,
             cidr=net_s.n4,
@@ -478,17 +530,18 @@ class OvnNbctl:
 
     def ls_port_add(
         self,
-        lswitch,
-        name,
-        router_port=None,
-        mac=None,
-        ip=None,
-        gw=None,
-        ext_gw=None,
-        metadata=None,
-        passive=False,
-        security=False,
-        localnet=False,
+        lswitch: LSwitch,
+        name: str,
+        router_port: Optional[LRPort] = None,
+        mac: Optional[str] = None,
+        ip: Optional[DualStackIP] = None,
+        gw: Optional[DualStackIP] = None,
+        ext_gw: Optional[DualStackIP] = None,
+        metadata=None,  # typehint: ovn_workload.ChassisNode
+        passive: bool = False,
+        security: bool = False,
+        localnet: bool = False,
+        ext_ids: Optional[Dict] = None,
     ):
         columns = dict()
         if router_port:
@@ -511,6 +564,9 @@ class OvnNbctl:
             columns["addresses"] = addresses
             if security:
                 columns["port_security"] = addresses
+
+        if ext_ids is not None:
+            columns["external_ids"] = ext_ids
 
         uuid = self.uuid_transaction(
             partial(self.idl.lsp_add, lswitch.uuid, name, **columns)
@@ -545,7 +601,15 @@ class OvnNbctl:
     def ls_port_del(self, port):
         self.idl.lsp_del(port.name).execute()
 
-    def ls_port_set_set_options(self, port, options):
+    def ls_port_set_set_options(self, port: LSPort, options: str):
+        """Set 'options' column for Logical Switch Port.
+
+        :param port: Logical Switch Port to modify
+        :param options: Space-separated key-value pairs that are set as
+                        options. Keys and values are separated by '='.
+                        i.e.: 'opt1=val1 opt2=val2'
+        :return: None
+        """
         opts = dict(
             (k, v)
             for k, v in (element.split("=") for element in options.split())
@@ -555,14 +619,32 @@ class OvnNbctl:
     def ls_port_set_set_type(self, port, lsp_type):
         self.idl.lsp_set_type(port.name, lsp_type).execute()
 
-    def port_group_create(self, name):
-        self.idl.pg_add(name).execute()
+    def ls_port_enable(self, port: LSPort) -> None:
+        """Set Logical Switch Port's state to 'enabled'."""
+        self.idl.lsp_set_enabled(port.name, True).execute()
+
+    def ls_port_set_ipv4_address(self, port: LSPort, addr: str) -> LSPort:
+        """Set Logical Switch Port's IPv4 address.
+
+        :param port: LSPort to modify
+        :param addr: IPv4 address to set
+        :return: Modified LSPort object with updated 'ip' attribute
+        """
+        addresses = [f"{port.mac} {addr}"]
+        log.info(f"Setting addresses for port {port.uuid}: {addresses}")
+        self.idl.lsp_set_addresses(port.uuid, addresses).execute()
+
+        return port._replace(ip=addr)
+
+    def port_group_create(self, name, ext_ids: Optional[Dict] = None):
+        ext_ids = {} if ext_ids is None else ext_ids
+        self.idl.pg_add(name, external_ids=ext_ids).execute()
         return PortGroup(name=name)
 
     def port_group_add(self, pg, lport):
         self.idl.pg_add_ports(pg.name, lport.uuid).execute()
 
-    def port_group_add_ports(self, pg, lports):
+    def port_group_add_ports(self, pg: PortGroup, lports: List[LSPort]):
         MAX_PORTS_IN_BATCH = 500
         for i in range(0, len(lports), MAX_PORTS_IN_BATCH):
             lports_slice = lports[i : i + MAX_PORTS_IN_BATCH]
@@ -601,14 +683,16 @@ class OvnNbctl:
         entity="switch",
         match="",
         verdict="allow",
+        ext_ids: Optional[Dict] = None,
     ):
+        ext_ids = {} if ext_ids is None else ext_ids
         if entity == "switch":
             self.idl.acl_add(
-                name, direction, priority, match, verdict
+                name, direction, priority, match, verdict, **ext_ids
             ).execute()
         else:  # "port-group"
             self.idl.pg_acl_add(
-                name, direction, priority, match, verdict
+                name, direction, priority, match, verdict, **ext_ids
             ).execute()
 
     def route_add(self, router, network, gw, policy="dst-ip"):
@@ -707,6 +791,28 @@ class OvnNbctl:
         with self.idl.transaction(check_error=True) as txn:
             for s in switches:
                 txn.add(self.idl.ls_lb_del(s, lb.uuid, if_exists=True))
+
+    def create_dhcp_options(
+        self, cidr: str, ext_ids: Optional[Dict] = None
+    ) -> DhcpOptions:
+        """Create entry in DHCP_Options table.
+
+        :param cidr: DHCP address pool (i.e. '192.168.1.0/24')
+        :param ext_ids: Optional entries to 'external_ids' column
+        :return: DhcpOptions object
+        """
+        ext_ids = {} if ext_ids is None else ext_ids
+
+        log.info(f"Creating DHCP Options for {cidr}. External IDs: {ext_ids}")
+        add_command = self.idl.dhcp_options_add(cidr, **ext_ids)
+        add_command.execute()
+
+        return DhcpOptions(add_command.result.uuid, cidr)
+
+    def dhcp_options_set_options(self, uuid_: str, options: Dict) -> None:
+        """Set 'options' column for 'DHCP_Options' entry."""
+        log.info(f"Setting DHCP options for {uuid_}: {options}")
+        self.idl.dhcp_options_set_options(uuid_, **options).execute()
 
     def sync(self, wait="hv", timeout=DEFAULT_CTL_TIMEOUT):
         with self.idl.transaction(

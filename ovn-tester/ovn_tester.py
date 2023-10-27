@@ -10,13 +10,11 @@ import gc
 import time
 
 from collections import namedtuple
+from ovn_context import Context
 from ovn_sandbox import PhysicalNode
 from ovn_workload import (
     BrExConfig,
-    CentralNode,
-    Cluster,
     ClusterConfig,
-    RelayNode,
 )
 from ovn_utils import DualStackSubnet
 from ovs.stream import Stream
@@ -178,7 +176,7 @@ def load_cms(cms_name):
     mod = importlib.import_module(f'cms.{cms_name}')
     class_name = getattr(mod, 'OVN_HEATER_CMS_PLUGIN')
     cls = getattr(mod, class_name)
-    return cls()
+    return cls
 
 
 def configure_tests(yaml, clusters, global_cfg):
@@ -194,40 +192,6 @@ def configure_tests(yaml, clusters, global_cfg):
         cls = getattr(mod, class_name)
         tests.append(cls(yaml, clusters, global_cfg))
     return tests
-
-
-def create_cluster(cluster_cfg, central, workers, brex_cfg, cms, az):
-    protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
-    db_containers = (
-        [
-            f'ovn-central-az{az+1}-1',
-            f'ovn-central-az{az+1}-2',
-            f'ovn-central-az{az+1}-3',
-        ]
-        if cluster_cfg.clustered_db
-        else [f'ovn-central-az{az+1}-1']
-    )
-
-    mgmt_ip = cluster_cfg.node_net.ip + 2 + az * len(db_containers)
-    central_nodes = [
-        CentralNode(central, c, mgmt_ip + i, protocol)
-        for i, c in enumerate(db_containers)
-    ]
-
-    mgmt_ip = (
-        cluster_cfg.node_net.ip
-        + 2
-        + cluster_cfg.n_az * len(central_nodes)
-        + az * cluster_cfg.n_relays
-    )
-    relay_nodes = [
-        RelayNode(central, f'ovn-relay-az{az+1}-{i+1}', mgmt_ip + i, protocol)
-        for i in range(cluster_cfg.n_relays)
-    ]
-
-    cluster = Cluster(central_nodes, relay_nodes, cluster_cfg, brex_cfg, az)
-    cms.add_cluster_worker_nodes(cluster, workers, az)
-    return cluster
 
 
 def set_ssl_keys(cluster_cfg):
@@ -253,19 +217,23 @@ if __name__ == '__main__':
     ):
         raise ovn_exceptions.OvnInvalidConfigException()
 
-    cms = load_cms(global_cfg.cms_name)
+    cms_cls = load_cms(global_cfg.cms_name)
     central, workers = read_physical_deployment(sys.argv[1], global_cfg)
     clusters = [
-        create_cluster(cluster_cfg, central, workers, brex_cfg, cms, i)
+        cms_cls(cluster_cfg, central, brex_cfg, i)
         for i in range(cluster_cfg.n_az)
     ]
+    for c in clusters:
+        c.add_cluster_worker_nodes(workers)
 
     tests = configure_tests(config, clusters, global_cfg)
 
     if cluster_cfg.enable_ssl:
         set_ssl_keys(cluster_cfg)
 
-    cms.prepare_test(clusters)
+    with Context(clusters, 'prepare_test clusters'):
+        for c in clusters:
+            c.prepare_test()
     for test in tests:
         test.run(clusters, global_cfg)
     sys.exit(0)

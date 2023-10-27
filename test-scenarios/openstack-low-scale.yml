@@ -1,0 +1,13 @@
+global:
+  log_cmds: false
+  cms_name: openstack
+
+cluster:
+  clustered_db: true
+  log_txns_db: true
+  n_workers: 3
+
+base_openstack:
+  n_projects: 2
+  n_chassis_per_gw_lrp: 3
+  n_vms_per_project: 3

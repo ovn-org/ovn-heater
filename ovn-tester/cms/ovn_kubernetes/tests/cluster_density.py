@@ -1,6 +1,6 @@
 from collections import namedtuple
 from ovn_context import Context
-from ovn_workload import Namespace
+from cms.ovn_kubernetes import Namespace
 from ovn_ext_cmd import ExtCmd
 import ovn_exceptions
 

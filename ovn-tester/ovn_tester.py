@@ -40,15 +40,15 @@ def read_physical_deployment(deployment, global_cfg):
     with open(deployment, 'r') as yaml_file:
         dep = yaml.safe_load(yaml_file)
 
-        central_dep = dep['central-node']
-        central_node = PhysicalNode(
-            central_dep.get('name', 'localhost'), global_cfg.log_cmds
-        )
+        central_nodes = [
+            PhysicalNode(central, global_cfg.log_cmds)
+            for central in dep['central-nodes']
+        ]
         worker_nodes = [
             PhysicalNode(worker, global_cfg.log_cmds)
             for worker in dep['worker-nodes']
         ]
-        return central_node, worker_nodes
+        return central_nodes, worker_nodes
 
 
 # SSL files are installed by ovn-fake-multinode in these locations.
@@ -218,9 +218,9 @@ if __name__ == '__main__':
         raise ovn_exceptions.OvnInvalidConfigException()
 
     cms_cls = load_cms(global_cfg.cms_name)
-    central, workers = read_physical_deployment(sys.argv[1], global_cfg)
+    centrals, workers = read_physical_deployment(sys.argv[1], global_cfg)
     clusters = [
-        cms_cls(cluster_cfg, central, brex_cfg, i)
+        cms_cls(cluster_cfg, centrals[i % len(centrals)], brex_cfg, i)
         for i in range(cluster_cfg.n_az)
     ]
     for c in clusters:

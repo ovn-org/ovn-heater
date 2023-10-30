@@ -297,30 +297,29 @@ class Cluster:
         protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
         db_containers = (
             [
-                f'ovn-central-az{self.az+1}-1',
-                f'ovn-central-az{self.az+1}-2',
-                f'ovn-central-az{self.az+1}-3',
+                f'ovn-central-az{self.az}-1',
+                f'ovn-central-az{self.az}-2',
+                f'ovn-central-az{self.az}-3',
             ]
             if cluster_cfg.clustered_db
-            else [f'ovn-central-az{self.az+1}-1']
+            else [f'ovn-central-az{self.az}-1']
         )
 
-        mgmt_ip = cluster_cfg.node_net.ip + 2 + self.az * len(db_containers)
+        mgmt_ip = (
+            cluster_cfg.node_net.ip
+            + 2
+            + self.az * (len(db_containers) + cluster_cfg.n_relays)
+        )
         self.central_nodes = [
             CentralNode(central, c, mgmt_ip + i, protocol)
             for i, c in enumerate(db_containers)
         ]
 
-        mgmt_ip = (
-            cluster_cfg.node_net.ip
-            + 2
-            + cluster_cfg.n_az * len(self.central_nodes)
-            + self.az * cluster_cfg.n_relays
-        )
+        mgmt_ip += len(db_containers)
         self.relay_nodes = [
             RelayNode(
                 central,
-                f'ovn-relay-az{self.az+1}-{i+1}',
+                f'ovn-relay-az{self.az}-{i+1}',
                 mgmt_ip + i,
                 protocol,
             )

@@ -112,8 +112,8 @@ The file should contain the following mandatory sections and fields:
   - `ssh_key`: An ssh private key to install in the TESTER that can be used
     to communicate with the other machines in the cluster.
     Default: `~/.ssh/id_rsa`
-- `central-node`:
-  - `name`: the hostname (or IP) of the node that will run `ovn-central`
+- `central-nodes`:
+  - `name`: the hostnames (or IPs) of the nodes that will run `ovn-central`
     (`ovn-northd` and databases).
 - `worker-nodes`:
   - the list of worker node hostnames (or IPs). If needed, worker nodes can
@@ -134,7 +134,7 @@ In case some of the physical machines in the setup have different
 capabilities (e.g, could host more containers, or use a different ethernet
 interface), the following per-node fields can be used to customize the
 deployment. Except for `fake-nodes` which is valid only in the context of
-worker nodes, all others are valid both for the `central-node` and also for
+worker nodes, all others are valid both for the `central-nodes` and also for
 `worker-nodes`:
 - `user`: the username to be used when connecting from the tester node.
 - `internal-iface`: the name of the Ethernet interface used for DB and

@@ -616,9 +616,9 @@ class OpenStackCloud(Cluster):
 
         if is_gw:
             lsp_options = (
-                "exclude-lb-vips-from-garp=true, "
-                "nat-addresses=router, "
-                f"router-port={router_port_name}"
+                "exclude-lb-vips-from-garp=true "
+                "nat-addresses=router "
+                f"router-port={router_port_name} "
             )
             self.nbctl.ls_port_set_set_options(ls_port, lsp_options)
 

@@ -246,12 +246,8 @@ class OpenStackCloud(Cluster):
         self.external_port = lr_port
         gw_net = DualStackSubnet(netaddr.IPNetwork("0.0.0.0/0"))
 
-        # XXX: ovsdbapp does not allow setting external IDs to static route
-        # XXX: Setting 'policy' to "" throws "constraint violation" error in
-        #      logs because ovsdbapp does not allow not specifying policy.
-        #      However, the route itself is created successfully with no
-        #      policy, the same way Neutron does it.
-        self.nbctl.route_add(project.router, gw_net, lr_port.ip, "")
+        # NOTE(mkalcok): Neutron actually sets policy to '""'
+        self.nbctl.route_add(project.router, gw_net, lr_port.ip, '""')
 
         gw_nodes = self._get_gateway_chassis(external_network.num_gw_nodes)
         for index, chassis in enumerate(gw_nodes):

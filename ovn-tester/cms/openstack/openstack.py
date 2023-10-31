@@ -639,8 +639,8 @@ class OpenStackCloud(Cluster):
             f"inport == @{pg_name} && ip6",
         ]
         out_rules = [
-            f"outport == @{pg_name} && ip4 && ip4.src == $pg_{pg_name}_ip4",
-            f"outport == @{pg_name} && ip6 && ip6.src == $pg_{pg_name}_ip6",
+            f"outport == @{pg_name} && ip4 && ip4.src == ${pg_name}_ip4",
+            f"outport == @{pg_name} && ip6 && ip6.src == ${pg_name}_ip6",
         ]
 
         for rule in in_rules:

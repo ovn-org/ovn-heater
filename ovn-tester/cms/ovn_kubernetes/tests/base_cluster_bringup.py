@@ -15,11 +15,15 @@ class BaseClusterBringup(ExtCmd):
         self.config = ClusterBringupCfg(
             n_pods_per_node=test_config.get('n_pods_per_node', 0),
         )
+        self.ic_cluster = clusters[0] if len(clusters) > 1 else None
 
-    def create_transit_switch(self, cluster):
-        cluster.icnbctl.ts_add()
+    def create_transit_switch(self):
+        if self.ic_cluster:
+            self.ic_cluster.icnbctl.ts_add()
 
     def connect_transit_switch(self, cluster):
+        if self.ic_cluster is None:
+            return
         uuid = cluster.nbctl.ls_get_uuid('ts', 10)
         cluster.ts_switch = LSwitch(
             name='ts',
@@ -44,27 +48,28 @@ class BaseClusterBringup(ExtCmd):
         )
 
     def check_ic_connectivity(self, clusters):
-        ic_cluster = clusters[0]
+        if self.ic_cluster is None:
+            return
         for cluster in clusters:
-            if ic_cluster == cluster:
+            if self.ic_cluster == cluster:
                 continue
             for w in cluster.worker_nodes:
                 port = w.lports[0]
                 if port.ip:
-                    ic_cluster.worker_nodes[0].run_ping(
-                        ic_cluster,
-                        ic_cluster.worker_nodes[0].lports[0].name,
+                    self.ic_cluster.worker_nodes[0].run_ping(
+                        self.ic_cluster,
+                        self.ic_cluster.worker_nodes[0].lports[0].name,
                         port.ip,
                     )
                 if port.ip6:
-                    ic_cluster.worker_nodes[0].run_ping(
-                        ic_cluster,
-                        ic_cluster.worker_nodes[0].lports[0].name,
+                    self.ic_cluster.worker_nodes[0].run_ping(
+                        self.ic_cluster,
+                        self.ic_cluster.worker_nodes[0].lports[0].name,
                         port.ip6,
                     )
 
     def run(self, clusters, global_cfg):
-        self.create_transit_switch(clusters[0])
+        self.create_transit_switch()
 
         for c, cluster in enumerate(clusters):
             # create ovn topology

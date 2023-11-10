@@ -11,7 +11,7 @@ DEFAULT_SANDBOX_TIMEOUT = 60
 
 
 class SSH:
-    def __init__(self, hostname, cmd_log):
+    def __init__(self, hostname: str, cmd_log: bool):
         self.hostname = hostname
         self.ssh = paramiko.SSHClient()
         self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -19,12 +19,12 @@ class SSH:
         self.cmd_log = cmd_log
 
     @staticmethod
-    def printable_result(out):
+    def printable_result(out: str) -> str:
         if '\n' in out or '\r' in out:
             out = "---\n" + out
         return out
 
-    def run(self, cmd="", stdout=None, raise_on_error=False):
+    def run(self, cmd="", stdout=None, raise_on_error: bool = False) -> None:
         if self.cmd_log:
             log.info(f'Logging command: ssh {self.hostname} "{cmd}"')
 
@@ -51,10 +51,10 @@ class SSH:
 
 
 class PhysicalNode:
-    def __init__(self, hostname, log_cmds):
+    def __init__(self, hostname: str, log_cmds: bool):
         self.ssh = SSH(hostname, log_cmds)
 
-    def run(self, cmd="", stdout=None, raise_on_error=False):
+    def run(self, cmd="", stdout=None, raise_on_error: bool = False) -> None:
         self.ssh.run(cmd=cmd, stdout=stdout, raise_on_error=raise_on_error)
 
 
@@ -64,7 +64,7 @@ class Sandbox:
         self.container = container
         self.channel = None
 
-    def ensure_channel(self):
+    def ensure_channel(self) -> None:
         if self.channel:
             return
 
@@ -81,11 +81,11 @@ class Sandbox:
 
     def run(
         self,
-        cmd="",
+        cmd: str = "",
         stdout=None,
-        raise_on_error=False,
-        timeout=DEFAULT_SANDBOX_TIMEOUT,
-    ):
+        raise_on_error: bool = False,
+        timeout: int = DEFAULT_SANDBOX_TIMEOUT,
+    ) -> None:
         if self.phys_node.ssh.cmd_log:
             log.info(f'Logging command: ssh {self.container} "{cmd}"')
 

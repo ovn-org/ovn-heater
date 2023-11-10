@@ -18,6 +18,7 @@ from ovn_workload import (
 )
 from ovn_utils import DualStackSubnet
 from ovs.stream import Stream
+from typing import List, Tuple, Dict, Callable
 
 
 GlobalCfg = namedtuple(
@@ -36,7 +37,9 @@ where TEST_CONF is the YAML file defining the test parameters.
     )
 
 
-def read_physical_deployment(deployment, global_cfg):
+def read_physical_deployment(
+    deployment: str, global_cfg: GlobalCfg
+) -> Tuple[List[PhysicalNode], List[PhysicalNode]]:
     with open(deployment, 'r') as yaml_file:
         dep = yaml.safe_load(yaml_file)
 
@@ -57,7 +60,7 @@ SSL_CERT_FILE = "/opt/ovn/ovn-cert.pem"
 SSL_CACERT_FILE = "/opt/ovn/pki/switchca/cacert.pem"
 
 
-def read_config(config):
+def read_config(config: Dict) -> Tuple[GlobalCfg, ClusterConfig, BrExConfig]:
     global_args = config.get('global', dict())
     global_cfg = GlobalCfg(**global_args)
 
@@ -136,7 +139,7 @@ def read_config(config):
     return global_cfg, cluster_cfg, brex_cfg
 
 
-def setup_logging(global_cfg):
+def setup_logging(global_cfg: GlobalCfg) -> None:
     FORMAT = '%(asctime)s | %(name)-12s |%(levelname)s| %(message)s'
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
     logging.Formatter.converter = time.gmtime
@@ -172,14 +175,14 @@ RESERVED = [
 ]
 
 
-def load_cms(cms_name):
+def load_cms(cms_name: str) -> Callable:
     mod = importlib.import_module(f'cms.{cms_name}')
     class_name = getattr(mod, 'OVN_HEATER_CMS_PLUGIN')
     cls = getattr(mod, class_name)
     return cls
 
 
-def configure_tests(yaml, clusters, global_cfg):
+def configure_tests(yaml: Dict, clusters: List, global_cfg: GlobalCfg) -> List:
     tests = []
     for section, cfg in yaml.items():
         if section in RESERVED:
@@ -194,7 +197,7 @@ def configure_tests(yaml, clusters, global_cfg):
     return tests
 
 
-def set_ssl_keys(cluster_cfg):
+def set_ssl_keys(cluster_cfg: ClusterConfig) -> None:
     Stream.ssl_set_private_key_file(cluster_cfg.ssl_private_key)
     Stream.ssl_set_certificate_file(cluster_cfg.ssl_cert)
     Stream.ssl_set_ca_cert_file(cluster_cfg.ssl_cacert)

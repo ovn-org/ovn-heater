@@ -6,6 +6,7 @@ import helpers
 import yaml
 import sys
 from pathlib import Path
+from typing import Dict
 
 
 def usage(name):
@@ -18,13 +19,13 @@ where DEPLOYMENT is the YAML file defining the deployment.
     )
 
 
-def generate_node_string(host, **kwargs):
+def generate_node_string(host: str, **kwargs) -> None:
     args = ' '.join(f"{key}={value}" for key, value in kwargs.items())
     print(f"{host} {args}")
 
 
-def generate_node(config, internal_iface, **kwargs):
-    host = config['name']
+def generate_node(config: Dict, internal_iface: str, **kwargs) -> None:
+    host: str = config['name']
     internal_iface = config.get('internal-iface', internal_iface)
     generate_node_string(
         host,
@@ -33,7 +34,7 @@ def generate_node(config, internal_iface, **kwargs):
     )
 
 
-def generate_tester(config, internal_iface):
+def generate_tester(config: Dict, internal_iface: str) -> None:
     ssh_key = config["ssh_key"]
     ssh_key = Path(ssh_key).resolve()
     generate_node(
@@ -44,7 +45,7 @@ def generate_tester(config, internal_iface):
     )
 
 
-def generate_nodes(nodes_config, internal_iface, **kwargs):
+def generate_nodes(nodes_config: Dict, internal_iface: str, **kwargs):
     for node_config in nodes_config:
         host, node_config = helpers.get_node_config(node_config)
         iface = node_config.get('internal-iface', internal_iface)
@@ -55,7 +56,7 @@ def generate_nodes(nodes_config, internal_iface, **kwargs):
         )
 
 
-def generate(input_file, target, repo, branch):
+def generate(input_file: str, target: str, repo: str, branch: str) -> None:
     with open(input_file, 'r') as yaml_file:
         config = yaml.safe_load(yaml_file)
         user = config.get('user', 'root')

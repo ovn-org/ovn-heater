@@ -2,10 +2,11 @@ from collections import defaultdict
 from fnmatch import fnmatch
 from io import StringIO
 from itertools import chain
+from typing import Dict, List
 
 
 class ExtCmdUnit:
-    def __init__(self, conf, clusters):
+    def __init__(self, conf: Dict, clusters: List):
         self.iteration = conf.get('iteration')
         self.cmd = conf.get('cmd')
         self.test = conf.get('test')

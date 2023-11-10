@@ -53,7 +53,7 @@ BrExConfig = namedtuple('BrExConfig', ['physical_net'])
 
 
 class Node(ovn_sandbox.Sandbox):
-    def __init__(self, phys_node, container, mgmt_ip, protocol):
+    def __init__(self, phys_node, container: str, mgmt_ip: str, protocol: str):
         super().__init__(phys_node, container)
         self.container = container
         self.mgmt_ip = netaddr.IPAddress(mgmt_ip)
@@ -61,10 +61,12 @@ class Node(ovn_sandbox.Sandbox):
 
 
 class CentralNode(Node):
-    def __init__(self, phys_node, container, mgmt_ip, protocol):
+    def __init__(self, phys_node, container: str, mgmt_ip: str, protocol: str):
         super().__init__(phys_node, container, mgmt_ip, protocol)
 
-    def start(self, cluster_cfg, update_election_timeout=False):
+    def start(
+        self, cluster_cfg: ClusterConfig, update_election_timeout: bool = False
+    ):
         log.info('Configuring central node')
         if cluster_cfg.clustered_db and update_election_timeout:
             self.set_raft_election_timeout(cluster_cfg.raft_election_to)
@@ -73,7 +75,7 @@ class CentralNode(Node):
         if cluster_cfg.log_txns_db:
             self.enable_txns_db_logging()
 
-    def set_northd_threads(self, n_threads):
+    def set_northd_threads(self, n_threads: int):
         log.info(f'Configuring northd to use {n_threads} threads')
         self.phys_node.run(
             f'podman exec {self.container} ovn-appctl -t '
@@ -81,7 +83,7 @@ class CentralNode(Node):
             f'{n_threads}'
         )
 
-    def set_raft_election_timeout(self, timeout_s):
+    def set_raft_election_timeout(self, timeout_s: int):
         for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
             log.info(f'Setting RAFT election timeout to {timeout}ms')
             self.run(
@@ -128,19 +130,19 @@ class CentralNode(Node):
             'vlog/disable-rate-limit transaction'
         )
 
-    def get_connection_string(self, port):
+    def get_connection_string(self, port: int):
         return f'{self.protocol}:{self.mgmt_ip}:{port}'
 
 
 class RelayNode(Node):
-    def __init__(self, phys_node, container, mgmt_ip, protocol):
+    def __init__(self, phys_node, container: str, mgmt_ip: str, protocol: str):
         super().__init__(phys_node, container, mgmt_ip, protocol)
 
     def start(self):
         log.info(f'Configuring relay node {self.container}')
         self.enable_trim_on_compaction()
 
-    def get_connection_string(self, port):
+    def get_connection_string(self, port: int):
         return f'{self.protocol}:{self.mgmt_ip}:{port}'
 
     def enable_trim_on_compaction(self):
@@ -156,9 +158,9 @@ class ChassisNode(Node):
     def __init__(
         self,
         phys_node,
-        container,
-        mgmt_ip,
-        protocol,
+        container: str,
+        mgmt_ip: str,
+        protocol: str,
     ):
         super().__init__(phys_node, container, mgmt_ip, protocol)
         self.switch = None
@@ -166,9 +168,9 @@ class ChassisNode(Node):
         self.ext_switch = None
         self.lports = []
         self.next_lport_index = 0
-        self.vsctl = None
+        self.vsctl: Optional[ovn_utils.OvsVsctl] = None
 
-    def start(self, cluster_cfg):
+    def start(self, cluster_cfg: ClusterConfig):
         self.vsctl = ovn_utils.OvsVsctl(
             self,
             self.get_connection_string(6640),
@@ -176,20 +178,20 @@ class ChassisNode(Node):
         )
 
     @ovn_stats.timeit
-    def connect(self, remote):
+    def connect(self, remote: str):
         log.info(
             f'Connecting worker {self.container}: ' f'ovn-remote = {remote}'
         )
         self.vsctl.set_global_external_id('ovn-remote', f'{remote}')
 
-    def configure_localnet(self, physical_net):
+    def configure_localnet(self, physical_net: str):
         log.info(f'Creating localnet on {self.container}')
         self.vsctl.set_global_external_id(
             'ovn-bridge-mappings', f'{physical_net}:br-ex'
         )
 
     @ovn_stats.timeit
-    def wait(self, sbctl, timeout_s):
+    def wait(self, sbctl, timeout_s: int):
         for _ in range(timeout_s * 10):
             if sbctl.chassis_bound(self.container):
                 return
@@ -197,13 +199,15 @@ class ChassisNode(Node):
         raise ovn_exceptions.OvnChassisTimeoutException()
 
     @ovn_stats.timeit
-    def unprovision_port(self, cluster, port):
+    def unprovision_port(self, cluster, port: ovn_utils.LSPort):
         cluster.nbctl.ls_port_del(port)
         self.unbind_port(port)
         self.lports.remove(port)
 
     @ovn_stats.timeit
-    def bind_port(self, port, mtu_request: Optional[int] = None):
+    def bind_port(
+        self, port: ovn_utils.LSPort, mtu_request: Optional[int] = None
+    ):
         log.info(f'Binding lport {port.name} on {self.container}')
         self.vsctl.add_port(
             port,
@@ -218,18 +222,20 @@ class ChassisNode(Node):
             self.vsctl.bind_vm_port(port)
 
     @ovn_stats.timeit
-    def unbind_port(self, port):
+    def unbind_port(self, port: ovn_utils.LSPort):
         if not port.passive:
             self.vsctl.unbind_vm_port(port)
         self.vsctl.del_port(port)
 
-    def provision_ports(self, cluster, n_ports, passive=False):
+    def provision_ports(
+        self, cluster, n_ports: int, passive: bool = False
+    ) -> List[ovn_utils.LSPort]:
         ports = [self.provision_port(cluster, passive) for i in range(n_ports)]
         for port in ports:
             self.bind_port(port)
         return ports
 
-    def run_ping(self, cluster, src, dest):
+    def run_ping(self, cluster, src: str, dest: str):
         log.info(f'Pinging from {src} to {dest}')
 
         # FIXME
@@ -254,20 +260,20 @@ class ChassisNode(Node):
                 raise ovn_exceptions.OvnPingTimeoutException()
 
     @ovn_stats.timeit
-    def ping_port(self, cluster, port, dest):
+    def ping_port(self, cluster, port: ovn_utils.LSPort, dest: str):
         self.run_ping(cluster, port.name, dest)
 
-    def ping_ports(self, cluster, ports):
+    def ping_ports(self, cluster, ports: List[ovn_utils.LSPort]):
         for port in ports:
             if port.ip:
                 self.ping_port(cluster, port, dest=port.ext_gw)
             if port.ip6:
                 self.ping_port(cluster, port, dest=port.ext_gw6)
 
-    def get_connection_string(self, port):
+    def get_connection_string(self, port: int):
         return f"{self.protocol}:{self.mgmt_ip}:{port}"
 
-    def configure(self, physical_net):
+    def configure(self, physical_net: str):
         raise NotImplementedError
 
     @ovn_stats.timeit
@@ -284,7 +290,13 @@ class ChassisNode(Node):
 
 
 class Cluster:
-    def __init__(self, cluster_cfg, central, brex_cfg, az):
+    def __init__(
+        self,
+        cluster_cfg: ClusterConfig,
+        central,
+        brex_cfg: BrExConfig,
+        az: int,
+    ):
         # In clustered mode use the first node for provisioning.
         self.worker_nodes = []
         self.cluster_cfg = cluster_cfg
@@ -401,12 +413,12 @@ class Cluster:
             for _ in range(n_ports)
         ]
 
-    def unprovision_ports(self, ports):
+    def unprovision_ports(self, ports: List[ovn_utils.LSPort]):
         for port in ports:
             worker = port.metadata
             worker.unprovision_port(self, port)
 
-    def ping_ports(self, ports):
+    def ping_ports(self, ports: List[ovn_utils.LSPort]):
         ports_per_worker = defaultdict(list)
         for p in ports:
             ports_per_worker[p.metadata].append(p)

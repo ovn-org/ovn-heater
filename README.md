@@ -191,9 +191,6 @@ For example, to use latest Ubuntu image you can run:
 cd ~/ovn-heater
 OS_BASE=ubuntu OS_IMAGE_OVERRIDE=ubuntu:rolling ./do.sh install
 ```
-NOTE: Because the installation step is responsible for deploying the ovn-tester
-container to the TESTER, this means that if any changes are made to the
-ovn-tester application, the installation step must be re-run.
 
 ## Perform a reinstallation (e.g., new OVS/OVN versions are needed):
 

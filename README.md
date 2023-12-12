@@ -180,6 +180,17 @@ cd ~/ovn-heater
 OVS_REPO=https://github.com/dceara/ovs OVS_BRANCH=tmp-branch OVN_REPO=https://github.com/dceara/ovn OVN_BRANCH=tmp-branch-2 ./do.sh install
 ```
 
+To override base image of ovn-fake-multinode, which is by default
+`fedora:latest`, you can use following environment variables:
+- OS_BASE
+- OS_IMAGE_OVERRIDE
+
+For example, to use latest Ubuntu image you can run:
+
+```
+cd ~/ovn-heater
+OS_BASE=ubuntu OS_IMAGE_OVERRIDE=ubuntu:rolling ./do.sh install
+```
 NOTE: Because the installation step is responsible for deploying the ovn-tester
 container to the TESTER, this means that if any changes are made to the
 ovn-tester application, the installation step must be re-run.

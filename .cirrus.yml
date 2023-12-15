@@ -60,7 +60,12 @@ low_scale_task:
 
   install_script:
     - 'sed -i "s/<host>/$(hostname)/g" ${PHYS_DEPLOYMENT}'
-    - ./do.sh install
+    # test with ubuntu-based ovn-fake-multinode if test runs on Ubuntu image
+    - 'if [ $(which apt) ]; then
+        export OS_BASE=ubuntu;
+        export OS_IMAGE_OVERRIDE=ubuntu:rolling;
+       fi;
+       ./do.sh install'
 
   pack_caches_script:
     - rm -rf runtime-cache/*

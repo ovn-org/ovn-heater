@@ -185,6 +185,7 @@ ovn_branch="${OVN_BRANCH:-main}"
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"
 ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-main}"
 
+OS_BASE="${OS_BASE:-fedora}"
 OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
 OS_IMAGE_DEFAULT="registry.fedoraproject.org/fedora:latest"
 
@@ -250,7 +251,7 @@ function install_ovn_fake_multinode() {
         fi
 
         # Build images locally.
-        OS_IMAGE=$os_image OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn \
+        OS_IMAGE=$os_image OS_BASE=${OS_BASE} OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn \
             EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
             RUNC_CMD=podman ./ovn_cluster.sh build
     fi

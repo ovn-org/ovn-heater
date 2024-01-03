@@ -24,13 +24,14 @@
       when: ansible_os_family == "RedHat"
 
     - name: Install required packages
-      ansible.builtin.package:
+      ansible.builtin.apt:
         name:
           - git
           - gcc
           - openvswitch-switch
           - python3-yaml
           - python3-all-dev
+        update_cache: true
         state: present
       when: ansible_os_family == "Debian"
 

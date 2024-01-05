@@ -18,7 +18,6 @@ from ovsdbapp.backend.ovs_idl import vlog
 from ovsdbapp import exceptions as ovsdbapp_exceptions
 from ovs import poller
 
-
 log = logging.getLogger(__name__)
 
 LRouter = namedtuple('LRouter', ['uuid', 'name'])
@@ -70,10 +69,14 @@ class PhysCtl:
     def __init__(self, sb):
         self.sb = sb
 
-    def run(self, cmd="", stdout=None, timeout=DEFAULT_CTL_TIMEOUT):
+    def run(
+        self, cmd: str = "", stdout=None, timeout: int = DEFAULT_CTL_TIMEOUT
+    ):
         self.sb.run(cmd=cmd, stdout=stdout, timeout=timeout)
 
-    def external_host_provision(self, ip, gw, netns='ext-ns'):
+    def external_host_provision(
+        self, ip: DualStackIP, gw: DualStackIP, netns: str = 'ext-ns'
+    ) -> None:
         log.info(f'Adding external host on {self.sb.container}')
         cmd = (
             f'ip link add veth0 type veth peer name veth1; '
@@ -111,12 +114,12 @@ class DualStackSubnet:
         self.n6 = n6
 
     @classmethod
-    def next(cls, n, index=0):
+    def next(cls, n, index: int = 0):
         n4 = n.n4.next(index) if n.n4 else None
         n6 = n.n6.next(index) if n.n6 else None
         return cls(n4, n6)
 
-    def forward(self, index=0):
+    def forward(self, index: int = 0) -> DualStackIP:
         if self.n4 and self.n6:
             return DualStackIP(
                 netaddr.IPAddress(self.n4.first + index),
@@ -140,7 +143,7 @@ class DualStackSubnet:
             )
         raise ovn_exceptions.OvnInvalidConfigException("invalid configuration")
 
-    def reverse(self, index=1):
+    def reverse(self, index: int = 1) -> DualStackIP:
         if self.n4 and self.n6:
             return DualStackIP(
                 netaddr.IPAddress(self.n4.last - index),
@@ -186,7 +189,7 @@ class VSIdl(ovs_impl_idl.OvsdbIdl, Backend):
 
 
 class OvsVsctl:
-    def __init__(self, sb, connection_string, inactivity_probe):
+    def __init__(self, sb, connection_string: str, inactivity_probe: int):
         log.info(f'OvsVsctl: {connection_string}, probe: {inactivity_probe}')
         self.sb = sb
         i = connection.OvsdbIdl.from_server(connection_string, "Open_vSwitch")
@@ -195,14 +198,14 @@ class OvsVsctl:
 
     def run(
         self,
-        cmd="",
-        prefix="ovs-vsctl ",
+        cmd: str = "",
+        prefix: str = "ovs-vsctl ",
         stdout=None,
-        timeout=DEFAULT_CTL_TIMEOUT,
+        timeout: int = DEFAULT_CTL_TIMEOUT,
     ):
         self.sb.run(cmd=prefix + cmd, stdout=stdout, timeout=timeout)
 
-    def set_global_external_id(self, key, value):
+    def set_global_external_id(self, key: str, value: str):
         self.idl.db_set(
             "Open_vSwitch",
             self.idl._ovs.uuid,
@@ -212,9 +215,9 @@ class OvsVsctl:
     def add_port(
         self,
         port,
-        bridge,
-        internal=True,
-        ifaceid=None,
+        bridge: str,
+        internal: bool = True,
+        ifaceid: Optional[str] = None,
         mtu_request: Optional[int] = None,
     ):
         name = port.name
@@ -238,7 +241,7 @@ class OvsVsctl:
     def del_port(self, port):
         self.idl.del_port(port.name).execute(check_error=True)
 
-    def bind_vm_port(self, lport):
+    def bind_vm_port(self, lport: LSPort):
         cmd = (
             f'ip netns add {lport.name}; '
             f'ip link set {lport.name} netns {lport.name}; '
@@ -266,7 +269,7 @@ class OvsVsctl:
             )
         self.run(cmd, prefix="")
 
-    def unbind_vm_port(self, lport):
+    def unbind_vm_port(self, lport: LSPort):
         self.run(f'ip netns del {lport.name}', prefix='')
 
 
@@ -282,10 +285,10 @@ class NBTransaction(transaction.Transaction):
         self,
         api,
         ovsdb_connection,
-        timeout=None,
-        check_error=False,
-        log_errors=True,
-        wait_type=None,
+        timeout: Optional[int] = None,
+        check_error: bool = False,
+        log_errors: bool = True,
+        wait_type: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(
@@ -360,12 +363,12 @@ class NBIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
 
     def create_transaction(
         self,
-        check_error=False,
-        log_errors=True,
-        timeout=None,
+        check_error: bool = False,
+        log_errors: bool = True,
+        timeout: Optional[int] = None,
         wait_type=None,
         **kwargs,
-    ):
+    ) -> NBTransaction:
         # Override of Base API method so we create NBTransactions.
         return NBTransaction(
             self,
@@ -391,7 +394,7 @@ class UUIDTransactionError(Exception):
 
 
 class OvnNbctl:
-    def __init__(self, sb, connection_string, inactivity_probe):
+    def __init__(self, sb, connection_string: str, inactivity_probe: int):
         log.info(f'OvnNbctl: {connection_string}, probe: {inactivity_probe}')
         i = connection.OvsdbIdl.from_server(
             connection_string, "OVN_Northbound"
@@ -415,7 +418,7 @@ class OvnNbctl:
 
         raise UUIDTransactionError("Failed to get UUID from transaction")
 
-    def db_create_transaction(self, table, *, get_func, **columns):
+    def db_create_transaction(self, table: str, *, get_func, **columns):
         # db_create does not afford the ability to retry with "may_exist". We
         # therefore need to have a method of ensuring that the value was not
         # actually set in the DB before we can retry the transaction.
@@ -434,24 +437,24 @@ class OvnNbctl:
 
         raise UUIDTransactionError("Failed to get UUID from transaction")
 
-    def set_global(self, option, value):
+    def set_global(self, option: str, value: str):
         self.idl.db_set(
             "NB_Global", self.idl._nb.uuid, ("options", {option: str(value)})
         ).execute()
 
-    def set_global_name(self, value):
+    def set_global_name(self, value: str):
         self.idl.db_set(
             "NB_Global", self.idl._nb.uuid, ("name", str(value))
         ).execute()
 
-    def set_inactivity_probe(self, value):
+    def set_inactivity_probe(self, value: str):
         self.idl.db_set(
             "Connection",
             self.idl._connection.uuid,
             ("inactivity_probe", value),
         ).execute()
 
-    def lr_add(self, name, ext_ids: Optional[Dict] = None):
+    def lr_add(self, name: str, ext_ids: Optional[Dict] = None):
         ext_ids = {} if ext_ids is None else ext_ids
 
         log.info(f'Creating lrouter {name}')
@@ -462,13 +465,13 @@ class OvnNbctl:
 
     def lr_port_add(
         self,
-        router,
-        name,
-        mac,
-        dual_ip=None,
+        router: Optional[LRouter],
+        name: str,
+        mac: str,
+        dual_ip: Optional[DualStackIP] = None,
         ext_ids: Optional[Dict] = None,
         options: Optional[Dict] = None,
-    ):
+    ) -> LRPort:
         ext_ids = {} if ext_ids is None else ext_ids
         options = {} if options is None else options
         networks = []
@@ -487,14 +490,14 @@ class OvnNbctl:
         ).execute()
         return LRPort(name=name, mac=mac, ip=dual_ip)
 
-    def lr_port_set_gw_chassis(self, rp, chassis, priority=10):
+    def lr_port_set_gw_chassis(self, rp: LRPort, chassis, priority=10):
         log.info(f'Setting gw chassis {chassis} for router port {rp.name}')
         self.idl.lrp_set_gateway_chassis(rp.name, chassis, priority).execute()
 
     def ls_add(
         self,
         name: str,
-        net_s: DualStackSubnet,
+        net_s,
         ext_ids: Optional[Dict] = None,
         other_config: Optional[Dict] = None,
     ) -> LSwitch:
@@ -517,7 +520,7 @@ class OvnNbctl:
             uuid=uuid,
         )
 
-    def ls_get_uuid(self, name, timeout):
+    def ls_get_uuid(self, name: str, timeout: int) -> Optional[str]:
         for _ in range(timeout):
             uuid = self.idl.db_get(
                 "Logical_Switch", str(name), '_uuid'
@@ -530,7 +533,7 @@ class OvnNbctl:
 
     def ls_port_add(
         self,
-        lswitch: LSwitch,
+        lswitch: Optional[LSwitch],
         name: str,
         router_port: Optional[LRPort] = None,
         mac: Optional[str] = None,
@@ -542,7 +545,7 @@ class OvnNbctl:
         security: bool = False,
         localnet: bool = False,
         ext_ids: Optional[Dict] = None,
-    ):
+    ) -> LSPort:
         columns = dict()
         if router_port:
             columns["type"] = "router"
@@ -598,7 +601,7 @@ class OvnNbctl:
             uuid=uuid,
         )
 
-    def ls_port_del(self, port):
+    def ls_port_del(self, port: LSPort):
         self.idl.lsp_del(port.name).execute()
 
     def ls_port_set_set_options(self, port: LSPort, options: str):
@@ -616,7 +619,7 @@ class OvnNbctl:
         )
         self.idl.lsp_set_options(port.name, **opts).execute()
 
-    def ls_port_set_set_type(self, port, lsp_type):
+    def ls_port_set_set_type(self, port: LSPort, lsp_type: str):
         self.idl.lsp_set_type(port.name, lsp_type).execute()
 
     def ls_port_enable(self, port: LSPort) -> None:
@@ -636,12 +639,14 @@ class OvnNbctl:
 
         return port._replace(ip=addr)
 
-    def port_group_create(self, name, ext_ids: Optional[Dict] = None):
+    def port_group_create(
+        self, name: str, ext_ids: Optional[Dict] = None
+    ) -> PortGroup:
         ext_ids = {} if ext_ids is None else ext_ids
         self.idl.pg_add(name, external_ids=ext_ids).execute()
         return PortGroup(name=name)
 
-    def port_group_add(self, pg, lport):
+    def port_group_add(self, pg: PortGroup, lport: LSPort):
         self.idl.pg_add_ports(pg.name, lport.uuid).execute()
 
     def port_group_add_ports(self, pg: PortGroup, lports: List[LSPort]):
@@ -651,17 +656,19 @@ class OvnNbctl:
             port_uuids = [p.uuid for p in lports_slice]
             self.idl.pg_add_ports(pg.name, port_uuids).execute()
 
-    def port_group_del(self, pg):
+    def port_group_del(self, pg: PortGroup):
         self.idl.pg_del(pg.name).execute()
 
-    def address_set_create(self, name):
+    def address_set_create(self, name: str) -> AddressSet:
         self.idl.address_set_add(name).execute()
         return AddressSet(name=name)
 
-    def address_set_add(self, addr_set, addr):
+    def address_set_add(self, addr_set: AddressSet, addr: str):
         self.idl.address_set_add_addresses(addr_set.name, addr)
 
-    def address_set_add_addrs(self, addr_set, addrs):
+    def address_set_add_addrs(
+        self, addr_set: Optional[AddressSet], addrs: List[str]
+    ):
         MAX_ADDRS_IN_BATCH = 500
         for i in range(0, len(addrs), MAX_ADDRS_IN_BATCH):
             addrs_slice = [str(a) for a in addrs[i : i + MAX_ADDRS_IN_BATCH]]
@@ -669,20 +676,20 @@ class OvnNbctl:
                 addr_set.name, addrs_slice
             ).execute()
 
-    def address_set_remove(self, addr_set, addr):
+    def address_set_remove(self, addr_set: AddressSet, addr: str):
         self.idl.address_set_remove_addresses(addr_set.name, addr)
 
-    def address_set_del(self, addr_set):
+    def address_set_del(self, addr_set: AddressSet):
         self.idl.address_set_del(addr_set.name)
 
     def acl_add(
         self,
-        name="",
-        direction="from-lport",
-        priority=100,
-        entity="switch",
-        match="",
-        verdict="allow",
+        name: str = "",
+        direction: str = "from-lport",
+        priority: int = 100,
+        entity: str = "switch",
+        match: str = "",
+        verdict: str = "allow",
         ext_ids: Optional[Dict] = None,
     ):
         ext_ids = {} if ext_ids is None else ext_ids
@@ -695,7 +702,9 @@ class OvnNbctl:
                 name, direction, priority, match, verdict, **ext_ids
             ).execute()
 
-    def route_add(self, router, network, gw, policy="dst-ip"):
+    def route_add(
+        self, router: Optional[LRouter], network, gw, policy="dst-ip"
+    ):
         if network.n4 and gw.ip4:
             self.idl.lr_route_add(
                 router.uuid, network.n4, gw.ip4, policy=policy
@@ -705,7 +714,13 @@ class OvnNbctl:
                 router.uuid, network.n6, gw.ip6, policy=policy
             ).execute()
 
-    def nat_add(self, router, external_ip, logical_net, nat_type="snat"):
+    def nat_add(
+        self,
+        router: Optional[LRouter],
+        external_ip: DualStackIP,
+        logical_net,
+        nat_type: str = "snat",
+    ):
         if external_ip.ip4 and logical_net.n4:
             self.idl.lr_nat_add(
                 router.uuid, nat_type, external_ip.ip4, logical_net.n4
@@ -715,7 +730,7 @@ class OvnNbctl:
                 router.uuid, nat_type, external_ip.ip6, logical_net.n6
             ).execute()
 
-    def create_lb(self, name, protocol):
+    def create_lb(self, name: str, protocol: str) -> LoadBalancer:
         lb_name = f"{name}-{protocol}"
         # We can't use ovsdbapp's lb_add here because it is not possible to
         # create a load balancer with no VIPs.
@@ -734,7 +749,7 @@ class OvnNbctl:
         )
         return LoadBalancer(name=lb_name, uuid=uuid)
 
-    def create_lbg(self, name):
+    def create_lbg(self, name: str) -> LoadBalancerGroup:
         uuid = self.db_create_transaction(
             "Load_Balancer_Group",
             name=name,
@@ -744,50 +759,52 @@ class OvnNbctl:
         )
         return LoadBalancerGroup(name=name, uuid=uuid)
 
-    def lbg_add_lb(self, lbg, lb):
+    def lbg_add_lb(self, lbg: LoadBalancerGroup, lb: LoadBalancer):
         self.idl.db_add(
             "Load_Balancer_Group", lbg.uuid, "load_balancer", lb.uuid
         ).execute()
 
-    def ls_add_lbg(self, ls, lbg):
+    def ls_add_lbg(self, ls: LSwitch, lbg: LoadBalancerGroup):
         self.idl.db_add(
             "Logical_Switch", ls.uuid, "load_balancer_group", lbg.uuid
         ).execute()
 
-    def lr_add_lbg(self, lr, lbg):
+    def lr_add_lbg(self, lr: LRouter, lbg: LoadBalancerGroup):
         self.idl.db_add(
             "Logical_Router", lr.uuid, "load_balancer_group", lbg.uuid
         ).execute()
 
-    def lr_set_options(self, router, options):
+    def lr_set_options(self, router: Optional[LRouter], options: Dict):
         str_options = dict((k, str(v)) for k, v in options.items())
         self.idl.db_set(
             "Logical_Router", router.uuid, ("options", str_options)
         ).execute()
 
-    def lb_set_vips(self, lb, vips):
+    def lb_set_vips(self, lb: LoadBalancer, vips: Dict):
         vips = dict((k, ",".join(v)) for k, v in vips.items())
         self.idl.db_set("Load_Balancer", lb.uuid, ("vips", vips)).execute()
 
-    def lb_clear_vips(self, lb):
+    def lb_clear_vips(self, lb: LoadBalancer):
         self.idl.db_clear("Load_Balancer", lb.uuid, "vips").execute()
 
-    def lb_add_to_routers(self, lb, routers):
+    def lb_add_to_routers(self, lb: LoadBalancer, routers: List[LRouter]):
         with self.idl.transaction(check_error=True) as txn:
             for r in routers:
                 txn.add(self.idl.lr_lb_add(r, lb.uuid, may_exist=True))
 
-    def lb_add_to_switches(self, lb, switches):
+    def lb_add_to_switches(self, lb: LRouter, switches: List[LSwitch]):
         with self.idl.transaction(check_error=True) as txn:
             for s in switches:
                 txn.add(self.idl.ls_lb_add(s, lb.uuid, may_exist=True))
 
-    def lb_remove_from_routers(self, lb, routers):
+    def lb_remove_from_routers(self, lb: LoadBalancer, routers: List[LRouter]):
         with self.idl.transaction(check_error=True) as txn:
             for r in routers:
                 txn.add(self.idl.lr_lb_del(r, lb.uuid, if_exists=True))
 
-    def lb_remove_from_switches(self, lb, switches):
+    def lb_remove_from_switches(
+        self, lb: LoadBalancer, switches: List[LSwitch]
+    ):
         with self.idl.transaction(check_error=True) as txn:
             for s in switches:
                 txn.add(self.idl.ls_lb_del(s, lb.uuid, if_exists=True))
@@ -844,20 +861,20 @@ class SBIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
 
 
 class OvnSbctl:
-    def __init__(self, sb, connection_string, inactivity_probe):
+    def __init__(self, sb, connection_string: str, inactivity_probe: int):
         log.info(f'OvnSbctl: {connection_string}, probe: {inactivity_probe}')
         i = BaseOvnSbIdl.from_server(connection_string)
         c = connection.Connection(i, inactivity_probe)
         self.idl = SBIdl(c)
 
-    def set_inactivity_probe(self, value):
+    def set_inactivity_probe(self, value: str):
         self.idl.db_set(
             "Connection",
             self.idl._connection.uuid,
             ("inactivity_probe", value),
         ).execute()
 
-    def chassis_bound(self, chassis=""):
+    def chassis_bound(self, chassis: str = ""):
         cmd = self.idl.db_find_rows("Chassis", ("name", "=", chassis))
         cmd.execute()
         return len(cmd.result) == 1
@@ -873,7 +890,7 @@ class NBIcIdl(nb_ic_impl_idl.OvnIcNbApiIdlImpl, Backend):
 
 
 class OvnIcNbctl:
-    def __init__(self, sb, connection_string, inactivity_probe):
+    def __init__(self, sb, connection_string: str, inactivity_probe: int):
         log.info(f'OvnIcNbctl: {connection_string}, probe: {inactivity_probe}')
         i = connection.OvsdbIdl.from_server(
             connection_string, "OVN_IC_Northbound"

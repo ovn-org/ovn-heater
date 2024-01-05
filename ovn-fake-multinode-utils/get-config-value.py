@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 
-def parser_setup(parser):
+def parser_setup(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group()
     group.add_argument(
         "config",
@@ -23,7 +23,7 @@ def parser_setup(parser):
     )
 
 
-def get_config_value(args):
+def get_config_value(args: argparse.Namespace) -> str:
     with open(args.config, 'r') as config_file:
         parsed = yaml.safe_load(config_file)
 

@@ -2,6 +2,8 @@ import logging
 import ovn_stats
 import time
 
+from typing import List
+
 log = logging.getLogger(__name__)
 
 active_context = None
@@ -13,10 +15,10 @@ ITERATION_STAT_NAME = 'Iteration Total'
 class Context:
     def __init__(
         self,
-        clusters,
-        test_name,
-        max_iterations=1,
-        brief_report=False,
+        clusters: List,
+        test_name: str,
+        max_iterations: int = 1,
+        brief_report: bool = False,
         test=None,
     ):
         self.iteration = -1

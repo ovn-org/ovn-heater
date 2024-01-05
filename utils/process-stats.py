@@ -5,16 +5,17 @@ import plotly.express as px
 import sys
 
 from datetime import datetime
+from typing import Dict, List
 
 
-def read_file(filename):
+def read_file(filename: str) -> Dict:
     with open(filename, "r") as file:
         return json.load(file)
 
 
-def resource_stats_generate(filename, data):
-    rss = []
-    cpu = []
+def resource_stats_generate(filename: str, data: Dict) -> None:
+    rss: List[List] = []
+    cpu: List[List] = []
 
     for ts, time_slice in sorted(data.items()):
         for name, res in time_slice.items():
@@ -67,7 +68,7 @@ if __name__ == '__main__':
         print(f'Output file {sys.argv[1]} already exists')
         sys.exit(2)
 
-    data = {}
+    data: Dict = {}
     for f in sys.argv[2:]:
         d = read_file(f)
         data.update(d)

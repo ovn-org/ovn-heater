@@ -1,4 +1,5 @@
 import itertools
+from typing import List, Dict, Optional
 
 VALID_PROTOCOLS = ['tcp', 'udp', 'sctp']
 
@@ -12,7 +13,9 @@ class InvalidProtocol(Exception):
 
 
 class OvnLoadBalancer:
-    def __init__(self, lb_name, nbctl, vips=None, protocols=VALID_PROTOCOLS):
+    def __init__(
+        self, lb_name: str, nbctl, vips=None, protocols: List = VALID_PROTOCOLS
+    ):
         '''
         Create load balancers with optional vips.
         lb_name: String used as basis for load balancer name.
@@ -27,21 +30,23 @@ class OvnLoadBalancer:
         if len(self.protocols) == 0:
             raise InvalidProtocol(protocols)
         self.name = lb_name
-        self.vips = {}
-        self.lbs = []
+        self.vips: Dict = {}
+        self.lbs: List = []
         for protocol in self.protocols:
             self.lbs.append(self.nbctl.create_lb(self.name, protocol))
         if vips:
             self.add_vips(vips)
 
-    def add_vip(self, vip, vport, backends, backend_port, version):
+    def add_vip(
+        self, vip: str, vport: str, backends, backend_port: str, version: int
+    ) -> None:
         self.add_vips(
             OvnLoadBalancer.get_vip_map(
                 vip, vport, backends, backend_port, version
             )
         )
 
-    def add_vips(self, vips):
+    def add_vips(self, vips: Dict) -> None:
         '''
         Add VIPs to a load balancer.
         vips: Dictionary with key being a VIP string, and value being a list of
@@ -62,7 +67,7 @@ class OvnLoadBalancer:
             for lb in self.lbs:
                 self.nbctl.lb_set_vips(lb, updated_vips)
 
-    def clear_vips(self):
+    def clear_vips(self) -> None:
         '''
         Clear all VIPs from the load balancer.
         '''
@@ -70,7 +75,9 @@ class OvnLoadBalancer:
         for lb in self.lbs:
             self.nbctl.lb_clear_vips(lb)
 
-    def add_backends_to_vip(self, backends, vips=None):
+    def add_backends_to_vip(
+        self, backends, vips: Optional[Dict] = None
+    ) -> None:
         '''
         Add backends to existing load balancer VIPs.
         backends: A list of IP addresses to add as backends to VIPs.
@@ -84,24 +91,26 @@ class OvnLoadBalancer:
         for lb in self.lbs:
             self.nbctl.lb_set_vips(lb, self.vips)
 
-    def add_to_routers(self, routers):
+    def add_to_routers(self, routers: List) -> None:
         for lb in self.lbs:
             self.nbctl.lb_add_to_routers(lb, routers)
 
-    def add_to_switches(self, switches):
+    def add_to_switches(self, switches: List) -> None:
         for lb in self.lbs:
             self.nbctl.lb_add_to_switches(lb, switches)
 
-    def remove_from_routers(self, routers):
+    def remove_from_routers(self, routers: List) -> None:
         for lb in self.lbs:
             self.nbctl.lb_remove_from_routers(lb, routers)
 
-    def remove_from_switches(self, switches):
+    def remove_from_switches(self, switches: List) -> None:
         for lb in self.lbs:
             self.nbctl.lb_remove_from_switches(lb, switches)
 
     @staticmethod
-    def get_vip_map(vip, vport, backends, backend_port, version):
+    def get_vip_map(
+        vip: str, vport: str, backends: Dict, backend_port: str, version: int
+    ) -> Dict:
         if version == 6:
             return {
                 f'[{vip}]:{vport}': [
@@ -115,11 +124,11 @@ class OvnLoadBalancer:
 
 
 class OvnLoadBalancerGroup:
-    def __init__(self, group_name, nbctl):
+    def __init__(self, group_name: str, nbctl):
         self.nbctl = nbctl
         self.name = group_name
         self.lbg = self.nbctl.create_lbg(self.name)
 
-    def add_lb(self, ovn_lb):
+    def add_lb(self, ovn_lb) -> None:
         for lb in ovn_lb.lbs:
             self.nbctl.lbg_add_lb(self.lbg, lb)

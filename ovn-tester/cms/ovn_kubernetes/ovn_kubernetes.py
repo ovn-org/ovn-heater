@@ -11,6 +11,7 @@ import ovn_stats
 
 from ovn_utils import DualStackSubnet
 from ovn_workload import ChassisNode, Cluster
+from typing import List, Optional
 
 log = logging.getLogger(__name__)
 ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
@@ -25,11 +26,11 @@ DEFAULT_BACKEND_PORT = 8080
 
 
 class Namespace:
-    def __init__(self, clusters, name, global_cfg):
+    def __init__(self, clusters, name: str, global_cfg):
         self.clusters = clusters
         self.nbctl = [cluster.nbctl for cluster in clusters]
         self.ports = [[] for _ in range(len(clusters))]
-        self.enforcing = False
+        self.enforcing: bool = False
         self.pg_def_deny_igr = [
             nbctl.port_group_create(f'pg_deny_igr_{name}')
             for nbctl in self.nbctl
@@ -65,7 +66,7 @@ class Namespace:
         self.name = name
 
     @ovn_stats.timeit
-    def add_ports(self, ports, az=0):
+    def add_ports(self, ports: List[ovn_utils.LSPort], az: int = 0):
         self.ports[az].extend(ports)
         # Always add port IPs to the address set but not to the PGs.
         # Simulate what OpenShift does, which is: create the port groups
@@ -105,7 +106,7 @@ class Namespace:
             nbctl.port_group_del(self.sub_pg[i])
             nbctl.address_set_del(self.sub_as[i])
 
-    def unprovision_ports(self, ports, az=0):
+    def unprovision_ports(self, ports: List[ovn_utils.LSPort], az: int = 0):
         '''Unprovision a subset of ports in the namespace without having to
         unprovision the entire namespace or any of its network policies.'''
 
@@ -123,7 +124,9 @@ class Namespace:
             nbctl.port_group_add_ports(self.pg_def_deny_egr[i], self.ports[i])
             nbctl.port_group_add_ports(self.pg[i], self.ports[i])
 
-    def create_sub_ns(self, ports, global_cfg, az=0):
+    def create_sub_ns(
+        self, ports: List[ovn_utils.LSPort], global_cfg, az: int = 0
+    ):
         n_sub_pgs = len(self.sub_pg[az])
         suffix = f'{self.name}_{n_sub_pgs}'
         pg = self.nbctl[az].port_group_create(f'sub_pg_{suffix}')
@@ -145,7 +148,7 @@ class Namespace:
         return n_sub_pgs
 
     @ovn_stats.timeit
-    def default_deny(self, family, az=0):
+    def default_deny(self, family: str, az: int = 0):
         self.enforce()
 
         addr_set = f'self.addr_set{family}.name'
@@ -185,7 +188,7 @@ class Namespace:
         )
 
     @ovn_stats.timeit
-    def allow_within_namespace(self, family, az=0):
+    def allow_within_namespace(self, family: str, az: int = 0):
         self.enforce()
 
         addr_set = f'self.addr_set{family}.name'
@@ -207,7 +210,7 @@ class Namespace:
         )
 
     @ovn_stats.timeit
-    def allow_cross_namespace(self, ns, family):
+    def allow_cross_namespace(self, ns, family: str):
         self.enforce()
 
         for az, nbctl in enumerate(self.nbctl):
@@ -235,7 +238,9 @@ class Namespace:
             )
 
     @ovn_stats.timeit
-    def allow_sub_namespace(self, src, dst, family, az=0):
+    def allow_sub_namespace(
+        self, src: str, dst: str, family: str, az: int = 0
+    ):
         self.nbctl[az].acl_add(
             self.pg[az].name,
             'to-lport',
@@ -280,7 +285,7 @@ class Namespace:
         )
 
     @ovn_stats.timeit
-    def check_enforcing_internal(self, az=0):
+    def check_enforcing_internal(self, az: int = 0):
         # "Random" check that first pod can reach last pod in the namespace.
         if len(self.ports[az]) > 1:
             src = self.ports[az][0]
@@ -292,14 +297,14 @@ class Namespace:
                 worker.ping_port(self.clusters[az], src, dst.ip6)
 
     @ovn_stats.timeit
-    def check_enforcing_external(self, az=0):
+    def check_enforcing_external(self, az: int = 0):
         if len(self.ports[az]) > 0:
             dst = self.ports[az][0]
             worker = dst.metadata
             worker.ping_external(self.clusters[az], dst)
 
     @ovn_stats.timeit
-    def check_enforcing_cross_ns(self, ns, az=0):
+    def check_enforcing_cross_ns(self, ns, az: int = 0):
         if len(self.ports[az]) > 0 and len(ns.ports[az]) > 0:
             dst = ns.ports[az][0]
             src = self.ports[az][0]
@@ -309,13 +314,15 @@ class Namespace:
             if src.ip6 and dst.ip6:
                 worker.ping_port(self.clusters[az], src, dst.ip6)
 
-    def create_load_balancer(self, az=0):
+    def create_load_balancer(self, az: int = 0):
         self.load_balancer = lb.OvnLoadBalancer(
             f'lb_{self.name}', self.nbctl[az]
         )
 
     @ovn_stats.timeit
-    def provision_vips_to_load_balancers(self, backend_lists, version, az=0):
+    def provision_vips_to_load_balancers(
+        self, backend_lists, version: int, az: int = 0
+    ):
         vip_ns_subnet = DEFAULT_NS_VIP_SUBNET
         if version == 6:
             vip_ns_subnet = DEFAULT_NS_VIP_SUBNET6
@@ -349,13 +356,13 @@ class OVNKubernetesCluster(Cluster):
             cluster_cfg.gw_net,
             az * (cluster_cfg.n_workers // cluster_cfg.n_az),
         )
-        self.router = None
-        self.load_balancer = None
-        self.load_balancer6 = None
-        self.join_switch = None
-        self.last_selected_worker = 0
-        self.n_ns = 0
-        self.ts_switch = None
+        self.router: Optional[ovn_utils.LRouter] = None
+        self.load_balancer: Optional[lb.OvnLoadBalancer] = None
+        self.load_balancer6: Optional[lb.OvnLoadBalancer] = None
+        self.join_switch: Optional[ovn_utils.LSwitch] = None
+        self.last_selected_worker: int = 0
+        self.n_ns: int = 0
+        self.ts_switch: Optional[ovn_utils.LSwitch] = None
 
     def add_cluster_worker_nodes(self, workers):
         cluster_cfg = self.cluster_cfg
@@ -391,7 +398,7 @@ class OVNKubernetesCluster(Cluster):
             ]
         )
 
-    def create_cluster_router(self, rtr_name):
+    def create_cluster_router(self, rtr_name: str) -> None:
         self.router = self.nbctl.lr_add(rtr_name)
         self.nbctl.lr_set_options(
             self.router,
@@ -400,7 +407,7 @@ class OVNKubernetesCluster(Cluster):
             },
         )
 
-    def create_cluster_load_balancer(self, lb_name, global_cfg):
+    def create_cluster_load_balancer(self, lb_name: str, global_cfg):
         if global_cfg.run_ipv4:
             self.load_balancer = lb.OvnLoadBalancer(
                 lb_name, self.nbctl, self.cluster_cfg.vips
@@ -413,7 +420,7 @@ class OVNKubernetesCluster(Cluster):
             )
             self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
-    def create_cluster_join_switch(self, sw_name):
+    def create_cluster_join_switch(self, sw_name: str):
         self.join_switch = self.nbctl.ls_add(sw_name, net_s=self.gw_net)
 
         self.join_rp = self.nbctl.lr_port_add(
@@ -447,7 +454,7 @@ class OVNKubernetesCluster(Cluster):
             self.load_balancer6.clear_vips()
             self.load_balancer6.add_vips(self.cluster_cfg.static_vips6)
 
-    def provision_lb_group(self, name='cluster-lb-group'):
+    def provision_lb_group(self, name: str = 'cluster-lb-group'):
         self.lb_group = lb.OvnLoadBalancerGroup(name, self.nbctl)
         for w in self.worker_nodes:
             self.nbctl.ls_add_lbg(w.switch, self.lb_group.lbg)
@@ -484,7 +491,7 @@ class WorkerNode(ChassisNode):
         )
 
     @ovn_stats.timeit
-    def provision(self, cluster):
+    def provision(self, cluster: OVNKubernetesCluster):
         self.connect(cluster.get_relay_connection_string())
         self.wait(cluster.sbctl, cluster.cluster_cfg.node_timeout_s)
 
@@ -576,7 +583,9 @@ class WorkerNode(ChassisNode):
         cluster.nbctl.nat_add(self.gw_router, gr_gw, cluster.net)
 
     @ovn_stats.timeit
-    def provision_port(self, cluster, passive=False):
+    def provision_port(
+        self, cluster: OVNKubernetesCluster, passive: bool = False
+    ) -> ovn_utils.LSPort:
         name = f'lp-{self.id}-{self.next_lport_index}'
 
         log.info(f'Creating lport {name}')
@@ -597,7 +606,9 @@ class WorkerNode(ChassisNode):
         return lport
 
     @ovn_stats.timeit
-    def provision_load_balancers(self, cluster, ports, global_cfg):
+    def provision_load_balancers(
+        self, cluster: OVNKubernetesCluster, ports, global_cfg
+    ) -> None:
         # Add one port IP as a backend to the cluster load balancer.
         if global_cfg.run_ipv4:
             port_ips = (
@@ -638,7 +649,9 @@ class WorkerNode(ChassisNode):
             self.gw_load_balancer6.add_to_routers([self.gw_router.name])
 
     @ovn_stats.timeit
-    def ping_external(self, cluster, port):
+    def ping_external(
+        self, cluster: OVNKubernetesCluster, port: ovn_utils.LSPort
+    ):
         if port.ip:
             self.run_ping(cluster, 'ext-ns', port.ip)
         if port.ip6:

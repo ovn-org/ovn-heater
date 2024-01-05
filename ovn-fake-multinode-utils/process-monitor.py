@@ -6,12 +6,13 @@ import os
 import psutil
 import time
 
+from typing import Dict
 
 process_names = ['ovn-', 'ovs-', 'ovsdb-', 'etcd']
 
 
-def monitor(suffix, out_file, exit_file):
-    data = {}
+def monitor(suffix: str, out_file: str, exit_file: str) -> None:
+    data: Dict = {}
     while True:
         try:
             if os.path.exists(exit_file):

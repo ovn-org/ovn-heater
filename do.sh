@@ -401,8 +401,10 @@ function mine_data() {
     grep died ${logs} | sed 's/.*\/\(ovn-.*\)/\1/' > mined-data/crashes
     [ -s mined-data/crashes ] || rm -f mined-data/crashes
 
+    # Collecting stats for the tester and central components from the first
+    # 3 availability zones to avoid bloating the report.
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
-                            | grep -v ovn-scale)
+                            | grep -E 'ovn-tester|ovn-central-az[0-2]-')
     python3 ${topdir}/utils/process-stats.py \
         resource-usage-report-central.html ${resource_usage_logs}
 

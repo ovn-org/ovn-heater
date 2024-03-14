@@ -2,6 +2,7 @@ from collections import namedtuple
 from ovn_context import Context
 from cms.ovn_kubernetes import Namespace
 from ovn_ext_cmd import ExtCmd
+from ovn_utils import distribute_n_tasks_per_clusters
 
 
 DensityCfg = namedtuple(
@@ -21,12 +22,16 @@ class DensityLight(ExtCmd):
 
     def run(self, clusters, global_cfg):
         ns = Namespace(clusters, 'ns_density_light', global_cfg)
+        n_startup_per_cluster = distribute_n_tasks_per_clusters(
+            self.config.n_startup, len(clusters)
+        )
+
         with Context(
             clusters, 'density_light_startup', len(clusters), brief_report=True
         ) as ctx:
             for i in ctx:
                 ports = clusters[i].provision_ports(
-                    self.config.n_startup, passive=True
+                    n_startup_per_cluster[i], passive=True
                 )
                 ns.add_ports(ports, i)
 

@@ -2,6 +2,7 @@ from collections import namedtuple
 from ovn_context import Context
 from cms.ovn_kubernetes import Namespace
 from ovn_ext_cmd import ExtCmd
+from ovn_utils import distribute_n_tasks_per_clusters
 import ovn_load_balancer as lb
 import ovn_exceptions
 import netaddr
@@ -72,13 +73,20 @@ class DensityHeavy(ExtCmd):
             return
 
         ns = Namespace(clusters, 'ns_density_heavy', global_cfg)
+        n_startup_per_cluster = distribute_n_tasks_per_clusters(
+            self.config.n_startup, len(clusters)
+        )
+
         with Context(
             clusters, 'density_heavy_startup', brief_report=True
         ) as ctx:
-            for i in range(
-                0, self.config.n_startup, self.config.pods_vip_ratio
-            ):
-                self.run_iteration(clusters, ns, i, global_cfg, passive=True)
+            for i in range(len(clusters)):
+                for j in range(
+                    0, n_startup_per_cluster[i], self.config.pods_vip_ratio
+                ):
+                    self.run_iteration(
+                        clusters, ns, j, global_cfg, passive=True
+                    )
 
         with Context(
             clusters,

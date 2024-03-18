@@ -912,3 +912,8 @@ class OvnIcNbctl:
     def ts_add(self):
         log.info('Creating transit switch')
         self.uuid_transaction(partial(self.idl.ts_add, 'ts'))
+
+
+def distribute_n_tasks_per_clusters(n_tasks, n_clusters):
+    div, rest = divmod(n_tasks, n_clusters)
+    return [div + 1 if i < rest else div for i in range(n_clusters)]

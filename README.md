@@ -155,7 +155,7 @@ cd ~/ovn-heater
 ```
 
 This step will:
-- clone OVS, OVN and ovn-fake-multinode upstream master branches in the
+- clone OVS, OVN and ovn-fake-multinode upstream main branches in the
   `runtime` directory.
 - build the `ovn/ovn-multi-node` container image which will be used by the
   fake nodes spawned during the tests.  OVS/OVN binaries are built with

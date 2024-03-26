@@ -22,7 +22,7 @@ def monitor(suffix: str, out_file: str, exit_file: str) -> None:
             for p in psutil.process_iter():
                 if any(name in p.name() for name in process_names):
                     processes.add(p)
-                elif any(
+                elif p.name() != 'monitor' and any(
                     name in part
                     for part in p.cmdline()
                     for name in process_names

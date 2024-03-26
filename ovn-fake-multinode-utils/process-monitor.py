@@ -36,7 +36,14 @@ def monitor(suffix: str, out_file: str, exit_file: str) -> None:
             tme = time.time()
             for p in processes:
                 try:
-                    name = p.name() + "-" + suffix + "-" + str(p.pid)
+                    name = p.name()
+                    for arg in p.cmdline():
+                        if arg.endswith('.pid') or arg.endswith('.py'):
+                            name = arg.split('/')[-1].split('.')[0]
+                            break
+
+                    name = name + "|" + suffix + "|" + str(p.pid)
+
                     # cpu_percent(seconds) call will block
                     # for the amount of seconds specified.
                     cpu = p.cpu_percent(0.5)

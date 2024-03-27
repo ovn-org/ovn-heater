@@ -406,13 +406,19 @@ function mine_data() {
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
                             | grep -E 'ovn-tester|ovn-central-az[0-2]-')
     python3 ${topdir}/utils/process-stats.py \
-        resource-usage-report-central.html ${resource_usage_logs}
+        -o resource-usage-report-central.html ${resource_usage_logs}
 
     # Collecting stats only for 3 workers to avoid bloating the report.
     resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json \
                             | grep ovn-scale | head -3)
     python3 ${topdir}/utils/process-stats.py \
-        resource-usage-report-worker.html ${resource_usage_logs}
+        -o resource-usage-report-worker.html ${resource_usage_logs}
+
+    # Preparing reports for aggregate resource usage.
+    resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json)
+    python3 ${topdir}/utils/process-stats.py --aggregate \
+        -o resource-usage-report-aggregate.html ${resource_usage_logs}
+
     deactivate
 
     popd

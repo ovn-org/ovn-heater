@@ -4,7 +4,7 @@
   - name: Start tester container
     ansible.builtin.shell: |
       podman run -dt --name=ovn-tester --hostname=ovn-tester \
-                     --privileged ovn/ovn-tester
+                     --pids-limit -1 --privileged ovn/ovn-tester
 
   - name: Add tester container interfaces to OVS bridges
     environment:

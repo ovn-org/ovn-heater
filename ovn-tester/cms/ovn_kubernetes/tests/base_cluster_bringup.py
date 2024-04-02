@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 from randmac import RandMac
-from ovn_utils import LSwitch
+from ovn_utils import LSwitch, OvnIcNbctl
 from ovn_context import Context
 from ovn_ext_cmd import ExtCmd
 
@@ -18,8 +18,14 @@ class BaseClusterBringup(ExtCmd):
         self.ic_cluster = clusters[0] if len(clusters) > 1 else None
 
     def create_transit_switch(self):
-        if self.ic_cluster:
-            self.ic_cluster.icnbctl.ts_add()
+        if self.ic_cluster is None:
+            return
+
+        inactivity_probe = (
+            self.ic_cluster.cluster_cfg.db_inactivity_probe // 1000
+        )
+        ic_remote = f'tcp:{self.ic_cluster.cluster_cfg.node_net.ip + 2}:6645'
+        OvnIcNbctl(None, ic_remote, inactivity_probe).ts_add()
 
     def connect_transit_switch(self, cluster):
         if self.ic_cluster is None:

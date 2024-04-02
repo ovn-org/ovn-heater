@@ -303,7 +303,6 @@ class Cluster:
         self.brex_cfg = brex_cfg
         self.nbctl: Optional[ovn_utils.OvnNbctl] = None
         self.sbctl: Optional[ovn_utils.OvnSbctl] = None
-        self.icnbctl: Optional[ovn_utils.OvnIcNbctl] = None
         self.az = az
 
         protocol = "ssl" if cluster_cfg.enable_ssl else "tcp"
@@ -364,12 +363,9 @@ class Cluster:
             self.central_nodes[0], sb_conn, inactivity_probe
         )
 
-        # ovn-ic configuration
-        self.icnbctl = ovn_utils.OvnIcNbctl(
-            None,
-            f'tcp:{self.cluster_cfg.node_net.ip + 2}:6645',
-            inactivity_probe,
-        )
+        # ovn-ic configuration: enable route learning/advertising to allow
+        # automatic pinging between cluster_net subnets in different AZs.
+        # This is required for IC connectivity checks.
         self.nbctl.set_global('ic-route-learn', 'true')
         self.nbctl.set_global('ic-route-adv', 'true')
 

@@ -177,7 +177,7 @@ function clone_component() {
 
 # OVS/OVN env vars
 ovs_repo="${OVS_REPO:-https://github.com/openvswitch/ovs.git}"
-ovs_branch="${OVS_BRANCH:-master}"
+ovs_branch="${OVS_BRANCH:-main}"
 ovn_repo="${OVN_REPO:-https://github.com/ovn-org/ovn.git}"
 ovn_branch="${OVN_BRANCH:-main}"
 

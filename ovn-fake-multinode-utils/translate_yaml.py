@@ -94,7 +94,7 @@ class ClusterConfig:
     log_txns_db: bool = False
     datapath_type: str = "system"
     raft_election_to: int = 16
-    northd_probe_interval: int = 5000
+    northd_probe_interval: int = 16000
     northd_threads: int = 4
     db_inactivity_probe: int = 60000
     node_net: str = "192.16.0.0/16"

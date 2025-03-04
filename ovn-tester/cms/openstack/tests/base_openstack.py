@@ -35,7 +35,7 @@ class BaseOpenstack(ExtCmd):
                     worker_node: ChassisNode = ovn.worker_nodes[i]
                     log.info(
                         f"Provisioning {worker_node.__class__.__name__} "
-                        f"({i+1}/{worker_count})"
+                        f"({i + 1}/{worker_count})"
                     )
                     worker_node.provision(ovn)
 

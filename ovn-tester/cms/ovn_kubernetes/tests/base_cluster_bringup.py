@@ -82,10 +82,10 @@ class BaseClusterBringup(ExtCmd):
             with Context(
                 clusters, 'base_cluster_bringup', len(cluster.worker_nodes)
             ) as ctx:
-                cluster.create_cluster_router(f'lr-cluster{c+1}')
-                cluster.create_cluster_join_switch(f'ls-join{c+1}')
+                cluster.create_cluster_router(f'lr-cluster{c + 1}')
+                cluster.create_cluster_join_switch(f'ls-join{c + 1}')
                 cluster.create_cluster_load_balancer(
-                    f'lb-cluster{c+1}', global_cfg
+                    f'lb-cluster{c + 1}', global_cfg
                 )
                 self.connect_transit_switch(cluster)
                 for i in ctx:
@@ -96,7 +96,7 @@ class BaseClusterBringup(ExtCmd):
                     )
                     worker.provision_load_balancers(cluster, ports, global_cfg)
                     worker.ping_ports(cluster, ports)
-                cluster.provision_lb_group(f'cluster-lb-group{c+1}')
+                cluster.provision_lb_group(f'cluster-lb-group{c + 1}')
 
         # check ic connectivity
         self.check_ic_connectivity(clusters)

@@ -330,7 +330,7 @@ class Cluster:
         self.relay_nodes = [
             RelayNode(
                 central,
-                f'ovn-relay-az{self.az}-{i+1}',
+                f'ovn-relay-az{self.az}-{i + 1}',
                 mgmt_ip + i,
                 protocol,
             )

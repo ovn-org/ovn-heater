@@ -29,7 +29,6 @@ def timeit(func):
 
 
 def clear():
-    global timed_functions
     timed_functions.clear()
 
 

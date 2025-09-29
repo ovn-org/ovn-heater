@@ -133,6 +133,7 @@ function install_venv() {
     fi
     source ${ovn_heater_venv}/bin/activate
     python3 -m ensurepip --upgrade
+    python3 -m pip install --upgrade pip
     python3 -m pip install -r ${topdir}/utils/requirements.txt
     deactivate
     popd

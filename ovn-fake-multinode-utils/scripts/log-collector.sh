@@ -2,7 +2,7 @@
 
 host=$1
 node_name=$2
-limit=10
+limit=2
 
 mkdir /tmp/${host}
 pushd /tmp
@@ -10,19 +10,26 @@ for c in $(podman ps --format "{{.Names}}" --filter "name=${node_name}"); do
     mkdir ${host}/$c
     podman exec $c ps -aux > ${host}/$c/ps
     podman exec $c bash -c 'touch /tmp/process-monitor.exit && sleep 5'
-    podman exec $c bash -c 'ovs-ofctl dump-flows br-int > /tmp/open-flows.log'
     podman cp $c:/var/log/ovn/ovn-controller.log ${host}/$c/
     podman cp $c:/var/log/openvswitch/ovs-vswitchd.log ${host}/$c/
     podman cp $c:/var/log/openvswitch/ovsdb-server.log ${host}/$c/
     podman cp $c:/etc/openvswitch/conf.db ${host}/$c/
     podman cp $c:/var/log/process-stats.json ${host}/$c/
-    podman cp $c:/tmp/open-flows.log ${host}/$c/
 done
 
 # Dump ovs groups just for latest ${limit} nodes
 for c in $(podman ps --format "{{.Names}}" --filter "name=${node_name}" --last "${limit}"); do
+    podman exec $c bash -c 'ovs-ofctl dump-flows br-int > /tmp/open-flows.log'
     podman exec $c bash -c 'ovs-ofctl dump-groups br-int > /tmp/groups.log'
+    podman cp $c:/tmp/open-flows.log ${host}/$c/
     podman cp $c:/tmp/groups.log ${host}/$c/
+
+    # OF rules/group dumps can be very large text files.
+    # Pre-archive them immediately.
+    pushd ${host}/$c
+    tar cvfz OF.tgz open-flows.log groups.log
+    rm -f open-flows.log groups.log
+    popd
 done
 
 for c in $(podman ps --format "{{.Names}}" --filter "name=ovn-central"); do

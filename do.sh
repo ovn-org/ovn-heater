@@ -107,9 +107,7 @@ function generate() {
 
 function install_deps_local_rpm() {
     echo "-- Installing local dependencies"
-    yum install redhat-lsb-core datamash \
-        python3-netaddr python3 python3-devel \
-        podman \
+    yum install datamash python3-netaddr python3 python3-devel podman \
         --skip-broken -y
 }
 

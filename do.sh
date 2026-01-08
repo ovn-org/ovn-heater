@@ -30,70 +30,7 @@ ovn_tester=${topdir}/ovn-tester
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
 
-# We want values from both the `ID` and `ID_LIKE` fields to ensure successful
-# categorization.  The shell will happily accept both spaces and newlines as
-# separators:
-# https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
-DISTRO_IDS=$(awk -F= '/^ID/{print$2}' /etc/os-release | tr -d '"')
-
-DISTRO_VERSION_ID=$(awk -F= '/^VERSION_ID/{print$2}' /etc/os-release | tr -d '"')
-
-function is_rpm_based() {
-    for id in $DISTRO_IDS; do
-        case $id in
-        centos* | rhel* | fedora*)
-            true
-            return
-        ;;
-        esac
-    done
-    false
-}
-
-function is_rhel() {
-    for id in $DISTRO_IDS; do
-        case $id in
-        centos* | rhel*)
-            true
-            return
-        ;;
-        esac
-    done
-    false
-}
-
-function is_fedora() {
-    for id in $DISTRO_IDS; do
-        case $id in
-        fedora*)
-            true
-            return
-        ;;
-        esac
-    done
-    false
-}
-
-function is_deb_based() {
-    for id in $DISTRO_IDS; do
-        case $id in
-        debian* | ubuntu*)
-            true
-            return
-            ;;
-        esac
-    done
-    false
-}
-
-function die() {
-    echo $1
-    exit 1
-}
-
-function die_distro() {
-    die "Unable to determine distro type, rpm- and deb-based are supported."
-}
+source $topdir/utils/helpers.sh
 
 function generate() {
     # Make sure rundir exists.

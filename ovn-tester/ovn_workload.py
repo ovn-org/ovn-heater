@@ -64,12 +64,8 @@ class CentralNode(Node):
     def __init__(self, phys_node, container: str, mgmt_ip: str, protocol: str):
         super().__init__(phys_node, container, mgmt_ip, protocol)
 
-    def start(
-        self, cluster_cfg: ClusterConfig, update_election_timeout: bool = False
-    ):
+    def start(self, cluster_cfg: ClusterConfig):
         log.info('Configuring central node')
-        if cluster_cfg.clustered_db and update_election_timeout:
-            self.set_raft_election_timeout(cluster_cfg.raft_election_to)
         self.enable_trim_on_compaction()
         self.set_northd_threads(cluster_cfg.northd_threads)
         if cluster_cfg.log_txns_db:
@@ -83,20 +79,18 @@ class CentralNode(Node):
             f'{n_threads}'
         )
 
-    def set_raft_election_timeout(self, timeout_s: int):
-        for timeout in range(1000, (timeout_s + 1) * 1000, 1000):
-            log.info(f'Setting RAFT election timeout to {timeout}ms')
-            self.run(
-                cmd=f'ovs-appctl -t '
-                f'/run/ovn/ovnnb_db.ctl cluster/change-election-timer '
-                f'OVN_Northbound {timeout}'
-            )
-            self.run(
-                cmd=f'ovs-appctl -t '
-                f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
-                f'OVN_Southbound {timeout}'
-            )
-            time.sleep(1)
+    def set_raft_election_timeout(self, timeout_ms: int):
+        log.info(f'Setting RAFT election timeout to {timeout_ms}ms')
+        self.run(
+            cmd=f'ovs-appctl -t '
+            f'/run/ovn/ovnnb_db.ctl cluster/change-election-timer '
+            f'OVN_Northbound {timeout_ms}'
+        )
+        self.run(
+            cmd=f'ovs-appctl -t '
+            f'/run/ovn/ovnsb_db.ctl cluster/change-election-timer '
+            f'OVN_Southbound {timeout_ms}'
+        )
 
     def enable_trim_on_compaction(self):
         log.info('Setting DB trim-on-compaction')
@@ -346,12 +340,22 @@ class Cluster:
     def prepare_test(self):
         self.start()
 
+    def set_raft_election_timeout(self):
+        if not self.cluster_cfg.clustered_db:
+            return
+
+        log.info('Setting raft cluster election timeout')
+        for timeout_ms in range(
+            1000, (self.cluster_cfg.raft_election_to * 1000), 1000
+        ):
+            for c in self.central_nodes:
+                c.set_raft_election_timeout(timeout_ms)
+            time.sleep(1)
+
     def start(self):
+        self.set_raft_election_timeout()
         for c in self.central_nodes:
-            c.start(
-                self.cluster_cfg,
-                update_election_timeout=(c is self.central_nodes[0]),
-            )
+            c.start(self.cluster_cfg)
         nb_conn = self.get_nb_connection_string()
         inactivity_probe = self.cluster_cfg.db_inactivity_probe // 1000
         self.nbctl = ovn_utils.OvnNbctl(

@@ -7,8 +7,9 @@ low_scale_task:
       - image_project: ubuntu-os-cloud
         image: family/ubuntu-2404-lts-amd64
     platform: linux
-    memory: 8G
+    memory: 16G
     disk: 40
+    cpu: 4
 
   env:
     DEPENDENCIES: git ansible podman

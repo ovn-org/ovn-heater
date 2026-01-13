@@ -4,6 +4,7 @@ import socket
 
 from io import StringIO
 from ovn_exceptions import SSHError
+from typing import List
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +80,15 @@ class Sandbox:
         # Checking + consuming all the unwanted output from the shell.
         self.run(cmd="echo Hello", stdout=stdout, raise_on_error=True)
 
+    # Splits 'out' by universal newline characters with the addition that it
+    # considers the terminal String Terminator character '\x1b\' as a newline.
+    @staticmethod
+    def split_channel_output(out: str) -> List[str]:
+        lines = []
+        for line in out.splitlines():
+            lines += line.split('\x1b\\')
+        return lines
+
     def run(
         self,
         cmd: str = "",
@@ -109,7 +119,7 @@ class Sandbox:
             while '++++end' not in out.splitlines():
                 out = out + self.channel.recv(10240).decode()
         except (paramiko.buffered_pipe.PipeTimeout, socket.timeout):
-            if '++++start' not in out.splitlines():
+            if '++++start' not in self.split_channel_output(out):
                 out = '++++start\n' + out
             out = out + '\n42\n++++end'
             timed_out = True
@@ -120,7 +130,7 @@ class Sandbox:
             pass
 
         # Splitting and removing all lines with terminal control chars.
-        out = out.splitlines()
+        out = self.split_channel_output(out)
         start = out.index('++++start') + 1
         end = out.index('++++end') - 1
         exit_status = int(out[end])

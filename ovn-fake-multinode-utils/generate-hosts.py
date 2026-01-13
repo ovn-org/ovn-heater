@@ -19,22 +19,26 @@ where DEPLOYMENT is the YAML file defining the deployment.
     )
 
 
-def generate_node_string(host: str, **kwargs) -> None:
+def generate_node_string(
+    host: str, internal_iface: str | None, **kwargs
+) -> None:
+    if internal_iface is not None:
+        kwargs['internal_iface'] = internal_iface
     args = ' '.join(f"{key}={value}" for key, value in kwargs.items())
     print(f"{host} {args}")
 
 
-def generate_node(config: Dict, internal_iface: str, **kwargs) -> None:
+def generate_node(config: Dict, internal_iface: str | None, **kwargs) -> None:
     host: str = config['name']
     internal_iface = config.get('internal-iface', internal_iface)
     generate_node_string(
         host,
-        internal_iface=internal_iface,
+        internal_iface,
         **kwargs,
     )
 
 
-def generate_tester(config: Dict, internal_iface: str) -> None:
+def generate_tester(config: Dict, internal_iface: str | None) -> None:
     ssh_key = config["ssh_key"]
     ssh_key = Path(ssh_key).resolve()
     generate_node(
@@ -45,7 +49,7 @@ def generate_tester(config: Dict, internal_iface: str) -> None:
     )
 
 
-def generate_nodes(nodes_config: Dict, internal_iface: str, **kwargs):
+def generate_nodes(nodes_config: Dict, internal_iface: str | None, **kwargs):
     for node_config in nodes_config:
         host, node_config = helpers.get_node_config(node_config)
         iface = node_config.get('internal-iface', internal_iface)
@@ -62,7 +66,7 @@ def generate(input_file: str, target: str, repo: str, branch: str) -> None:
         user = config.get('user', 'root')
         prefix = config.get('prefix', 'ovn-scale')
         tester_config = config['tester-node']
-        internal_iface = config['internal-iface']
+        internal_iface = config.get('internal-iface')
 
         print('[tester_hosts]')
         generate_tester(tester_config, internal_iface)

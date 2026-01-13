@@ -1,5 +1,3 @@
-internal-iface: lo
-
 central-nodes:
   - <host>
 

@@ -119,7 +119,7 @@ ovn_branch="${OVN_BRANCH:-main}"
 
 # ovn-fake-multinode env vars
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"
-ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-main}"
+ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-v0.5}"
 
 OS_BASE="${OS_BASE:-fedora}"
 OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
@@ -295,8 +295,9 @@ function record_test_config() {
         pushd ${rundir}/$d
         local origin=$(git config --get remote.origin.url)
         local sha=$(git rev-parse HEAD)
-        local sha_name=$(git rev-parse --abbrev-ref HEAD)
-        echo "$d (${origin}): ${sha} (${sha_name})" >> ${out_file}
+        local name=$(git describe --tags --exact-match HEAD 2> /dev/null || \
+                     git rev-parse --abbrev-ref HEAD)
+        echo "$d (${origin}): ${sha} (${name})" >> ${out_file}
         popd
     done
 }

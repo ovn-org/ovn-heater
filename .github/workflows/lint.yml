@@ -1,10 +1,8 @@
-name: Check Style
+name: Lint
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   lint:

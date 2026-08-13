@@ -1,0 +1,91 @@
+name: Low Scale Tests
+
+on:
+  push:
+  pull_request:
+
+env:
+  dependencies: >-
+    qemu-system-x86 qemu-utils genisoimage rsync openssh-client xz-utils
+
+jobs:
+  low-scale:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: fedora
+          - os: ubuntu
+
+    name: low-scale ${{ matrix.os }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v5
+
+    - name: enable KVM access
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: update APT cache
+      run: sudo apt update || true
+
+    - name: install host dependencies
+      run: sudo apt install -y ${{ env.dependencies }}
+
+    - name: generate image cache key
+      id: gen_key
+      run: |
+        key="${{ matrix.os }}-"
+        key+="${{ hashFiles('.ci/ci.sh',
+                            '.github/workflows/test.yml') }}"
+        echo "key=${key}" >> "$GITHUB_OUTPUT"
+
+    - name: restore image cache
+      id: image_cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ matrix.os }}-ci.qcow2
+        key: ${{ steps.gen_key.outputs.key }}
+
+    - name: prepare VM image
+      if: steps.image_cache.outputs.cache-hit != 'true'
+      env:
+        OS_TYPE: ${{ matrix.os }}
+      run: ./.ci/ci.sh prepare
+
+    - name: restore runtime cache
+      uses: actions/cache@v6
+      with:
+        path: runtime-cache
+        key: runtime-${{ matrix.os }}-${{ github.sha }}
+        restore-keys: runtime-${{ matrix.os }}
+
+    - name: run tests
+      env:
+        OS_TYPE: ${{ matrix.os }}
+      run: ./.ci/ci.sh run
+
+    - name: copy logs
+      run: |
+        mkdir -p logs
+        cp vm-console.log logs/ 2>/dev/null || true
+        cp cloud-init-output.log logs/ 2>/dev/null || true
+        tar -czvf logs.tgz logs/ test_results/ 2>/dev/null || true
+
+    - name: upload test results
+      uses: actions/upload-artifact@v5
+      with:
+        name: test-results-${{ matrix.os }}
+        path: test_results/**
+
+    - name: upload logs
+      uses: actions/upload-artifact@v5
+      with:
+        name: logs-${{ matrix.os }}
+        path: logs.tgz

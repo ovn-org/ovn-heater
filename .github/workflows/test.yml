@@ -1,33 +1,91 @@
-name: Check Style
+name: Low Scale Tests
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+
+env:
+  dependencies: >-
+    qemu-system-x86 qemu-utils genisoimage rsync openssh-client xz-utils
 
 jobs:
-  lint:
-
-    runs-on: ubuntu-latest
+  low-scale:
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+        include:
+          - os: fedora
+          - os: ubuntu
+
+    name: low-scale ${{ matrix.os }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: checkout
+      uses: actions/checkout@v5
+
+    - name: enable KVM access
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: update APT cache
+      run: sudo apt update || true
+
+    - name: install host dependencies
+      run: sudo apt install -y ${{ env.dependencies }}
+
+    - name: generate image cache key
+      id: gen_key
+      run: |
+        key="${{ matrix.os }}-"
+        key+="${{ hashFiles('.ci/ci.sh',
+                            '.github/workflows/test.yml') }}"
+        echo "key=${key}" >> "$GITHUB_OUTPUT"
+
+    - name: restore image cache
+      id: image_cache
+      uses: actions/cache@v6
       with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+        path: ${{ matrix.os }}-ci.qcow2
+        key: ${{ steps.gen_key.outputs.key }}
+
+    - name: prepare VM image
+      if: steps.image_cache.outputs.cache-hit != 'true'
+      env:
+        OS_TYPE: ${{ matrix.os }}
+      run: ./.ci/ci.sh prepare
+
+    - name: restore runtime cache
+      uses: actions/cache@v6
+      with:
+        path: runtime-cache
+        key: runtime-${{ matrix.os }}-${{ github.sha }}
+        restore-keys: runtime-${{ matrix.os }}
+
+    - name: run tests
+      env:
+        OS_TYPE: ${{ matrix.os }}
+      run: ./.ci/ci.sh run
+
+    - name: copy logs
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install flake8 black==22.12.0
-    # Ignore E203, W503 and W504 which is against PEP 8 style
-    - name: flake8
-      run: |
-        flake8 --ignore=E203,W504,W503 .
-    - name: Black
-      run: |
-        black --check --diff .
+        mkdir -p logs
+        cp vm-console.log logs/ 2>/dev/null || true
+        cp cloud-init-output.log logs/ 2>/dev/null || true
+        tar -czvf logs.tgz logs/ test_results/ 2>/dev/null || true
+
+    - name: upload test results
+      uses: actions/upload-artifact@v5
+      with:
+        name: test-results-${{ matrix.os }}
+        path: test_results/**
+
+    - name: upload logs
+      uses: actions/upload-artifact@v5
+      with:
+        name: logs-${{ matrix.os }}
+        path: logs.tgz

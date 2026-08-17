@@ -5,4 +5,4 @@ pandas
 plotly
 pyyaml
 randmac
-git+https://github.com/openstack/ovsdbapp@master#egg=ovsdbapp
+ovsdbapp>=2.18.0

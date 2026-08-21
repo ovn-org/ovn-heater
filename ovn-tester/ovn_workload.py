@@ -217,6 +217,7 @@ class ChassisNode(Node):
 
     @ovn_stats.timeit
     def unbind_port(self, port: ovn_utils.LSPort):
+        self.stop_background_processes(port.name)
         if not port.passive:
             self.vsctl.unbind_vm_port(port)
         self.vsctl.del_port(port)

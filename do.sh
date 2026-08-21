@@ -416,10 +416,12 @@ function run_test() {
     fi
 
     tester_host=$(${ovn_fmn_get} ${phys_deployment} tester-node name)
-    if ! ssh root@${tester_host} podman exec \
+    local test_status=0
+    ssh root@${tester_host} podman exec \
             ovn-tester python3 -u /ovn-tester/ovn_tester.py \
-                                  /physical-deployment.yml /test-scenario.yml ;
-    then
+                                  /physical-deployment.yml /test-scenario.yml \
+        || test_status=$?
+    if [ ${test_status} -ne 0 ]; then
         echo "-- Failed to run test. Check logs at: ${out_dir}/test-log"
     fi
 
@@ -435,6 +437,7 @@ function run_test() {
     # were written directly to ${out_dir}. To make things easier for tools, we
     # copy the HTML files back to this original location.
     cp ${tester_host}/ovn-tester/*.html ${out_dir} || true
+    cp ${tester_host}/ovn-tester/*-report.json ${out_dir} || true
 
     # Once we successfully ran the test and collected its logs, the post
     # processing (e.g., data mining) can run in a subshell with errexit
@@ -444,6 +447,7 @@ function run_test() {
         set +o errexit
         mine_data ${out_dir} ${tester_host}
     )
+    return ${test_status}
 }
 
 function usage() {

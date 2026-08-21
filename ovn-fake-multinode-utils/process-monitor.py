@@ -47,6 +47,8 @@ def monitor(suffix: str, out_file: str, exit_file: str) -> None:
                     # cpu_percent(seconds) call will block
                     # for the amount of seconds specified.
                     cpu = p.cpu_percent(0.5)
+                    cpu_times = p.cpu_times()
+                    cpu_seconds = cpu_times.user + cpu_times.system
                     mem = p.memory_info().rss
                 except psutil.NoSuchProcess:
                     # Process went away.  Skipping.
@@ -55,7 +57,11 @@ def monitor(suffix: str, out_file: str, exit_file: str) -> None:
                 if not data.get(tme):
                     data[tme] = {}
 
-                data[tme][name] = {'cpu': cpu, 'rss': mem}
+                data[tme][name] = {
+                    'cpu': cpu,
+                    'cpu_seconds': cpu_seconds,
+                    'rss': mem,
+                }
 
         except KeyboardInterrupt:
             with open(out_file, "w") as f:

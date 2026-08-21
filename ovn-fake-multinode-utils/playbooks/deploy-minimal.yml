@@ -101,3 +101,9 @@
       src: "{{ playbook_dir }}/../../ovn-tester/ovn_inject_routes.py"
       dest: /tmp/ovn_inject_routes.py
       mode: '0744'
+
+  - name: Deploy TCP listener script
+    copy:
+      src: "{{ rundir }}/tcp-listener.py"
+      dest: /tmp/tcp-listener.py
+      mode: '0744'

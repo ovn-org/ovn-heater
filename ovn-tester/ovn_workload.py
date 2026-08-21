@@ -307,7 +307,7 @@ class Cluster:
                 f'ovn-central-az{self.az}-3',
             ]
             if cluster_cfg.clustered_db
-            else [f'ovn-central-az{self.az}-1']
+            else [f'ovn-central-az{self.az}']
         )
 
         mgmt_ip = (

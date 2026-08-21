@@ -95,3 +95,9 @@
       src: "{{ rundir }}/process-monitor.py"
       dest: /tmp/process-monitor.py
       mode: '0744'
+
+  - name: Deploy TCP listener script
+    copy:
+      src: "{{ rundir }}/tcp-listener.py"
+      dest: /tmp/tcp-listener.py
+      mode: '0744'

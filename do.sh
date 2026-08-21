@@ -24,6 +24,7 @@ installer_log_file=${rundir}/installer-log
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
 process_monitor_file=${rundir}/process-monitor.py
+tcp_listener_file=${rundir}/tcp-listener.py
 
 ovn_tester=${topdir}/ovn-tester
 
@@ -38,6 +39,7 @@ function generate() {
 
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
     cp ${ovn_fmn_utils}/process-monitor.py ${process_monitor_file}
+    cp ${ovn_fmn_utils}/tcp-listener.py ${tcp_listener_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
     cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
 }

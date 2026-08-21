@@ -3,6 +3,7 @@ import netaddr
 import select
 import ovn_exceptions
 import time
+from collections import Counter
 from collections import namedtuple
 from functools import partial
 from typing import Dict, List, Optional
@@ -513,6 +514,12 @@ class OvnNbctl:
         log.info(f'Setting gw chassis {chassis} for router port {rp.name}')
         self.idl.lrp_set_gateway_chassis(rp.name, chassis, priority).execute()
 
+    def lr_port_set_options(self, rp: LRPort, options: Dict):
+        str_options = dict((k, str(v)) for k, v in options.items())
+        self.idl.db_add(
+            "Logical_Router_Port", rp.name, "options", str_options
+        ).execute()
+
     def ls_add(
         self,
         name: str,
@@ -803,8 +810,53 @@ class OvnNbctl:
         vips = dict((k, ",".join(v)) for k, v in vips.items())
         self.idl.db_set("Load_Balancer", lb.uuid, ("vips", vips)).execute()
 
+    def lb_set_options(self, lb: LoadBalancer, options: Dict):
+        str_options = dict((k, str(v)) for k, v in options.items())
+        self.idl.db_add(
+            "Load_Balancer", lb.uuid, "options", str_options
+        ).execute()
+
+    def lb_set_options_batch(
+        self, lbs: List[LoadBalancer], options: Dict, batch_size: int = 500
+    ):
+        str_options = dict((k, str(v)) for k, v in options.items())
+        for i in range(0, len(lbs), batch_size):
+            with self.idl.transaction(check_error=True) as txn:
+                for lb in lbs[i : i + batch_size]:
+                    txn.add(
+                        self.idl.db_set(
+                            "Load_Balancer",
+                            lb.uuid,
+                            ("options", str_options),
+                        )
+                    )
+
+    def lb_add_ip_port_mapping(
+        self,
+        lb: LoadBalancer,
+        endpoint_ip,
+        port_name: str,
+        source_ip,
+    ):
+        self.idl.lb_add_ip_port_mapping(
+            lb.uuid, str(endpoint_ip), port_name, str(source_ip)
+        ).execute()
+
+    def lb_add_health_checks(
+        self, checks, options: Dict, batch_size: int = 500
+    ):
+        for i in range(0, len(checks), batch_size):
+            with self.idl.transaction(check_error=True) as txn:
+                for lb, vip in checks[i : i + batch_size]:
+                    txn.add(
+                        self.idl.lb_add_health_check(lb.uuid, vip, **options)
+                    )
+
     def lb_clear_vips(self, lb: LoadBalancer):
         self.idl.db_clear("Load_Balancer", lb.uuid, "vips").execute()
+
+    def lb_del(self, lb: LoadBalancer):
+        self.idl.lb_del(lb.uuid, if_exists=True).execute()
 
     def lb_add_to_routers(self, lb: LoadBalancer, routers: List[LRouter]):
         with self.idl.transaction(check_error=True) as txn:
@@ -865,6 +917,8 @@ class BaseOvnSbIdl(connection.OvsdbIdl):
         helper = idlutils.get_schema_helper(connection_string, cls.schema)
         helper.register_table('Chassis')
         helper.register_table('Connection')
+        helper.register_table('Advertised_Route')
+        helper.register_table('Service_Monitor')
         return cls(connection_string, helper)
 
 
@@ -897,6 +951,98 @@ class OvnSbctl:
         cmd = self.idl.db_find_rows("Chassis", ("name", "=", chassis))
         cmd.execute()
         return len(cmd.result) == 1
+
+    def _snapshot(self, table: str, row_to_value):
+        if table not in self.idl.tables:
+            raise ovn_exceptions.OvnInvalidConfigException(
+                f'Southbound table {table} is not available'
+            )
+        with self.idl.ovsdb_connection.lock:
+            return [
+                row_to_value(row)
+                for row in self.idl.tables[table].rows.values()
+            ]
+
+    def advertised_lb_routes(self, route_subnet=None):
+        routes = self._snapshot(
+            'Advertised_Route',
+            lambda row: (
+                row.uuid,
+                row.ip_prefix,
+                row.external_ids.get('source'),
+            ),
+        )
+        return [
+            (uuid, ip_prefix)
+            for uuid, ip_prefix, source in routes
+            if source == 'lb'
+            and (
+                route_subnet is None
+                or netaddr.IPNetwork(ip_prefix).ip in route_subnet
+            )
+        ]
+
+    def advertised_lb_route_count(self, route_subnet=None) -> int:
+        return len(self.advertised_lb_routes(route_subnet))
+
+    def service_monitor_summary(self):
+        monitors = self._snapshot(
+            'Service_Monitor',
+            lambda row: (
+                tuple(row.type) if isinstance(row.type, list) else (row.type,),
+                (
+                    row.status[0]
+                    if isinstance(row.status, list) and row.status
+                    else (None if isinstance(row.status, list) else row.status)
+                ),
+            ),
+        )
+        statuses = Counter(
+            status
+            for monitor_type, status in monitors
+            if 'load-balancer' in monitor_type
+        )
+        return sum(statuses.values()), statuses
+
+    def service_monitor_count(self) -> int:
+        return self.service_monitor_summary()[0]
+
+    def wait_for_advertised_route_state(
+        self,
+        expected_routes: int,
+        expected_monitors: int,
+        expected_monitor_states=None,
+        timeout_s: int = 600,
+        route_subnet=None,
+    ) -> float:
+        if expected_monitor_states is not None:
+            expected_monitor_states = Counter(expected_monitor_states)
+
+        def get_state():
+            n_routes = self.advertised_lb_route_count(route_subnet)
+            n_monitors, monitor_states = self.service_monitor_summary()
+            return n_routes, n_monitors, monitor_states
+
+        def state_is_expected(state):
+            n_routes, n_monitors, monitor_states = state
+            return (
+                n_routes == expected_routes
+                and n_monitors == expected_monitors
+                and (
+                    expected_monitor_states is None
+                    or monitor_states == expected_monitor_states
+                )
+            )
+
+        _, duration = wait_for_value(
+            get_state,
+            state_is_expected,
+            timeout_s,
+            'advertised route state '
+            f'(routes={expected_routes}, monitors={expected_monitors}, '
+            f'monitor states={expected_monitor_states})',
+        )
+        return duration
 
 
 class NBIcIdl(nb_ic_impl_idl.OvnIcNbApiIdlImpl, Backend):

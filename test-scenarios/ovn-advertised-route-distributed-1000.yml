@@ -1,0 +1,30 @@
+global:
+  log_cmds: False
+  cleanup: True
+  run_ipv4: True
+  run_ipv6: False
+  cms_name: ovn_kubernetes
+
+cluster:
+  clustered_db: false
+  log_txns_db: false
+  monitor_all: false
+  n_workers: 2
+  n_relays: 0
+
+base_cluster_bringup:
+  n_pods_per_node: 0
+
+# Expected rows:
+#   Advertised_Route = n_advertisers * n_lbs * n_backends
+#   Service_Monitor = n_lbs * n_backends
+advertised_route:
+  n_advertisers: 2
+  n_lbs: 1000
+  n_backends: 4
+  batch_size: 500
+  timeout_s: 600
+  n_sparse_lbs: 10
+  n_sparse_iterations: 3
+  health_check_interval_s: 1
+  distributed: true

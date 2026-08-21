@@ -75,6 +75,11 @@ class OvnLoadBalancer:
         for lb in self.lbs:
             self.nbctl.lb_clear_vips(lb)
 
+    def destroy(self) -> None:
+        for lb in self.lbs:
+            self.nbctl.lb_del(lb)
+        self.lbs.clear()
+
     def add_backends_to_vip(
         self, backends, vips: Optional[Dict] = None
     ) -> None:

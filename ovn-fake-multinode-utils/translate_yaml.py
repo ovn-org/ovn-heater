@@ -153,7 +153,7 @@ def translate_yaml(orig_yaml):
 
 def write_yaml(dest_yaml, dest_yaml_file_name):
     with open(dest_yaml_file_name, "w") as dest_yaml_file:
-        yaml.dump(dest_yaml, dest_yaml_file)
+        yaml.dump(dest_yaml, dest_yaml_file, sort_keys=False)
 
 
 def main():

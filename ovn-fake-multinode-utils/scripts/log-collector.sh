@@ -65,6 +65,7 @@ for c in $(podman ps --format "{{.Names}}" --filter "name=ovn-tester"); do
     mkdir ${host}/$c
     podman exec $c bash -c 'touch /tmp/process-monitor.exit && sleep 5'
     podman exec $c bash -c "mkdir -p /htmls; cp -f /*.html /htmls"
+    podman exec $c bash -c "cp -f /*-report.json /htmls || true"
     podman cp $c:/htmls/. ${host}/$c/
     podman cp $c:/var/log/process-stats.json ${host}/$c/
 done

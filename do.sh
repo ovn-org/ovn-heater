@@ -85,14 +85,12 @@ function clone_component() {
         pushd ${comp_name}
         local remote=$(git config --get remote.origin.url)
         if [ "${remote}" = "${comp_repo}" ]; then
-            git fetch origin
+            git fetch --tags origin
 
-            if $(git show-ref --verify refs/tags/${comp_branch} &> /dev/null); then
-                local branch_diff=$(git diff ${comp_branch} HEAD --stat | wc -l)
-            else
-                local branch_diff=$(git diff origin/${comp_branch} HEAD --stat | wc -l)
-            fi
-            if [ "${branch_diff}" = "0" ]; then
+            if $(git show-ref --verify refs/tags/${comp_branch} &> /dev/null) \
+                    && $(git diff ${comp_branch} HEAD --quiet &> /dev/null); then
+                comp_exists="1"
+            elif $(git diff origin/${comp_branch} HEAD --quiet &> /dev/null); then
                 comp_exists="1"
             fi
         fi

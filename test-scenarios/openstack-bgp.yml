@@ -1,0 +1,16 @@
+global:
+  log_cmds: false
+  cms_name: openstack
+
+cluster:
+  clustered_db: true
+  log_txns_db: true
+  n_workers: 8
+
+base_bgp:
+  n_projects: 20
+  n_chassis_per_gw_lrp: 3
+  n_vms_per_project: 10
+  n_routes_per_vrf: 100
+  n_advertised_routes: 100
+  batch_size: 5

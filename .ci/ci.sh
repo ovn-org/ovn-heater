@@ -386,7 +386,9 @@ cmd_run() {
             sed -i 's/^  log_cmds\: False/  log_cmds\: True/' \
                 test-scenarios/ovn-low-scale*.yml && \
             sed -i 's/^  log_cmds\: false/  log_cmds\: true/' \
-                test-scenarios/openstack-low-scale.yml"
+                test-scenarios/openstack-low-scale.yml && \
+            sed -i 's/^  log_cmds\: false/  log_cmds\: true/' \
+                test-scenarios/openstack-bgp.yml"
 
     # Run tests.
     vm_ssh "cd /root/ovn-heater && \
@@ -403,6 +405,12 @@ cmd_run() {
             ./do.sh run \
                 test-scenarios/openstack-low-scale.yml \
                 openstack-low-scale"
+
+    vm_ssh "cd /root/ovn-heater && \
+            export PHYS_DEPLOYMENT=${phys} && \
+            ./do.sh run \
+                test-scenarios/openstack-bgp.yml \
+                openstack-bgp"
 
     # Check logs for failures.
     vm_ssh "cd /root/ovn-heater && ./utils/logs-checker.sh"

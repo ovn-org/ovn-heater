@@ -65,6 +65,25 @@ vlog.use_python_logger(max_level=vlog.INFO)
 poller.SelectPoll = select.poll
 
 
+def wait_for_value(get_value, is_expected, timeout_s, description):
+    """Wait for a sampled value to satisfy a condition.
+
+    Returns the accepted value and elapsed time.
+    """
+    start = time.perf_counter()
+    deadline = start + timeout_s
+    last = None
+    while time.perf_counter() < deadline:
+        last = get_value()
+        if is_expected(last):
+            return last, time.perf_counter() - start
+        time.sleep(0.1)
+
+    raise ovn_exceptions.OvnConvergenceTimeoutException(
+        f'Timed out waiting for {description}: observed={last}'
+    )
+
+
 class PhysCtl:
     def __init__(self, sb):
         self.sb = sb

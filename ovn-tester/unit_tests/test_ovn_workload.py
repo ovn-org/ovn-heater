@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import netaddr
 
@@ -32,6 +33,20 @@ class ClusterTest(unittest.TestCase):
                 'ovn-central-az0-3',
             ],
         )
+
+    def test_reconnect_sb_reconnects_every_central_node(self):
+        cluster = self.make_cluster(clustered_db=True)
+        cluster.central_nodes = [mock.Mock(), mock.Mock()]
+
+        cluster.reconnect_sb()
+
+        command = (
+            'ovs-appctl -t /run/ovn/ovnsb_db.ctl ' 'ovsdb-server/reconnect'
+        )
+        for central in cluster.central_nodes:
+            central.run_output.assert_called_once_with(
+                command, raise_on_error=True
+            )
 
 
 if __name__ == '__main__':

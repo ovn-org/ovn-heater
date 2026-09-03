@@ -401,6 +401,14 @@ class Cluster:
             [db.get_connection_string(6642) for db in self.central_nodes]
         )
 
+    def reconnect_sb(self):
+        for central in self.central_nodes:
+            central.run_output(
+                'ovs-appctl -t /run/ovn/ovnsb_db.ctl '
+                'ovsdb-server/reconnect',
+                raise_on_error=True,
+            )
+
     def get_relay_connection_string(self):
         if len(self.relay_nodes) > 0:
             return ','.join(

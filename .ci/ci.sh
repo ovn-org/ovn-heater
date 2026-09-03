@@ -175,6 +175,15 @@ users:
 runcmd:
   - sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
   - systemctl restart sshd || service sshd restart || true
+  - |
+    if [ "${install_packages}" = "true" ]; then
+      if [ "${OS_TYPE}" = "ubuntu" ]; then
+        apt-get install -y linux-modules-extra-\$(uname -r)
+      else
+        dnf install -y kernel-modules-extra-\$(uname -r)
+      fi
+    fi
+    modprobe vrf
 EOF
 
     if [ "${install_packages}" = "true" ]; then
@@ -397,6 +406,12 @@ cmd_run() {
             export PHYS_DEPLOYMENT=${phys} && \
             ./do.sh run \
                 test-scenarios/ovn-low-scale-ic.yml low-scale-ic"
+
+    vm_ssh "cd /root/ovn-heater && \
+            export PHYS_DEPLOYMENT=${phys} && \
+            ./do.sh run \
+                test-scenarios/ovn-advertised-route-low-scale.yml \
+                advertised-route-low-scale"
 
     vm_ssh "cd /root/ovn-heater && \
             export PHYS_DEPLOYMENT=${phys} && \

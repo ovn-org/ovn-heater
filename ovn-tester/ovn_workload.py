@@ -217,6 +217,7 @@ class ChassisNode(Node):
 
     @ovn_stats.timeit
     def unbind_port(self, port: ovn_utils.LSPort):
+        self.stop_background_processes(port.name)
         if not port.passive:
             self.vsctl.unbind_vm_port(port)
         self.vsctl.del_port(port)
@@ -307,7 +308,7 @@ class Cluster:
                 f'ovn-central-az{self.az}-3',
             ]
             if cluster_cfg.clustered_db
-            else [f'ovn-central-az{self.az}-1']
+            else [f'ovn-central-az{self.az}']
         )
 
         mgmt_ip = (
@@ -399,6 +400,14 @@ class Cluster:
         return ','.join(
             [db.get_connection_string(6642) for db in self.central_nodes]
         )
+
+    def reconnect_sb(self):
+        for central in self.central_nodes:
+            central.run_output(
+                'ovs-appctl -t /run/ovn/ovnsb_db.ctl '
+                'ovsdb-server/reconnect',
+                raise_on_error=True,
+            )
 
     def get_relay_connection_string(self):
         if len(self.relay_nodes) > 0:

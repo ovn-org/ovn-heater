@@ -24,6 +24,7 @@ installer_log_file=${rundir}/installer-log
 log_collector_file=${rundir}/log-collector.sh
 log_perf_file=${rundir}/perf.sh
 process_monitor_file=${rundir}/process-monitor.py
+tcp_listener_file=${rundir}/tcp-listener.py
 
 ovn_tester=${topdir}/ovn-tester
 
@@ -38,6 +39,7 @@ function generate() {
 
     PYTHONPATH=${topdir}/utils ${ovn_fmn_generate} ${phys_deployment} ${rundir} ${ovn_fmn_repo} ${ovn_fmn_branch} > ${hosts_file}
     cp ${ovn_fmn_utils}/process-monitor.py ${process_monitor_file}
+    cp ${ovn_fmn_utils}/tcp-listener.py ${tcp_listener_file}
     cp ${ovn_fmn_utils}/scripts/log-collector.sh ${log_collector_file}
     cp ${ovn_fmn_utils}/scripts/perf.sh ${log_perf_file}
 }
@@ -414,10 +416,12 @@ function run_test() {
     fi
 
     tester_host=$(${ovn_fmn_get} ${phys_deployment} tester-node name)
-    if ! ssh root@${tester_host} podman exec \
+    local test_status=0
+    ssh root@${tester_host} podman exec \
             ovn-tester python3 -u /ovn-tester/ovn_tester.py \
-                                  /physical-deployment.yml /test-scenario.yml ;
-    then
+                                  /physical-deployment.yml /test-scenario.yml \
+        || test_status=$?
+    if [ ${test_status} -ne 0 ]; then
         echo "-- Failed to run test. Check logs at: ${out_dir}/test-log"
     fi
 
@@ -433,6 +437,7 @@ function run_test() {
     # were written directly to ${out_dir}. To make things easier for tools, we
     # copy the HTML files back to this original location.
     cp ${tester_host}/ovn-tester/*.html ${out_dir} || true
+    cp ${tester_host}/ovn-tester/*-report.json ${out_dir} || true
 
     # Once we successfully ran the test and collected its logs, the post
     # processing (e.g., data mining) can run in a subshell with errexit
@@ -442,6 +447,7 @@ function run_test() {
         set +o errexit
         mine_data ${out_dir} ${tester_host}
     )
+    return ${test_status}
 }
 
 function usage() {

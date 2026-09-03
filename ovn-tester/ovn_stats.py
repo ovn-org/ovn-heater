@@ -1,5 +1,7 @@
 import collections
+import contextlib
 import functools
+import json
 import numpy
 import ovn_context
 import ovn_exceptions
@@ -40,10 +42,24 @@ def add(fname, duration, failed):
     timed_functions[(fname, iteration)].append(elem)
 
 
+@contextlib.contextmanager
+def measure(name):
+    start = time.perf_counter()
+    failed = False
+    try:
+        yield
+    except Exception:
+        failed = True
+        raise
+    finally:
+        add(name, time.perf_counter() - start, failed)
+
+
 def report(test_name, brief=False):
     all_stats = collections.defaultdict(list)
     fail_stats = collections.defaultdict(list)
     chart_stats = collections.defaultdict(list)
+    raw_measurements = []
     headings = [
         'Min (s)',
         'Median (s)',
@@ -59,11 +75,31 @@ def report(test_name, brief=False):
         for (d, r) in measurements:
             all_stats[f].append(d)
             chart_stats[f].append([f'{i}', f, d])
+            raw_measurements.append(
+                {
+                    'counter': f,
+                    'iteration': i,
+                    'seconds': d,
+                    'failed': r,
+                }
+            )
             if r:
                 fail_stats[f].append(i)
 
     if len(all_stats.items()) == 0:
         return
+
+    with open(f'{test_name}-report.json', 'w') as report_file:
+        json.dump(
+            {
+                'version': 1,
+                'test_name': test_name,
+                'measurements': raw_measurements,
+            },
+            report_file,
+            indent=2,
+        )
+        report_file.write('\n')
 
     all_avgs = []
     all_f = []

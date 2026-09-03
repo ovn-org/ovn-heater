@@ -114,9 +114,10 @@
       podman ps --filter='name=ovn-' --noheading --format={{ '{{.Names}}' }}
     register: containers
 
-  - name: Copy and start the process monitoring script in containers
+  - name: Copy helper scripts and start process monitoring in containers
     ansible.builtin.shell: |
       podman cp /tmp/process-monitor.py {{ item }}:/tmp/
+      podman cp /tmp/tcp-listener.py {{ item }}:/tmp/
       podman exec {{ item }} bash -c "
         nohup python3 /tmp/process-monitor.py \\
           -s {{ item }} \\

@@ -105,6 +105,20 @@
     loop: "{{ range(groups['worker_hosts'].index(inventory_hostname),
                     n_workers|int, groups['worker_hosts']|length) | list }}"
 
+- name: Copy inject_routes script to worker containers
+  hosts: worker_hosts
+  tasks:
+  - name: Enumerate worker containers
+    ansible.builtin.shell: |
+      podman ps --filter='name={{ node_name }}-' \
+                --noheading --format={{ '{{.Names}}' }}
+    register: containers
+
+  - name: Copy script to containers
+    ansible.builtin.shell: |
+      podman cp /tmp/ovn_inject_routes.py {{ item }}:/tmp/
+    loop: "{{ containers.stdout_lines }}"
+
 
 - name: Start process monitoring
   hosts: all

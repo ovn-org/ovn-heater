@@ -68,11 +68,13 @@ class Project:
         int_net: NeutronNetwork = None,
         ext_net: NeutronNetwork = None,
         router: Optional[LRouter] = None,
+        gw_port: Optional[LRPort] = None,
     ):
         self.int_net = int_net
         self.ext_net = ext_net
         self.router = router
         self.vm_ports: List[LSPort] = []
+        self.gw_port = gw_port
         self._id = str(uuid.uuid4())
 
     @property
@@ -190,6 +192,7 @@ class OpenStackCloud(Cluster):
                 project, ext_net
             )
 
+        project.gw_port = gateway_port
         self.add_internal_network_to_project(project, gateway_port)
         self._projects.append(project)
         return project

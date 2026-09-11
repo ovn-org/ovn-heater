@@ -95,3 +95,9 @@
       src: "{{ rundir }}/process-monitor.py"
       dest: /tmp/process-monitor.py
       mode: '0744'
+
+  - name: Deploy inject routes script
+    copy:
+      src: "{{ playbook_dir }}/../../ovn-tester/ovn_inject_routes.py"
+      dest: /tmp/ovn_inject_routes.py
+      mode: '0744'

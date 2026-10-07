@@ -1,7 +1,10 @@
 import logging
 import paramiko
+import shlex
 import socket
+import uuid
 
+from collections import defaultdict
 from io import StringIO
 from ovn_exceptions import SSHError
 from typing import List
@@ -64,6 +67,7 @@ class Sandbox:
         self.phys_node = phys_node
         self.container = container
         self.channel = None
+        self.background_processes = defaultdict(list)
 
     def ensure_channel(self) -> None:
         if self.channel:
@@ -154,3 +158,48 @@ class Sandbox:
             out = SSH.printable_result(out)
             if len(out):
                 log.info(out)
+
+    def run_output(
+        self,
+        cmd: str = "",
+        raise_on_error: bool = False,
+        timeout: int = DEFAULT_SANDBOX_TIMEOUT,
+    ) -> str:
+        stdout = StringIO()
+        self.run(
+            cmd=cmd,
+            stdout=stdout,
+            raise_on_error=raise_on_error,
+            timeout=timeout,
+        )
+        return stdout.getvalue()
+
+    def start_background_process(self, owner: str, cmd: str) -> None:
+        process_id = uuid.uuid4().hex
+        pid_file = f'/tmp/ovn-heater-{process_id}.pid'
+        log_file = f'{pid_file}.log'
+        start_cmd = (
+            f'nohup {cmd} >{shlex.quote(log_file)} 2>&1 </dev/null & '
+            f'echo $! >{shlex.quote(pid_file)}'
+        )
+        self.run_output(
+            f'sh -c {shlex.quote(start_cmd)}',
+            raise_on_error=True,
+        )
+        self.run_output(
+            f'sleep 0.1; test -s {shlex.quote(pid_file)} && '
+            f'kill -0 "$(cat {shlex.quote(pid_file)})" || '
+            f'{{ cat {shlex.quote(log_file)}; false; }}',
+            raise_on_error=True,
+        )
+        self.background_processes[owner].append((pid_file, log_file))
+
+    def stop_background_processes(self, owner: str) -> None:
+        for pid_file, log_file in self.background_processes.pop(owner, []):
+            self.run_output(
+                f'if test -s {shlex.quote(pid_file)}; then '
+                f'kill "$(cat {shlex.quote(pid_file)})" 2>/dev/null || true; '
+                f'fi; rm -f {shlex.quote(pid_file)} '
+                f'{shlex.quote(log_file)}',
+                raise_on_error=True,
+            )

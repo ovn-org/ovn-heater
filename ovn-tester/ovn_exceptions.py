@@ -14,5 +14,9 @@ class OvnChassisTimeoutException(OvnTestException):
     pass
 
 
+class OvnConvergenceTimeoutException(OvnTestException):
+    pass
+
+
 class SSHError(OvnTestException):
     pass

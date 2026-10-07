@@ -254,7 +254,8 @@ Testing steps are executed on ORCHESTRATOR node.
 
 Scenarios are defined in `ovn-tester/ovn_tester.py` and are configurable
 through YAML files.  Sample scenario configurations are available in
-`test-scenarios/*.yml`.
+`test-scenarios/*.yml`.  See [test-scenarios/README.md](test-scenarios/README.md)
+for scenario-specific documentation.
 
 ## Scenario execution
 
@@ -281,6 +282,7 @@ consist of:
 - an `installer-log` where the ouptut of the `./do.sh install` command is
   stored.
 - html reports
+- JSON reports with raw timing measurements
 - a copy of the `hosts` ansible inventory used for the test.
 - OVN container logs (i.e., ovn-northd, ovn-controller, ovs-vswitchd,
   ovsdb-server logs).

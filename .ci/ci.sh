@@ -233,10 +233,10 @@ export VM_SSH_KEY="${SSH_KEY}"
 cmd_prepare() {
     case "${OS_TYPE}" in
         fedora)
-            IMAGE_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2"
+            IMAGE_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
             ;;
         ubuntu)
-            IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+            IMAGE_URL="https://cloud-images.ubuntu.com/resolute/current/resolute-server-cloudimg-amd64.img"
             ;;
         *)
             echo "ERROR: Unknown OS_TYPE: ${OS_TYPE}" >&2

@@ -61,7 +61,7 @@ Therefore, the values need to be resolvable by both of these entities and
 need to resolve to the same host. `localhost` will not work since this does
 not resolve to a unique host.
 
-## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 38 and Ubuntu 22.10)
+## Minimal requirements on the ORCHESTRATOR node (tested on Fedora 44 and Ubuntu 26.04)
 
 ### Install required packages:
 

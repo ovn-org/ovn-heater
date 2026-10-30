@@ -1,5 +1,6 @@
 import logging
 import time
+import ovn_exceptions
 import ovn_stats
 import ipaddress
 
@@ -33,12 +34,30 @@ class BaseBgp(ExtCmd):
         test_config = config.get("base_bgp")
         self.config = BaseBgpConfig(**test_config)
 
-    def inject_vrf_routes(self, hosting, nsenter, vrf_dev, nexthop, vrf_id):
+    @staticmethod
+    def vrf_nexthop(vrf_id):
+        return str(ipaddress.IPv4Address((172 << 24) | (vrf_id << 8) | 1))
+
+    @staticmethod
+    def vrf_route_base(vrf_id):
+        """Base of the range the bulk routes of a VRF are injected into."""
+        return ipaddress.IPv4Address((10 << 24) | (vrf_id << 8))
+
+    @staticmethod
+    def vrf_probe_route(vrf_id, attempt):
+        """Probe route of a VRF, outside the range of its bulk routes."""
+        return ipaddress.IPv4Address(
+            (10 << 24) | (255 << 16) | (vrf_id << 8) | attempt
+        )
+
+    def inject_vrf_routes(
+        self, hosting, nsenter, vrf_dev, vrf_id, base, n_routes
+    ):
         hosting.run(
             f"{nsenter} python3 /tmp/ovn_inject_routes.py "
-            f"--vrf-dev {vrf_dev} --nexthop {nexthop} "
-            f"--table {vrf_id} --n-routes {self.config.n_routes_per_vrf} "
-            f"--vrf-id {vrf_id}"
+            f"--vrf-dev {vrf_dev} --nexthop {self.vrf_nexthop(vrf_id)} "
+            f"--table {vrf_id} --n-routes {n_routes} --base {base}",
+            raise_on_error=True,
         )
 
     def wait_for_learned_routes(self, ovn, expected, timeout=30):
@@ -54,11 +73,10 @@ class BaseBgp(ExtCmd):
             if learned >= expected:
                 return learned
             if time.time() > deadline:
-                log.warning(
+                raise ovn_exceptions.OvnRouteTimeoutException(
                     f"Timed out waiting for learned routes: "
                     f"{learned}/{expected} after {timeout}s"
                 )
-                return learned
             time.sleep(0.1)
 
     def wait_for_vrf_routes(
@@ -82,32 +100,105 @@ class BaseBgp(ExtCmd):
             if max_count >= expected:
                 return max_count
             if time.time() > deadline:
-                log.warning(
-                    f"Timed out waiting for VRF routes: "
+                raise ovn_exceptions.OvnRouteTimeoutException(
+                    f"Timed out waiting for VRF {vrf_name} routes: "
                     f"{max_count}/{expected} after {timeout}s"
                 )
-                return max_count
             time.sleep(1)
 
-    def find_vrf_host(self, ovn, nsenter, vrf_dev, timeout=30):
-        """Find which chassis is hosting the given VRF device.
+    def find_vrf_hosts(self, candidates, nsenter, vrf_dev, timeout=30):
+        """Wait for the VRF device on every chassis that should host it.
+
+        ovn-controller maintains the VRF on each chassis the router port
+        is a gateway candidate for, not only the active one, and any of
+        them may be the one that syncs the table to the SB.  A routing
+        daemon would populate the VRF on all of them, so the test has to
+        as well.  Missing even one is not harmless: that chassis syncs an
+        empty table and deletes the routes the others learned.
+
+        The chassis create the device independently, so wait for all of
+        them rather than for the first.  'candidates' are the project's
+        gateway chassis, which is why this does not have to probe the
+        whole cluster: that costs one ssh round trip per worker per
+        sweep, which dominates the test once the cluster is large.
 
         Returns:
-            The hosting chassis, or None if not found within timeout.
+            The list of hosting chassis, empty if none within timeout.
         """
+        expected = len(candidates)
         deadline = time.time() + timeout
-        while time.time() < deadline:
-            for chassis in ovn.worker_nodes:
+        while True:
+            hosts = []
+            for chassis in candidates:
                 try:
                     chassis.run(
                         f"{nsenter} test -d /sys/class/net/{vrf_dev}",
                         raise_on_error=True,
                     )
-                    return chassis
+                    hosts.append(chassis)
                 except Exception:
                     pass
-            time.sleep(1)
-        return None
+            if len(hosts) >= expected:
+                return hosts
+            if time.time() > deadline:
+                log.warning(
+                    f"{vrf_dev} found on {len(hosts)}/{expected} chassis "
+                    f"after {timeout}s"
+                )
+                return hosts
+            # The devices normally appear within a few hundred ms, so a
+            # coarse retry would be most of this step's cost.
+            time.sleep(0.1)
+
+    def wait_for_route_exchange(self, ovn, hosts, nsenter, vrf_dev, vrf_id):
+        """Wait until ovn-controller actually learns from a VRF's table.
+
+        ovn-controller creates the VRF device before it dumps the table and
+        before it starts watching it for changes, so a route injected right
+        after the device appears can be missed by the dump and then dropped
+        by the notifier.  Nothing re-reads the table afterwards, so those
+        routes are never learned.
+
+        Inject one probe route at a time until one of them shows up in the
+        SB, which proves this table is being watched.  Each attempt uses a
+        fresh prefix, because re-adding an existing route does not generate
+        a netlink notification.  The probe must be looked up by its own
+        prefix: a global row count also moves when another VRF's routes
+        land, which would declare this one live while its table is still
+        unwatched.
+        """
+        deadline = time.time() + self.config.route_timeout_s
+        attempt = 0
+        while True:
+            # OVN normalizes a host route to a bare address, without the
+            # "/32" the prefix would otherwise carry.
+            probe = str(self.vrf_probe_route(vrf_id, attempt))
+            for hosting in hosts:
+                self.inject_vrf_routes(
+                    hosting,
+                    nsenter,
+                    vrf_dev,
+                    vrf_id,
+                    self.vrf_probe_route(vrf_id, attempt),
+                    1,
+                )
+
+            probe_deadline = min(time.time() + 2, deadline)
+            while time.time() < probe_deadline:
+                if ovn.sbctl.learned_route_exists(probe):
+                    log.info(
+                        f"{vrf_dev} route exchange live after "
+                        f"{attempt + 1} probe(s)"
+                    )
+                    return
+                time.sleep(0.1)
+
+            attempt += 1
+            if time.time() > deadline or attempt > 255:
+                raise ovn_exceptions.OvnRouteTimeoutException(
+                    f"{vrf_dev} routes not learned after {attempt} probes "
+                    f"in {self.config.route_timeout_s}s"
+                )
 
     @ovn_stats.timeit
     def run_batch_advertise(self, ovn, start_idx, end_idx):
@@ -121,7 +212,7 @@ class BaseBgp(ExtCmd):
 
             vrf_dev = f"ovnvrf{vrf_id}"
             vrf_hosts = []
-            for chassis in ovn.worker_nodes:
+            for chassis in project.gw_chassis:
                 try:
                     chassis.run(
                         f"test -d /sys/class/net/{vrf_dev}",
@@ -132,8 +223,9 @@ class BaseBgp(ExtCmd):
                     pass
 
             if not vrf_hosts:
-                log.warning(f"{vrf_dev} not found on any chassis")
-                continue
+                raise ovn_exceptions.OvnRouteTimeoutException(
+                    f"{vrf_dev} not found on any chassis"
+                )
 
             stdout = StringIO()
             vrf_hosts[0].run(
@@ -175,7 +267,7 @@ class BaseBgp(ExtCmd):
             )
 
     @ovn_stats.timeit
-    def run_batch_learn(self, ovn, nsenter, start_idx, end_idx, ext_net):
+    def run_batch_provision(self, ovn, start_idx, end_idx, ext_net):
         # Create projects and VMs for this batch.
         for _ in range(end_idx - start_idx):
             ovn.new_project(ext_net=ext_net)
@@ -208,7 +300,17 @@ class BaseBgp(ExtCmd):
                 f"{project.router.name} vrf-id={vrf_id}"
             )
 
-        # Inject routes into VRFs for this batch.
+    @ovn_stats.timeit
+    def run_batch_vrf_setup(self, ovn, nsenter, start_idx, end_idx):
+        """Make this batch's VRFs ready to measure route learning on.
+
+        Waits for ovn-controller to create each VRF device and to start
+        learning from its table.
+
+        Returns:
+            Dict of vrf_id -> (vrf_dev, list of hosting chassis).
+        """
+        vrf_hosts = {}
         for vrf_id, project in enumerate(
             ovn.projects[start_idx:end_idx], start=start_idx + 1
         ):
@@ -216,27 +318,49 @@ class BaseBgp(ExtCmd):
                 continue
 
             vrf_dev = f"ovnvrf{vrf_id}"
-            nexthop = str(
-                ipaddress.IPv4Address((172 << 24) | (vrf_id << 8) | 1)
+            hosts = self.find_vrf_hosts(
+                project.gw_chassis,
+                nsenter,
+                vrf_dev,
+                timeout=self.config.route_timeout_s,
             )
-
-            hosting = self.find_vrf_host(ovn, nsenter, vrf_dev, timeout=30)
-            if not hosting:
-                log.warning(f"{vrf_dev} not found on any chassis")
-                continue
-
-            self.inject_vrf_routes(hosting, nsenter, vrf_dev, nexthop, vrf_id)
+            if not hosts:
+                raise ovn_exceptions.OvnRouteTimeoutException(
+                    f"{vrf_dev} not created on any chassis after "
+                    f"{self.config.route_timeout_s}s"
+                )
             log.info(
-                f"Injected {self.config.n_routes_per_vrf} routes "
-                f"into {vrf_dev} on {hosting.container}"
+                f"{vrf_dev} hosted on "
+                f"{', '.join(c.container for c in hosts)}"
             )
 
-        # Wait for cumulative learned routes.
-        # Count only projects that actually had routes injected (have gw_port).
-        injected_count = sum(
-            1 for project in ovn.projects[start_idx:end_idx] if project.gw_port
-        )
-        expected = injected_count * self.config.n_routes_per_vrf
+            self.wait_for_route_exchange(ovn, hosts, nsenter, vrf_dev, vrf_id)
+            vrf_hosts[vrf_id] = (vrf_dev, hosts)
+
+        return vrf_hosts
+
+    @ovn_stats.timeit
+    def run_batch_learn(self, ovn, nsenter, vrf_hosts):
+        # The SB table holds the routes of every previous batch too, so the
+        # target is relative to what is already there.
+        baseline = ovn.sbctl.learned_routes()
+
+        for vrf_id, (vrf_dev, hosts) in vrf_hosts.items():
+            for hosting in hosts:
+                self.inject_vrf_routes(
+                    hosting,
+                    nsenter,
+                    vrf_dev,
+                    vrf_id,
+                    self.vrf_route_base(vrf_id),
+                    self.config.n_routes_per_vrf,
+                )
+            log.info(
+                f"Injected {self.config.n_routes_per_vrf} routes into "
+                f"{vrf_dev} on {', '.join(c.container for c in hosts)}"
+            )
+
+        expected = baseline + len(vrf_hosts) * self.config.n_routes_per_vrf
         self.wait_for_learned_routes(
             ovn, expected, timeout=self.config.route_timeout_s
         )
@@ -265,6 +389,8 @@ class BaseBgp(ExtCmd):
                 num_gw_nodes=self.config.n_chassis_per_gw_lrp,
             )
 
+            nsenter = "nsenter -t $(cat /run/ovn/ovn-controller.pid) -n"
+
             with Context(
                 [ovn], f"bgp_batch_cloud_{cloud_idx}", n_batches
             ) as ctx:
@@ -273,13 +399,22 @@ class BaseBgp(ExtCmd):
                     end_idx = min(
                         start_idx + batch_size, self.config.n_projects
                     )
-                    nsenter = (
-                        "nsenter -t $(cat /run/ovn/ovn-controller.pid) -n"
-                    )
 
-                    self.run_batch_learn(
-                        ovn, nsenter, start_idx, end_idx, ext_net
+                    self.run_batch_provision(ovn, start_idx, end_idx, ext_net)
+
+                    # A failed step is reported by ovn_stats.timeit, which
+                    # returns None instead of the VRFs to inject into.
+                    vrf_hosts = self.run_batch_vrf_setup(
+                        ovn, nsenter, start_idx, end_idx
                     )
+                    if vrf_hosts is None:
+                        log.warning(
+                            f"Cloud {cloud_idx} batch {batch_idx + 1}: "
+                            f"VRF setup failed, skipping route injection"
+                        )
+                        continue
+
+                    self.run_batch_learn(ovn, nsenter, vrf_hosts)
 
                     log.info(
                         f"Cloud {cloud_idx} batch "

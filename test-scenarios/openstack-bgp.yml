@@ -5,7 +5,7 @@ global:
 cluster:
   clustered_db: true
   log_txns_db: true
-  n_workers: 8
+  n_workers: 3
 
 base_bgp:
   n_projects: 20

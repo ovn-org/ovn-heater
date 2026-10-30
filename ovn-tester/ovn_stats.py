@@ -2,12 +2,15 @@ import collections
 import contextlib
 import functools
 import json
+import logging
 import numpy
 import ovn_context
 import ovn_exceptions
 import pandas as pd
 import plotly.express as px
 import time
+
+log = logging.getLogger(__name__)
 
 timed_functions = collections.defaultdict(list)
 
@@ -20,7 +23,8 @@ def timeit(func):
         value = None
         try:
             value = func(*args, **kwargs)
-        except ovn_exceptions.OvnTestException:
+        except ovn_exceptions.OvnTestException as e:
+            log.warning(f'{func.__qualname__} failed: {e}')
             failed = True
         finally:
             duration = time.perf_counter() - start

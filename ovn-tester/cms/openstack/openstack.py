@@ -69,12 +69,17 @@ class Project:
         ext_net: NeutronNetwork = None,
         router: Optional[LRouter] = None,
         gw_port: Optional[LRPort] = None,
+        gw_chassis: Optional[List[ChassisNode]] = None,
     ):
         self.int_net = int_net
         self.ext_net = ext_net
         self.router = router
         self.vm_ports: List[LSPort] = []
         self.gw_port = gw_port
+        # Chassis acting as gateways for 'gw_port'.  These are the only
+        # ones ovn-controller maintains this project's dynamic routing VRF
+        # on, so tests do not have to search the whole cluster for it.
+        self.gw_chassis: List[ChassisNode] = gw_chassis or []
         self._id = str(uuid.uuid4())
 
     @property
@@ -258,6 +263,7 @@ class OpenStackCloud(Cluster):
                 lr_port, chassis.container, index + 1
             )
 
+        project.gw_chassis = gw_nodes
         project.ext_net = external_network
 
         return lr_port

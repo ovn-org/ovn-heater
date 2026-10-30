@@ -1050,6 +1050,12 @@ class OvnSbctl:
         )
         return duration
 
+    def learned_route_exists(self, ip_prefix: str) -> bool:
+        cmd = self.idl.db_find_rows(
+            "Learned_Route", ("ip_prefix", "=", ip_prefix)
+        )
+        return len(cmd.execute()) > 0
+
 
 class NBIcIdl(nb_ic_impl_idl.OvnIcNbApiIdlImpl, Backend):
     def __init__(self, connection):

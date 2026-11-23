@@ -9,6 +9,7 @@ RUN mkdir -p /root/.ssh/
 COPY $SSH_KEY /root/.ssh/
 
 COPY ovn-fake-multinode-utils/process-monitor.py /tmp/
+COPY ovn-tester/ovn_inject_routes.py /tmp/
 
 RUN /bin/bash -c ". /scripts/helpers.sh; install_latest_python"
 

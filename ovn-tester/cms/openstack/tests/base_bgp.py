@@ -100,25 +100,49 @@ class BaseBgp(ExtCmd):
                 return max_count
             time.sleep(1)
 
-    def find_vrf_host(self, ovn, nsenter, vrf_dev, timeout=30):
-        """Find which chassis is hosting the given VRF device.
+    def find_vrf_hosts(self, candidates, nsenter, vrf_dev, timeout=30):
+        """Wait for the VRF device on every chassis that should host it.
+
+        ovn-controller maintains the VRF on each chassis the router port
+        is a gateway candidate for, not only the active one, and any of
+        them may be the one that syncs the table to the SB.  A routing
+        daemon would populate the VRF on all of them, so the test has to
+        as well.  Missing even one is not harmless: that chassis syncs an
+        empty table and deletes the routes the others learned.
+
+        The chassis create the device independently, so wait for all of
+        them rather than for the first.  'candidates' are the project's
+        gateway chassis, which is why this does not have to probe the
+        whole cluster: that costs one ssh round trip per worker per
+        sweep, which dominates the test once the cluster is large.
 
         Returns:
-            The hosting chassis, or None if not found within timeout.
+            The list of hosting chassis, empty if none within timeout.
         """
+        expected = len(candidates)
         deadline = time.time() + timeout
-        while time.time() < deadline:
-            for chassis in ovn.worker_nodes:
+        while True:
+            hosts = []
+            for chassis in candidates:
                 try:
                     chassis.run(
                         f"{nsenter} test -d /sys/class/net/{vrf_dev}",
                         raise_on_error=True,
                     )
-                    return chassis
+                    hosts.append(chassis)
                 except Exception:
                     pass
-            time.sleep(1)
-        return None
+            if len(hosts) >= expected:
+                return hosts
+            if time.time() > deadline:
+                log.warning(
+                    f"{vrf_dev} found on {len(hosts)}/{expected} chassis "
+                    f"after {timeout}s"
+                )
+                return hosts
+            # The devices normally appear within a few hundred ms, so a
+            # coarse retry would be most of this step's cost.
+            time.sleep(0.1)
 
     @ovn_stats.timeit
     def run_batch_advertise(self, ovn, start_idx, end_idx):
@@ -132,7 +156,7 @@ class BaseBgp(ExtCmd):
 
             vrf_dev = f"ovnvrf{vrf_id}"
             vrf_hosts = []
-            for chassis in ovn.worker_nodes:
+            for chassis in project.gw_chassis:
                 try:
                     chassis.run(
                         f"test -d /sys/class/net/{vrf_dev}",
@@ -228,22 +252,28 @@ class BaseBgp(ExtCmd):
 
             vrf_dev = f"ovnvrf{vrf_id}"
 
-            hosting = self.find_vrf_host(ovn, nsenter, vrf_dev, timeout=30)
-            if not hosting:
+            hosts = self.find_vrf_hosts(
+                project.gw_chassis,
+                nsenter,
+                vrf_dev,
+                timeout=self.config.route_timeout_s,
+            )
+            if not hosts:
                 log.warning(f"{vrf_dev} not found on any chassis")
                 continue
 
-            self.inject_vrf_routes(
-                hosting,
-                nsenter,
-                vrf_dev,
-                vrf_id,
-                self.vrf_route_base(vrf_id),
-                self.config.n_routes_per_vrf,
-            )
+            for hosting in hosts:
+                self.inject_vrf_routes(
+                    hosting,
+                    nsenter,
+                    vrf_dev,
+                    vrf_id,
+                    self.vrf_route_base(vrf_id),
+                    self.config.n_routes_per_vrf,
+                )
             log.info(
-                f"Injected {self.config.n_routes_per_vrf} routes "
-                f"into {vrf_dev} on {hosting.container}"
+                f"Injected {self.config.n_routes_per_vrf} routes into "
+                f"{vrf_dev} on {', '.join(c.container for c in hosts)}"
             )
 
         # Wait for cumulative learned routes.

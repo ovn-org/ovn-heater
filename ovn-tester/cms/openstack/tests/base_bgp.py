@@ -73,11 +73,10 @@ class BaseBgp(ExtCmd):
             if learned >= expected:
                 return learned
             if time.time() > deadline:
-                log.warning(
+                raise ovn_exceptions.OvnRouteTimeoutException(
                     f"Timed out waiting for learned routes: "
                     f"{learned}/{expected} after {timeout}s"
                 )
-                return learned
             time.sleep(0.1)
 
     def wait_for_vrf_routes(
@@ -101,11 +100,10 @@ class BaseBgp(ExtCmd):
             if max_count >= expected:
                 return max_count
             if time.time() > deadline:
-                log.warning(
-                    f"Timed out waiting for VRF routes: "
+                raise ovn_exceptions.OvnRouteTimeoutException(
+                    f"Timed out waiting for VRF {vrf_name} routes: "
                     f"{max_count}/{expected} after {timeout}s"
                 )
-                return max_count
             time.sleep(1)
 
     def find_vrf_hosts(self, candidates, nsenter, vrf_dev, timeout=30):
@@ -225,8 +223,9 @@ class BaseBgp(ExtCmd):
                     pass
 
             if not vrf_hosts:
-                log.warning(f"{vrf_dev} not found on any chassis")
-                continue
+                raise ovn_exceptions.OvnRouteTimeoutException(
+                    f"{vrf_dev} not found on any chassis"
+                )
 
             stdout = StringIO()
             vrf_hosts[0].run(

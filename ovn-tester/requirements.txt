@@ -6,4 +6,3 @@ plotly
 pyyaml
 randmac
 ovsdbapp>=2.18.0
-pyroute2

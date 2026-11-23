@@ -33,12 +33,23 @@ class BaseBgp(ExtCmd):
         test_config = config.get("base_bgp")
         self.config = BaseBgpConfig(**test_config)
 
-    def inject_vrf_routes(self, hosting, nsenter, vrf_dev, nexthop, vrf_id):
+    @staticmethod
+    def vrf_nexthop(vrf_id):
+        return str(ipaddress.IPv4Address((172 << 24) | (vrf_id << 8) | 1))
+
+    @staticmethod
+    def vrf_route_base(vrf_id):
+        """Base of the range the bulk routes of a VRF are injected into."""
+        return ipaddress.IPv4Address((10 << 24) | (vrf_id << 8))
+
+    def inject_vrf_routes(
+        self, hosting, nsenter, vrf_dev, vrf_id, base, n_routes
+    ):
         hosting.run(
             f"{nsenter} python3 /tmp/ovn_inject_routes.py "
-            f"--vrf-dev {vrf_dev} --nexthop {nexthop} "
-            f"--table {vrf_id} --n-routes {self.config.n_routes_per_vrf} "
-            f"--vrf-id {vrf_id}"
+            f"--vrf-dev {vrf_dev} --nexthop {self.vrf_nexthop(vrf_id)} "
+            f"--table {vrf_id} --n-routes {n_routes} --base {base}",
+            raise_on_error=True,
         )
 
     def wait_for_learned_routes(self, ovn, expected, timeout=30):
@@ -216,16 +227,20 @@ class BaseBgp(ExtCmd):
                 continue
 
             vrf_dev = f"ovnvrf{vrf_id}"
-            nexthop = str(
-                ipaddress.IPv4Address((172 << 24) | (vrf_id << 8) | 1)
-            )
 
             hosting = self.find_vrf_host(ovn, nsenter, vrf_dev, timeout=30)
             if not hosting:
                 log.warning(f"{vrf_dev} not found on any chassis")
                 continue
 
-            self.inject_vrf_routes(hosting, nsenter, vrf_dev, nexthop, vrf_id)
+            self.inject_vrf_routes(
+                hosting,
+                nsenter,
+                vrf_dev,
+                vrf_id,
+                self.vrf_route_base(vrf_id),
+                self.config.n_routes_per_vrf,
+            )
             log.info(
                 f"Injected {self.config.n_routes_per_vrf} routes "
                 f"into {vrf_dev} on {hosting.container}"

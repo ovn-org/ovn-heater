@@ -375,7 +375,7 @@ cmd_run() {
         vm_ssh "cd /root/ovn-heater && \
                 export PHYS_DEPLOYMENT=${phys} && \
                 export OS_BASE=ubuntu && \
-                export OS_IMAGE_OVERRIDE=ubuntu:rolling && \
+                export OS_IMAGE_OVERRIDE=ubuntu:26.04 && \
                 ./do.sh install"
     else
         vm_ssh "cd /root/ovn-heater && \
